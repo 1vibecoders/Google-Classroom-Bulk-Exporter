@@ -7,7 +7,7 @@ import { EditorProvider, useEditors } from './editors/EditorHost';
 import { Icon } from './ui/Icon';
 import { Menu } from './ui/Menu';
 import { routeToHash, useRoute, type Route } from './router';
-import { exportFileName, exportJson } from './lib/exportSchedule';
+import { createExport, rememberExportId } from './lib/exportSchedule';
 import { downloadText } from './lib/download';
 import { nowLocal, todayLocal } from './lib/time';
 import { DayView } from './views/DayView';
@@ -46,9 +46,15 @@ function Shell() {
   const editors = useEditors();
 
   const exportNow = useCallback(() => {
-    const now = nowLocal();
-    downloadText(exportFileName(now), exportJson(doc, now));
-    notify('Schedule exported. Give this file to /academic-schedule or keep it as a backup.', { tone: 'success' });
+    const result = createExport(doc, nowLocal());
+    downloadText(result.fileName, result.json);
+    rememberExportId(result.exportId);
+    if (result.problems.length > 0) {
+      const first = result.problems[0];
+      notify(`Schedule exported, but the file has ${result.problems.length} problem(s) and may not import again (${first.path}: ${first.message}).`, { tone: 'warning' });
+    } else {
+      notify('Schedule exported. Give this file to /academic-schedule or keep it as a backup.', { tone: 'success' });
+    }
   }, [doc, notify]);
 
   const contextDate = 'date' in route ? route.date : todayLocal();

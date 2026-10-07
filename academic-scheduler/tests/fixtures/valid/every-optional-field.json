@@ -1,0 +1,387 @@
+{
+  "schemaVersion": "1.0",
+  "x-fixture": {
+    "kind": "valid",
+    "description": "Every optional field of every object type is present, with x- properties on every object (null and \"__proto__\" inside x- values are plain data)."
+  },
+  "meta": {
+    "title": "Fall 2026",
+    "generatedAt": "2026-10-07T18:00:00",
+    "generator": {
+      "name": "fixture-builder",
+      "version": "1.0",
+      "x-build": 7
+    },
+    "timezone": "America/New_York",
+    "basedOn": "u-exp-h7w2c9qe",
+    "sources": [
+      {
+        "kind": "schedule",
+        "label": "schedule.json",
+        "x-size": 1234
+      }
+    ],
+    "requestedChanges": [
+      {
+        "id": "u-evt-p4n0l7s2",
+        "reason": "You asked to move piano to Thursdays.",
+        "requestedByPerson": true,
+        "x-why": null
+      }
+    ],
+    "x-meta": "kept"
+  },
+  "classes": [
+    {
+      "id": "cls-biology",
+      "origin": "generated",
+      "locked": false,
+      "overrides": [
+        "teacher",
+        "x-tool"
+      ],
+      "name": "Biology",
+      "teacher": "Dr. Chen",
+      "section": "Period 2",
+      "room": "Lab 3",
+      "color": "#16a34a",
+      "description": "Cells, genetics and ecology.",
+      "archived": false,
+      "topics": [
+        "Unit 2: Cells",
+        "Unit 3: Genetics"
+      ],
+      "references": [
+        {
+          "title": "Lab safety rules.pdf",
+          "url": "https://example.org/safety.pdf",
+          "path": "Biology/Materials/Lab safety rules.pdf",
+          "kind": "reading",
+          "required": false,
+          "x-ref": 1
+        }
+      ],
+      "source": {
+        "kind": "syllabus",
+        "id": "bio-syllabus-2026",
+        "url": "https://example.org/syllabus",
+        "path": "syllabus.pdf",
+        "label": "Biology syllabus.pdf",
+        "retrievedAt": "2026-10-01T08:00",
+        "x-src": true
+      },
+      "sources": [
+        {
+          "kind": "image",
+          "label": "Whiteboard photo"
+        }
+      ],
+      "issues": [
+        {
+          "id": "cls-biology:other:room",
+          "kind": "other",
+          "message": "Room changes in November.",
+          "field": "room",
+          "status": "open",
+          "date": "2026-11-02",
+          "x-issue": []
+        }
+      ],
+      "x-class": {
+        "a": 1
+      }
+    }
+  ],
+  "assignments": [
+    {
+      "id": "biology-lab-report-2026-10-16",
+      "classId": "cls-biology",
+      "title": "Lab report: osmosis",
+      "type": "lab",
+      "due": "2026-10-16T23:59:00",
+      "estimatedMinutes": 90,
+      "priority": "high",
+      "tasks": [
+        {
+          "id": "biology-lab-report-2026-10-16-t1",
+          "title": "Analyse the data",
+          "estimatedMinutes": 30,
+          "origin": "generated",
+          "locked": true,
+          "overrides": [
+            "title"
+          ],
+          "description": "Means and error bars.",
+          "notes": "Use the class spreadsheet.",
+          "estimateRange": {
+            "min": 20,
+            "max": 40
+          },
+          "status": "done",
+          "completedAt": "2026-10-08T18:30:00",
+          "recommendedStartDate": "2026-10-08",
+          "recommendedCompletionDate": "2026-10-09",
+          "due": "2026-10-12",
+          "required": true,
+          "issues": [
+            {
+              "id": "biology-lab-report-2026-10-16-t1:other",
+              "kind": "other",
+              "message": "Two groups lost their data."
+            }
+          ],
+          "x-task": 1
+        },
+        {
+          "id": "biology-lab-report-2026-10-16-t2",
+          "title": "Write the report",
+          "estimatedMinutes": 60,
+          "dependsOn": [
+            "biology-lab-report-2026-10-16-t1"
+          ]
+        }
+      ],
+      "origin": "generated",
+      "source": {
+        "kind": "syllabus",
+        "label": "Biology syllabus.pdf"
+      },
+      "locked": false,
+      "overrides": [
+        "priority"
+      ],
+      "topic": "Unit 2: Cells",
+      "description": "Write up the osmosis lab: hypothesis, method, results, discussion.",
+      "notes": "Ask about the error bars.",
+      "assessmentDate": "2026-10-16T09:00:00",
+      "recommendedCompletionDate": "2026-10-15",
+      "estimateRange": {
+        "min": 75,
+        "max": 105,
+        "x-range": "midpoint"
+      },
+      "estimateConfidence": "medium",
+      "estimateBasis": "Two pages of writing plus a graph.",
+      "status": "in_progress",
+      "points": "20 points",
+      "required": true,
+      "sourceState": "present",
+      "references": [
+        {
+          "title": "Rubric",
+          "url": "https://example.org/rubric",
+          "kind": "rubric",
+          "required": true
+        }
+      ],
+      "dependsOn": [
+        "biology-reading-ch5-2026-10-14"
+      ],
+      "sources": [
+        {
+          "kind": "document",
+          "label": "Lab handout"
+        }
+      ],
+      "issues": [
+        {
+          "id": "biology-lab-report-2026-10-16:ambiguity:due",
+          "kind": "ambiguity",
+          "message": "The handout says \"Friday\".",
+          "field": "due",
+          "status": "dismissed"
+        }
+      ],
+      "x-assignment": "kept"
+    },
+    {
+      "id": "biology-reading-ch5-2026-10-14",
+      "classId": "cls-biology",
+      "title": "Read chapter 5",
+      "type": "reading",
+      "due": "2026-10-14",
+      "origin": "generated",
+      "estimatedMinutes": 40,
+      "status": "done",
+      "completedAt": "2026-10-07T17:00:00",
+      "required": false,
+      "sourceState": "withdrawn"
+    }
+  ],
+  "events": [
+    {
+      "id": "evt-soccer",
+      "title": "Soccer practice",
+      "category": "activity",
+      "startTime": "16:00",
+      "endTime": "17:30",
+      "recurrence": {
+        "frequency": "weekly",
+        "daysOfWeek": [
+          "tue",
+          "thu"
+        ],
+        "interval": 1,
+        "startDate": "2026-10-05",
+        "endDate": "2026-12-17",
+        "exceptDates": [
+          "2026-11-26"
+        ],
+        "x-rec": null
+      },
+      "origin": "generated",
+      "source": {
+        "kind": "user",
+        "label": "Told /academic-schedule on 2026-10-07"
+      },
+      "locked": false,
+      "overrides": [
+        "startTime"
+      ],
+      "classId": "cls-biology",
+      "busy": true,
+      "location": "Field 2",
+      "notes": "Bring cleats.",
+      "sources": [
+        {
+          "kind": "calendar",
+          "label": "Team calendar"
+        }
+      ],
+      "issues": [],
+      "x-event": true
+    },
+    {
+      "id": "evt-field-trip-2026-10-22",
+      "title": "Field trip",
+      "category": "school",
+      "date": "2026-10-22",
+      "endDate": "2026-10-23",
+      "allDay": true,
+      "busy": true,
+      "assignmentId": "biology-lab-report-2026-10-16",
+      "origin": "generated"
+    }
+  ],
+  "availability": [
+    {
+      "id": "avail-evenings-1800-2100",
+      "label": "Evenings",
+      "startTime": "18:00",
+      "endTime": "21:00",
+      "recurrence": {
+        "frequency": "weekly",
+        "daysOfWeek": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri"
+        ],
+        "startDate": "2026-10-05"
+      },
+      "origin": "generated",
+      "locked": false,
+      "overrides": [
+        "endTime"
+      ],
+      "source": {
+        "kind": "user",
+        "label": "Told /academic-schedule on 2026-10-07"
+      },
+      "x-avl": 0
+    },
+    {
+      "id": "avail-2026-10-17-1000-1200",
+      "label": "Saturday morning",
+      "date": "2026-10-17",
+      "startTime": "10:00",
+      "endTime": "12:00",
+      "origin": "generated"
+    }
+  ],
+  "scheduleBlocks": [
+    {
+      "id": "blk-biology-lab-report-2026-10-16-202610071800-1",
+      "assignmentId": "biology-lab-report-2026-10-16",
+      "taskId": "biology-lab-report-2026-10-16-t1",
+      "start": "2026-10-08T18:00:00",
+      "end": "2026-10-08T18:30:00",
+      "description": "Graph the mass changes and compute the averages.",
+      "origin": "generated",
+      "status": "done",
+      "completedAt": "2026-10-08T18:30:00",
+      "kind": "work",
+      "title": "Data analysis",
+      "notes": "Went well.",
+      "locked": true,
+      "overrides": [
+        "description"
+      ],
+      "x-blk": {}
+    },
+    {
+      "id": "u-blk-k2m9x7qa",
+      "start": "2026-10-08T18:30:00",
+      "end": "2026-10-08T18:40:00",
+      "kind": "break",
+      "title": "Break",
+      "origin": "planner"
+    },
+    {
+      "id": "u-blk-p3n8z1wd",
+      "assignmentId": "biology-lab-report-2026-10-16",
+      "taskId": "biology-lab-report-2026-10-16-t2",
+      "start": "2026-10-13T18:00",
+      "end": "2026-10-13T19:00",
+      "status": "planned",
+      "origin": "planner"
+    }
+  ],
+  "x-tool": {
+    "note": null,
+    "list": [
+      1,
+      null,
+      {
+        "deep": true
+      }
+    ],
+    "__proto__": {
+      "polluted": true
+    }
+  },
+  "settings": {
+    "weekStartsOn": "sunday",
+    "dayStartTime": "06:30",
+    "dayEndTime": "23:00",
+    "defaultDueTime": "23:59",
+    "minSessionMinutes": 15,
+    "maxSessionMinutes": 90,
+    "breakMinutes": 5,
+    "maxDailyStudyMinutes": 240,
+    "x-theme": "dark"
+  },
+  "issues": [
+    {
+      "id": "workload:2026-10-15",
+      "kind": "workload",
+      "message": "Thursday is tight.",
+      "date": "2026-10-15",
+      "itemId": "biology-lab-report-2026-10-16-t2",
+      "status": "resolved",
+      "field": "estimatedMinutes",
+      "x-root-issue": 1
+    }
+  ],
+  "deleted": [
+    {
+      "id": "gc-NzAwMDAwMDAwMDA0",
+      "collection": "assignments",
+      "deletedAt": "2026-10-06T16:12:00",
+      "sourceId": "NzAwMDAwMDAwMDA0",
+      "title": "Optional crossword",
+      "x-tomb": "x"
+    }
+  ]
+}

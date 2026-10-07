@@ -1,0 +1,182 @@
+{
+  "schemaVersion": "1.0",
+  "x-fixture": {
+    "kind": "valid",
+    "description": "Valid, but every § 13.4 warning applies: blocks after due/task due/assessment, overlaps (block, busy event), session length, daily limit, a recurrence that never occurs, a far date, overrides on a user item, an unknown time zone.",
+    "expectedWarningPaths": [
+      "meta.timezone",
+      "scheduleBlocks[0].end",
+      "scheduleBlocks[1].end",
+      "scheduleBlocks[1]",
+      "scheduleBlocks[2].end",
+      "scheduleBlocks[2]",
+      "scheduleBlocks[3]",
+      "events[1].recurrence",
+      "classes[1].overrides",
+      "deleted[0].deletedAt"
+    ]
+  },
+  "meta": {
+    "title": "Fixture schedule",
+    "generatedAt": "2026-10-07T18:00:00",
+    "generator": {
+      "name": "fixture-builder",
+      "version": "1.0"
+    },
+    "timezone": "Mars/Olympus_Mons"
+  },
+  "classes": [
+    {
+      "id": "cls-biology",
+      "name": "Biology",
+      "teacher": "Mr. Chen",
+      "color": "#16A34A",
+      "origin": "generated"
+    },
+    {
+      "id": "u-cls-a8d2k4m1",
+      "name": "Piano",
+      "origin": "user",
+      "overrides": [
+        "name"
+      ]
+    }
+  ],
+  "assignments": [
+    {
+      "id": "biology-lab-report-2026-10-16",
+      "classId": "cls-biology",
+      "title": "Lab report: osmosis",
+      "type": "lab",
+      "due": "2026-10-16T23:59:00",
+      "estimatedMinutes": 90,
+      "priority": "high",
+      "tasks": [
+        {
+          "id": "biology-lab-report-2026-10-16-t1",
+          "title": "Analyse the data",
+          "estimatedMinutes": 30,
+          "due": "2026-10-08"
+        },
+        {
+          "id": "biology-lab-report-2026-10-16-t2",
+          "title": "Write the report",
+          "estimatedMinutes": 60,
+          "dependsOn": [
+            "biology-lab-report-2026-10-16-t1"
+          ]
+        }
+      ],
+      "origin": "generated",
+      "source": {
+        "kind": "syllabus",
+        "label": "Biology syllabus.pdf"
+      }
+    },
+    {
+      "id": "biology-reading-ch5-2026-10-14",
+      "classId": "cls-biology",
+      "title": "Read chapter 5",
+      "type": "quiz",
+      "origin": "generated",
+      "assessmentDate": "2026-10-09"
+    }
+  ],
+  "events": [
+    {
+      "id": "evt-soccer",
+      "title": "Soccer practice",
+      "category": "activity",
+      "startTime": "16:00",
+      "endTime": "17:30",
+      "recurrence": {
+        "frequency": "weekly",
+        "daysOfWeek": [
+          "tue",
+          "thu"
+        ],
+        "startDate": "2026-10-05"
+      },
+      "origin": "generated",
+      "source": {
+        "kind": "user",
+        "label": "Told /academic-schedule on 2026-10-07"
+      }
+    },
+    {
+      "id": "evt-never",
+      "title": "Club",
+      "startTime": "12:00",
+      "endTime": "13:00",
+      "recurrence": {
+        "frequency": "weekly",
+        "daysOfWeek": [
+          "mon"
+        ],
+        "startDate": "2026-10-06",
+        "endDate": "2026-10-11"
+      }
+    }
+  ],
+  "availability": [
+    {
+      "id": "avail-evenings-1800-2100",
+      "label": "Evenings",
+      "startTime": "18:00",
+      "endTime": "21:00",
+      "recurrence": {
+        "frequency": "weekly",
+        "daysOfWeek": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri"
+        ],
+        "startDate": "2026-10-05"
+      },
+      "origin": "generated"
+    }
+  ],
+  "scheduleBlocks": [
+    {
+      "id": "blk-1",
+      "assignmentId": "biology-lab-report-2026-10-16",
+      "taskId": "biology-lab-report-2026-10-16-t1",
+      "start": "2026-10-08T18:00:00",
+      "end": "2026-10-08T18:30:00",
+      "origin": "generated"
+    },
+    {
+      "id": "blk-2",
+      "assignmentId": "biology-lab-report-2026-10-16",
+      "start": "2026-10-17T10:00:00",
+      "end": "2026-10-17T11:30:00",
+      "origin": "generated"
+    },
+    {
+      "id": "blk-3",
+      "assignmentId": "biology-reading-ch5-2026-10-14",
+      "start": "2026-10-15T16:30:00",
+      "end": "2026-10-15T16:40:00",
+      "origin": "planner"
+    },
+    {
+      "id": "blk-4",
+      "title": "Flashcards",
+      "start": "2026-10-15T16:35:00",
+      "end": "2026-10-15T17:35:00",
+      "origin": "generated"
+    }
+  ],
+  "settings": {
+    "maxDailyStudyMinutes": 60
+  },
+  "deleted": [
+    {
+      "id": "old-item",
+      "collection": "assignments",
+      "deletedAt": "2019-01-01T00:00:00"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "1.0",
+  "x-fixture": {
+    "kind": "valid",
+    "description": "The minimal valid file of § 18.1: five empty collections."
+  },
+  "classes": [],
+  "assignments": [],
+  "events": [],
+  "availability": [],
+  "scheduleBlocks": []
+}
