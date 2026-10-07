@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "Google Classroom Bulk Exporter",
+  "short_name": "Classroom Exporter",
+  "version": "1.0.0",
+  "description": "Export a Google Classroom class's assignments, materials, descriptions and attachments into an organized ZIP archive.",
+  "minimum_chrome_version": "116",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Export this Google Classroom class",
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "permissions": [
+    "scripting",
+    "downloads",
+    "offscreen",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://classroom.google.com/*",
+    "https://drive.google.com/*",
+    "https://drive.usercontent.google.com/*",
+    "https://docs.google.com/*",
+    "https://*.googleusercontent.com/*"
+  ]
+}

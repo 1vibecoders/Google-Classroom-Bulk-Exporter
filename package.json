@@ -1,0 +1,19 @@
+{
+  "name": "google-classroom-bulk-exporter",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Chrome extension (Manifest V3) that exports a Google Classroom class into an organized ZIP archive.",
+  "type": "module",
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "test": "node --test \"tests/unit/*.test.mjs\"",
+    "test:dom": "node --test \"tests/dom/*.test.mjs\"",
+    "test:e2e": "node --test --test-concurrency=1 \"tests/e2e/*.test.mjs\"",
+    "test:all": "npm run check && npm test && npm run test:dom && npm run test:e2e",
+    "package": "node scripts/package.mjs",
+    "icons": "python3 scripts/make-icons.py"
+  },
+  "devDependencies": {
+    "playwright-core": "1.56.1"
+  }
+}
