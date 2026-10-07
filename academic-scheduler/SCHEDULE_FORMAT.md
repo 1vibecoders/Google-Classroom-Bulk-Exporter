@@ -6,11 +6,21 @@ This document is the complete, normative description of the JSON file that the
 this format.
 
 It is written so that a developer or an AI can produce valid files without
-guessing. A machine-readable JSON Schema for the structural rules is shipped
-next to this file: [`schema/schedule-1.0.schema.json`](schema/schedule-1.0.schema.json).
+guessing. A machine-readable JSON Schema (draft 2020-12) for the structural
+rules is shipped next to this file:
+[`schema/schedule-1.0.schema.json`](schema/schedule-1.0.schema.json).
 The JSON Schema cannot express every rule; the **semantic rules** in
 [§ 13](#13-validation-rules) also apply, and the website and the skill's
 validator (`skills/schedule/scripts/validate_schedule.py`) enforce all of them.
+
+Terms used in this document:
+
+- **Person**: the student whose schedule this is.
+- **Writer**: any program that writes a schedule file: a **generator** (such
+  as the `/schedule` skill) or the website's export.
+- **Item**: a class, assignment, task, event, availability window or schedule
+  block.
+- **Protected item**: an item with `origin: "user"` or `locked: true` (§ 6).
 
 The key words **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT** and **MAY**
 are used as in RFC 2119.
@@ -54,8 +64,9 @@ are used as in RFC 2119.
   (camelCase).
 - **Unknown properties are invalid**, with one exception: property names that
   start with `x-` (for example `"x-myTool": {...}`) are allowed on the root
-  object and on every item. Readers MUST ignore their meaning and MUST
-  preserve them unchanged when they re-export the item.
+  object, on every item and on every other object defined here except
+  `estimateRange`. Readers MUST ignore their meaning and MUST preserve them
+  unchanged when they re-export the object.
 - `null` is **not** a valid value for any field defined here. Omit an optional
   field instead of setting it to `null`.
 - The maximum file size the website accepts is 10 MB.
@@ -63,7 +74,8 @@ are used as in RFC 2119.
 ## 2. Versioning
 
 Every file MUST start with a `schemaVersion` string of the form
-`"MAJOR.MINOR"`. This document defines **`"1.0"`**.
+`"MAJOR.MINOR"`. This document defines **`"1.0"`**, the initial version of
+the format.
 
 | Change | Version change | Example |
 | --- | --- | --- |
@@ -100,15 +112,28 @@ Rules:
 Seconds in a LocalDateTime are accepted but the website works in whole
 minutes; `:SS` other than `:00` is rounded down to the minute.
 
+What a Date without a time means for a `due` or an `assessmentDate` is defined
+in § 8 ("Date-only values"); how dates are compared by the validation rules
+is defined in § 13.3.
+
 ## 4. Time zones
 
 All dates and times are **local wall-clock times of the person whose
-schedule this is**. There are no UTC times and no offsets in item fields.
-`2026-10-16T23:59:00` means 11:59 PM on October 16 on the person's own clock.
+schedule this is**. There are no UTC times and no offsets anywhere in the
+file, `meta.generatedAt` included. `2026-10-16T23:59:00` means 11:59 PM on
+October 16 on the person's own clock.
 
-The optional `meta.timezone` field (an IANA name such as
-`"America/New_York"`) records which zone that is. It is informational: the
-website never converts times between zones.
+`meta.timezone` (an IANA name such as `"America/New_York"`) records which
+zone that is. The website never converts times between zones.
+
+- Generators MUST write `meta.timezone`: the input schedule's
+  `meta.timezone`, or the zone the person gives. With neither, they ask the
+  person, or assume a zone and state the assumption in their summary.
+- The website's export MUST write `meta.timezone` with the browser's IANA
+  time zone.
+- `meta.generatedAt` is the wall-clock time in that zone at which the file
+  was written. It is the reference "now" that decides which work is past and
+  which is future (§ 12.1, § 16.1).
 
 ## 5. Root object
 
@@ -122,7 +147,8 @@ website never converts times between zones.
   "events": [ ],
   "availability": [ ],
   "scheduleBlocks": [ ],
-  "issues": [ ]
+  "issues": [ ],
+  "deleted": [ ]
 }
 ```
 
@@ -132,11 +158,12 @@ website never converts times between zones.
 | `classes` | array of [Class](#7-classes) | **yes** (may be empty) | Courses. |
 | `assignments` | array of [Assignment](#8-assignments) | **yes** (may be empty) | Homework, projects, readings, quizzes, tests, … |
 | `events` | array of [Event](#10-events-recurring-and-one-time) | **yes** (may be empty) | Fixed commitments: school, activities, appointments. |
-| `availability` | array of [Availability](#11-availability-study-time) | **yes** (may be empty) | When the person is free to study. |
+| `availability` | array of [Availability](#11-availability-study-time) | **yes** (may be empty) | When the person is free to study. Empty means "not provided" (§ 11). |
 | `scheduleBlocks` | array of [ScheduleBlock](#12-schedule-blocks-scheduled-work) | **yes** (may be empty) | Work placed on the calendar. |
 | `meta` | [Meta](#meta) | no | Information about the file. |
-| `settings` | [Settings](#settings) | no | Scheduling preferences. |
-| `issues` | array of [Issue](#issue) | no | Problems that concern the whole schedule (for example an overloaded day). |
+| `settings` | [Settings](#settings) | no | Scheduling preferences (person-owned). |
+| `issues` | array of [Issue](#issue) | no | Issues that concern the whole schedule, a day, or a protected item (§ 15.8). Only root issues may have `itemId`. |
+| `deleted` | array of [Deleted item](#deleted-item-tombstone), ≤ 5000 entries | no | Generated items the person deleted, so that they are not created again (§ 15.1, § 16.4). |
 
 All five collections are required so that a reader never has to guess whether
 a missing collection means "none" or "unknown".
@@ -148,36 +175,58 @@ All fields optional.
 | Field | Type | Description |
 | --- | --- | --- |
 | `title` | Text ≤ 200 | A name for the schedule, e.g. `"Fall 2026"`. |
-| `generatedAt` | string, ISO 8601 date-time (offset allowed here, e.g. `2026-10-07T14:03:00-04:00` or a LocalDateTime) | When the file was written. |
-| `generator` | object `{ "name": Text ≤ 100 (required), "version": Text ≤ 50 }` | The program that wrote the file, e.g. `{"name": "claude-schedule-skill", "version": "1.0"}` or `{"name": "Academic Scheduler", "version": "1.0.0"}`. |
-| `timezone` | Text ≤ 100 | IANA time-zone name, informational (see § 4). |
-| `sources` | array of [Source](#source) | The materials the file was generated from (Classroom export, syllabus, …). |
+| `generatedAt` | LocalDateTime | When the file was written, as wall-clock time in `timezone` (§ 4), e.g. `2026-10-11T19:30:00`. No offset, no `Z`. |
+| `generator` | object `{ "name": Text 1–100 (required), "version": Text ≤ 50 }` | The program that wrote the file, e.g. `{"name": "claude-schedule-skill", "version": "1.0"}` or `{"name": "Academic Scheduler", "version": "1.0.0"}`. |
+| `timezone` | Text ≤ 100 | IANA time-zone name (§ 4). |
+| `sources` | array of [Source](#source) | The materials the file was generated from (input schedule, Classroom export, syllabus, …). |
+| `requestedChanges` | array of [Requested change](#requested-change) | The changes a generator made to protected items in the run that wrote this file (§ 15.9). |
+
+Every writer replaces `generator` and `generatedAt` with its own values and
+writes `timezone` (§ 4). Generators set `sources` to the materials used in
+the run, keep `title` unless the person asks to change it, and write
+`requestedChanges` only for the run's own changes (§ 15.1). The website keeps
+`title` and `sources` from the last import and never writes
+`requestedChanges` (§ 17).
 
 ### Settings
 
-All fields optional; the default is used when a field is absent.
+All fields optional; the default is used when a field is absent. Settings are
+**person-owned**: generators copy them unchanged unless the person asked for a
+change in the current request (§ 15.1), and the website asks before it takes
+a file's settings (§ 16.6).
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `weekStartsOn` | `"monday"` \| `"sunday"` | `"monday"` | First day of the week in week views. |
 | `dayStartTime` | Time | `"07:00"` | Earliest time shown in day/week timelines. |
 | `dayEndTime` | Time | `"22:00"` | Latest time shown (must be later than `dayStartTime`). |
-| `defaultDueTime` | Time | `"23:59"` | Time of day used for a `due` that is a date without a time. |
+| `defaultDueTime` | Time | `"00:00"` | Time of day at which a date-only `due` is planned (§ 8). The default `00:00` means "finish by the end of the day before"; the person can set e.g. `"23:59"` to plan up to the end of the due date. |
 | `minSessionMinutes` | Minutes (5–240) | `20` | Shortest work session worth scheduling. |
 | `maxSessionMinutes` | Minutes (10–480) | `60` | Longest single work session; must be ≥ `minSessionMinutes`. |
 | `breakMinutes` | Minutes (0–120) | `10` | Gap to leave between consecutive work sessions. |
 | `maxDailyStudyMinutes` | Minutes (0–1440) | no limit | Upper limit of scheduled work per day. |
 
+The four session settings (`minSessionMinutes`, `maxSessionMinutes`,
+`breakMinutes`, `maxDailyStudyMinutes`) guide the plans made by generators
+and by the website's planner (`generated` and `planner` blocks) only. They
+never constrain `user` or locked blocks, and no warning is shown for those
+(§ 13.4).
+
 ### Issue
 
-An issue records uncertainty or a problem that a person should look at. It
-appears on the root (`issues`) and on any item.
+An issue records uncertainty or a problem that the person should look at. It
+appears in the root `issues` array and in the `issues` of any item. Where a
+generator puts an issue is defined in § 15.8.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `kind` | `"ambiguity"` \| `"conflict"` \| `"missing_information"` \| `"workload"` \| `"other"` | **yes** | `ambiguity`: the source can be read more than one way. `conflict`: sources disagree. `missing_information`: something needed is not in the sources. `workload`: the schedule is tight or impossible. |
+| `id` | ID | no | Stable identifier, so that the person's decision about the issue survives later runs (§ 15.8), e.g. `gc-NzAwMDAwMDAwMDAx:conflict:assessmentDate`, `workload:2026-10-15`. Unique among all issues of the file (root issues and the issues of every item and task). Issue IDs are a separate namespace from item IDs. |
+| `kind` | `"ambiguity"` \| `"conflict"` \| `"missing_information"` \| `"workload"` \| `"other"` | **yes** | `ambiguity`: the source can be read more than one way. `conflict`: sources disagree, or a source disagrees with a value the person set. `missing_information`: something needed is not in the sources. `workload`: the schedule is tight or impossible. |
 | `message` | Text 1–1000 | **yes** | Plain-language explanation, e.g. `"Syllabus says the midterm is Oct 21; Classroom says Oct 20. Using Oct 21 (syllabus)."` |
 | `field` | Text ≤ 100 | no | The field the issue is about, e.g. `"due"`, `"estimatedMinutes"`. |
+| `status` | `"open"` \| `"resolved"` \| `"dismissed"` | no (default `"open"`) | **Person-owned.** `resolved`: the person dealt with it. `dismissed`: the person says it is not a problem. |
+| `itemId` | ID | no | **Root issues only** (invalid inside an item's `issues`): the item the issue concerns, in any collection, tasks included. MUST reference an existing item. |
+| `date` | Date | no | The day the issue concerns, e.g. an overloaded day. The website shows the issue in that day's view. |
 
 ### Source
 
@@ -185,11 +234,51 @@ Where an item (or the whole file) came from. Informational; preserved as is.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `kind` | `"google_classroom"` \| `"syllabus"` \| `"calendar"` \| `"document"` \| `"user"` \| `"other"` | **yes** | Type of source. |
-| `id` | Text ≤ 200 | no | The source's own identifier (e.g. the Google Classroom item id). |
+| `kind` | see below | **yes** | Type of source. |
+| `id` | Text ≤ 200 | no | The source's own identifier (e.g. the Google Classroom course or item id in URL form, § 14.1). |
 | `url` | URL | no | Link to the source (e.g. the Classroom page). |
 | `path` | Text ≤ 500 | no | Path of the file inside an export, e.g. `English 10/Assignments/Othello Essay/metadata.json`. |
 | `label` | Text ≤ 200 | no | Human-readable name, e.g. `"English 10 syllabus (PDF), p. 2"`. |
+
+| `kind` | Use for |
+| --- | --- |
+| `google_classroom` | A Google Classroom export (ZIP or extracted folder) or an item in it. |
+| `syllabus` | A course syllabus. |
+| `calendar` | A school calendar, exam calendar or personal calendar export. |
+| `document` | Any other document: assignment sheet, rubric, handbook, … |
+| `image` | A photo or screenshot, e.g. of a whiteboard or a planner page. |
+| `user` | What the person told the generator; `label` e.g. `"Told /schedule on 2026-10-11"` (§ 15.5). |
+| `schedule` | An input `schedule.json`. |
+| `other` | Anything else. |
+
+### Deleted item (tombstone)
+
+An entry of the root `deleted` array records a `generated` item that the
+person deleted, so that generators do not create it again (§ 15.1) and an
+import does not silently bring it back (§ 16.2).
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | ID | **yes** | The deleted item's ID. Unique within `deleted`; no item in the file may have this ID. |
+| `collection` | `"classes"` \| `"assignments"` \| `"tasks"` \| `"events"` \| `"availability"` \| `"scheduleBlocks"` | **yes** | Where the item was. |
+| `deletedAt` | LocalDateTime | **yes** | When the person deleted it. |
+| `sourceId` | Text ≤ 200 | no | The deleted item's `source.id`, when it had one (never for tasks, which have no `source`). |
+| `title` | Text ≤ 300 | no | The item's title, name or label, for display. |
+
+The list holds at most 5000 entries; when it would grow beyond that, the
+website drops the oldest entries (by `deletedAt`). The website writes the
+entries (§ 16.4); generators copy them (§ 15.1).
+
+### Requested change
+
+An entry of `meta.requestedChanges` tells the website that a generator changed
+or deleted a protected item on purpose (§ 15.9).
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | ID | **yes** | The protected item (any collection, tasks included) that was changed — or deleted, in which case it is absent from the file. Unique within `requestedChanges`. |
+| `reason` | Text 1–500 | **yes** | Plain-language explanation shown to the person, e.g. `"You asked to move fencing to Tuesdays."` |
+| `requestedByPerson` | boolean | **yes** | `true`: the person asked for this change in the current request. `false`: a source suggests it (e.g. a school calendar's holiday). |
 
 ## 6. Fields shared by all items
 
@@ -199,13 +288,88 @@ all have these fields:
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `id` | ID | **yes** | | Unique in the **whole file** (across all collections and all tasks). Never changes once assigned; see § 14. |
-| `origin` | `"user"` \| `"generated"` | no | `"generated"` | `user`: created or owned by the person in the website. `generated`: created by a generator such as the `/schedule` skill. Generators MUST NOT modify or delete `user` items. |
-| `locked` | boolean | no | `false` | The person pinned or manually changed this item. Generators MUST NOT modify, move or delete locked items; the website's import does not overwrite them. |
-| `source` | [Source](#source) | no | | Where the item came from. |
-| `issues` | array of [Issue](#issue) | no | `[]` | Open questions about the item. |
+| `origin` | `"user"` \| `"generated"` \| `"planner"` | no | `"generated"` | Who created the item (§ 6.1). `"planner"` only on schedule blocks. |
+| `locked` | boolean | no | `false` | The person pinned the item (§ 6.2). |
+| `overrides` | array of field names | no | `[]` | Fields of a `generated` or `planner` item whose value the person set (§ 6.3). |
+| `source` | [Source](#source) | no | | Where the item came from (its primary source). |
+| `sources` | array of [Source](#source), ≤ 20 entries | no | `[]` | Additional sources besides `source`, e.g. a second document that confirms or contradicts it. |
+| `issues` | array of [Issue](#issue) | no | `[]` | Issues about the item (without `itemId`). |
 
-Tasks have `id`, `origin`, `locked` and `issues` but no `source` (they inherit
-the assignment's).
+Tasks have `id`, `origin`, `locked`, `overrides` and `issues`, but no
+`source` or `sources` (they inherit the assignment's).
+
+### 6.1 `origin`
+
+- **`user`**: created by the person in the website (IDs start with `u-`,
+  § 14). The whole item, including its tasks, is person-owned. Generators
+  MUST NOT modify or delete it, except through a requested change (§ 15.9).
+- **`generated`**: created by a generator such as the `/schedule` skill,
+  including items it created from what the person told it (those carry a
+  `source` of kind `user`, § 15.5). Later generator runs MAY update its
+  generator-owned fields unless it is locked or the field is overridden
+  (§ 15.4).
+- **`planner`**: a schedule block placed automatically by the website's
+  deterministic planner (IDs start with `u-`). **Only schedule blocks** may
+  have this origin. Generators treat unlocked future planned `planner` blocks
+  like `generated` ones (§ 15.7) and never create `planner` items.
+
+An item's `origin` never changes.
+
+### 6.2 `locked`
+
+`locked: true` means either
+
+- the person explicitly pinned the item ("do not touch"), or
+- the person moved or resized a `generated` or `planner` schedule block in the
+  website; the website sets `locked: true` on every such move or resize.
+
+Editing any other field does **not** lock an item; the website records such
+edits in `overrides` instead (§ 6.3). Generators MUST NOT modify, move or
+delete locked items, except through a requested change (§ 15.9); an import
+keeps the current version of a locked item (§ 16.2). A locked assignment's
+tasks are part of it and are protected with it.
+
+### 6.3 `overrides`
+
+`overrides` lists the fields of a `generated` or `planner` item whose value
+the **person** set. It is person-owned:
+
+- The website adds a field's name (once) when the person edits that field of
+  a `generated` or `planner` item. Generators never add or remove names; they
+  copy the array unchanged.
+- Generators MUST keep the value of every field named in `overrides`,
+  including its absence (when the person removed an optional value, it stays
+  absent). They MAY update the item's other generator-owned fields if the
+  item is unlocked (§ 15.4). When a source's value differs from an overridden
+  value, the generator keeps the person's value and adds a `conflict` issue
+  to the item.
+- An array or object field (`tasks`, `references`, `recurrence`,
+  `estimateRange`, …) is overridden as a whole.
+- On an `origin: "user"` item `overrides` has no effect (the whole item is
+  person-owned); the website does not write it there.
+- During an import the current item's overridden values are kept (§ 16.3).
+
+Entries are unique. Each entry MUST be one of the names allowed for the item
+type below, or an `x-…` property name. `id`, `origin`, `locked`, `overrides`,
+`issues`, `source`, `sources`, `notes`, `status` and `completedAt` are never
+allowed: they are structural or already person-owned.
+
+| Item type | Names allowed in `overrides` |
+| --- | --- |
+| Class | `name`, `teacher`, `section`, `room`, `color`, `description`, `archived`, `topics`, `references` |
+| Assignment | `title`, `classId`, `type`, `topic`, `description`, `due`, `assessmentDate`, `recommendedCompletionDate`, `estimatedMinutes`, `estimateRange`, `estimateConfidence`, `estimateBasis`, `priority`, `points`, `required`, `sourceState`, `tasks`, `references`, `dependsOn` |
+| Task | `title`, `description`, `due`, `required`, `estimatedMinutes`, `estimateRange`, `dependsOn`, `recommendedStartDate`, `recommendedCompletionDate` |
+| Event | `title`, `category`, `classId`, `assignmentId`, `date`, `endDate`, `recurrence`, `allDay`, `startTime`, `endTime`, `busy`, `location` |
+| Availability | `label`, `date`, `recurrence`, `startTime`, `endTime` |
+| Schedule block | `start`, `end`, `assignmentId`, `taskId`, `title`, `kind`, `description` |
+
+Example — the person raised the priority of a generated reading assignment;
+later runs keep `"high"`:
+
+```json
+{ "id": "gc-NzAwMDAwMDAwMDAy", "title": "Read Othello Act 3", "priority": "high",
+  "overrides": ["priority"], "origin": "generated" }
+```
 
 ## 7. Classes
 
@@ -218,6 +382,11 @@ the assignment's).
   "room": "204",
   "color": "#2563EB",
   "description": "American and British literature; essays every unit.",
+  "topics": ["Unit 2: Othello", "Grammar"],
+  "references": [
+    { "title": "Othello (Folger edition).pdf", "kind": "reading", "required": false,
+      "path": "English 10 - Period 3/Materials/Othello full text/Attachments/Othello (Folger edition).pdf" }
+  ],
   "origin": "generated",
   "source": { "kind": "google_classroom", "id": "NjI3ODk0MjE0NTQ5", "url": "https://classroom.google.com/c/NjI3ODk0MjE0NTQ5" }
 }
@@ -225,7 +394,7 @@ the assignment's).
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id`, `origin`, `locked`, `source`, `issues` | | | See § 6. |
+| `id`, `origin`, `locked`, `overrides`, `source`, `sources`, `issues` | | | See § 6. |
 | `name` | Text 1–200 | **yes** | Class name. |
 | `teacher` | Text ≤ 200 | no | Teacher's name. |
 | `section` | Text ≤ 200 | no | Section/period. |
@@ -233,6 +402,12 @@ the assignment's).
 | `color` | Color | no | Display color. If absent, the website assigns one. |
 | `description` | Text ≤ 5000 | no | Course description. |
 | `archived` | boolean | no (default `false`) | Hidden from pickers and filters; its items still display. |
+| `topics` | array of Text ≤ 200, ≤ 200 entries | no | The class's topics or units (e.g. the Classroom topics), in source order. |
+| `references` | array of [Reference](#82-reference), ≤ 200 entries | no | Class materials that are not work: Classroom materials, the syllabus, unit notes, slides. |
+
+A Google Classroom **material**, and an announcement that asks for no work,
+are not assignments: they become `references` of the class or of the
+assignments they support (§ 15.5).
 
 ## 8. Assignments
 
@@ -246,19 +421,20 @@ exams, or a study goal.
   "classId": "gc-class-NjI3ODk0MjE0NTQ5",
   "title": "Othello Essay",
   "type": "writing",
+  "topic": "Unit 2: Othello",
   "description": "Write a 1,200–1,500 word analytical essay on jealousy in Othello. MLA format, at least three quotations.",
   "due": "2026-10-16T23:59:00",
   "recommendedCompletionDate": "2026-10-15",
   "estimatedMinutes": 240,
-  "estimateRange": { "min": 200, "max": 300 },
+  "estimateRange": { "min": 210, "max": 270 },
   "estimateConfidence": "medium",
-  "estimateBasis": "1,200–1,500 words of analytical writing (~3 h) plus outlining and revision; teacher's rubric requires three quotations.",
+  "estimateBasis": "1,200–1,500 words of analytical writing (~2 h) plus thesis, outline and revision; the rubric requires three quotations.",
   "priority": "high",
   "status": "not_started",
   "points": "100 points",
   "tasks": [ ],
   "references": [ { "title": "Essay rubric.pdf", "kind": "rubric", "required": true, "url": "https://drive.google.com/file/d/1Abc/view" } ],
-  "dependsOn": [ "gc-NzAwMDAwMDAwMDAw" ],
+  "dependsOn": [ "gc-NzAwMDAwMDAwMDAy" ],
   "origin": "generated",
   "source": { "kind": "google_classroom", "id": "NzAwMDAwMDAwMDAx", "url": "https://classroom.google.com/c/NjI3ODk0MjE0NTQ5/a/NzAwMDAwMDAwMDAx/details" }
 }
@@ -266,26 +442,28 @@ exams, or a study goal.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `id`, `origin`, `locked`, `source`, `issues` | | | | See § 6. |
+| `id`, `origin`, `locked`, `overrides`, `source`, `sources`, `issues` | | | | See § 6. |
 | `title` | Text 1–200 | **yes** | | Short title. |
-| `classId` | ID | no | | The [class](#7-classes) it belongs to. Omit for personal tasks. MUST reference an existing class. |
+| `classId` | ID | no | | The [class](#7-classes) it belongs to. Omit for personal work. MUST reference an existing class. |
 | `type` | enum, see below | no | `"homework"` | Kind of work. |
+| `topic` | Text ≤ 200 | no | | Topic or unit, e.g. the Classroom topic (usually one of the class's `topics`). |
 | `description` | Text ≤ 20000 | no | | Instructions / requirements (from the source). |
-| `notes` | Text ≤ 10000 | no | | The person's own notes. Owned by the person; see § 16.3. |
-| `due` | DateOrDateTime | no | | **Due date**: when the work must be submitted. A Date without a time means the end of that day (`settings.defaultDueTime`). |
+| `notes` | Text ≤ 10000 | no | | The person's own notes. Person-owned; generators never write it (§ 15.2). |
+| `due` | DateOrDateTime | no | | **Due date**: when the work must be submitted. A Date without a time means "time not stated" (see "Date-only values" below). |
 | `assessmentDate` | DateOrDateTime | no | | **Assessment date**: when an in-class quiz, test, exam or presentation takes place. A Date without a time means "that day, time unknown". |
 | `recommendedCompletionDate` | DateOrDateTime | no | | **Recommended completion date**: when the work should ideally be finished, earlier than the deadline. Never a deadline itself. |
-| `estimatedMinutes` | Minutes | no | | Best single estimate of the **total** work time still to be planned for this assignment, including all of its tasks. For assessments, the recommended total preparation time. |
-| `estimateRange` | object `{ "min": Minutes, "max": Minutes }` | no | | Uncertainty range; `min ≤ estimatedMinutes ≤ max` when both are present. |
+| `estimatedMinutes` | Minutes | no | | **Total effort** for the whole assignment, including all of its tasks and the work already done. For assessments: the total recommended preparation time. Generators MUST NOT lower it to reflect progress; progress comes from task statuses and done blocks (§ 8.1). **Required** when `estimateRange` is present. |
+| `estimateRange` | object `{ "min": Minutes, "max": Minutes }` | no | | Uncertainty range; `min ≤ estimatedMinutes ≤ max`. Requires `estimatedMinutes`. A generator that only has a range uses the point estimate ⌈(min + max) / 2 / 5⌉ × 5, i.e. the midpoint rounded up to a multiple of 5 (60–75 → 70; 40–60 → 50). |
 | `estimateConfidence` | `"low"` \| `"medium"` \| `"high"` | no | | How reliable the estimate is. |
 | `estimateBasis` | Text ≤ 2000 | no | | The evidence behind the estimate, e.g. `"25 pages of reading + 12 short-answer questions"`. |
 | `priority` | `"low"` \| `"medium"` \| `"high"` \| `"urgent"` | no | `"medium"` | Importance. |
-| `status` | `"not_started"` \| `"in_progress"` \| `"done"` \| `"cancelled"` | no | `"not_started"` | `cancelled`: no longer required (removed by the teacher, excused, optional and skipped). |
+| `status` | `"not_started"` \| `"in_progress"` \| `"done"` \| `"cancelled"` | no | `"not_started"` | Person-owned progress (§ 15.2). `cancelled`: the person will not do it (e.g. excused, dropped optional work). Work withdrawn by its source is recorded with `sourceState`, not with `cancelled`. |
 | `completedAt` | LocalDateTime | no | | When it was marked done. Only allowed when `status` is `"done"`. |
 | `points` | Text ≤ 100 | no | | Points/weight as written by the source, e.g. `"100 points"`, `"15% of grade"`. |
-| `required` | boolean | no | `true` | `false` for optional/extra-credit work. |
+| `required` | boolean | no | `true` | `false` for optional/extra-credit work. Such work is not planned automatically and is not counted in remaining-work and overload totals unless it already has planned blocks (§ 8.1). |
+| `sourceState` | `"present"` \| `"missing"` \| `"withdrawn"` | no | `"present"` | Generator-owned. `missing`: not found in a newer, complete export of the same source (§ 15.6). `withdrawn`: the source explicitly removed, cancelled or excused it. The website shows `missing`/`withdrawn` work with a badge and excludes it from automatic planning and from remaining-work and overload totals unless `status` is `"in_progress"`. |
 | `tasks` | array of [Task](#9-tasks-subtasks) | no | `[]` | Steps of the assignment, in recommended order. |
-| `references` | array of [Reference](#reference) | no | `[]` | Attachments, links and materials. |
+| `references` | array of [Reference](#82-reference) | no | `[]` | Attachments, links and materials. |
 | `dependsOn` | array of assignment IDs | no | `[]` | Assignments that should be finished first (e.g. a reading before its quiz). Must exist, must not include itself, no cycles. |
 
 **`type` values:**
@@ -299,25 +477,89 @@ exams, or a study goal.
 | `lab` | Lab work and lab reports. |
 | `project` | Multi-step / multi-day projects. |
 | `presentation` | Presentations (use `assessmentDate` for the presentation day). |
-| `quiz` | Quizzes (use `assessmentDate`). |
-| `test` | Tests (use `assessmentDate`). |
+| `quiz` | Quizzes (use `assessmentDate`, or `due` for an online quiz without a fixed sitting). |
+| `test` | Tests (as for quizzes). |
 | `exam` | Midterms, finals, standardized exams (use `assessmentDate`). |
 | `study` | A study goal that is not tied to one assessment. |
 | `other` | Anything else. |
 
 **Dates — they are not interchangeable:**
 
-- `due`: submission deadline. Present for anything that is handed in.
+- `due`: submission deadline. Present for anything that is handed in. An
+  online quiz or test with a submission deadline and no fixed sitting has
+  `type` `quiz`/`test`, a `due` and **no** `assessmentDate`.
 - `assessmentDate`: the date the assessment happens. Quizzes, tests and
-  exams normally have `assessmentDate` and **no** `due` (unless something must
-  also be submitted, e.g. a take-home part).
+  exams with a sitting normally have `assessmentDate` and **no** `due`
+  (unless something must also be submitted, e.g. a take-home part). An
+  assessment outside the school day also gets an event for the sitting
+  (§ 10).
 - `recommendedCompletionDate`: a planning target that is earlier than
-  `due`/`assessmentDate`. It MUST NOT be later than the `due` date when both
-  are present.
+  `due`/`assessmentDate`. It MUST NOT be later than the `due` date (or, when
+  there is no `due`, the `assessmentDate`).
 - An assignment MAY have none of these (undated work); the website lists it
   under "No date".
 
-### Reference
+**Date-only values.** Writers MUST write a time whenever the source states
+one (Classroom `Oct 16, 11:59 PM` → `"2026-10-16T23:59:00"`), and a Date
+without a time only when the source states no time.
+
+| Value | Shown by the website | Meaning for planning, sorting and warnings |
+| --- | --- | --- |
+| `"due": "2026-10-13"` | "Oct 13", without a time | Due at `settings.defaultDueTime` on that day. With the default `00:00` the work must be finished by the end of Oct 12. |
+| `"assessmentDate": "2026-10-16"` | "Oct 16", time unknown | 00:00 of that day: preparation must end the day before. |
+| `"recommendedCompletionDate": "2026-10-15"` (also task dates) | "Oct 15" | A soft target: by the end of that day. |
+
+These interpretations do not affect validity: the ordering rules of § 13.3
+compare dates in a way that never depends on settings.
+
+### 8.1 Remaining work
+
+Remaining work is computed in exactly this way by the website (assignment
+view, remaining-workload and overload totals, planner) and by generators
+(planning). All quantities are minutes.
+
+- A **work block** is a schedule block whose `kind` is `"work"` (the
+  default); its minutes are `end − start`.
+- **Done minutes** are the minutes of work blocks with `status: "done"`.
+  A past block whose status is still `planned` counts as **not done**; a block
+  in progress (§ 12.1) counts as `planned`.
+
+**Remaining minutes of a task** *t* of assignment *a*:
+
+1. `0` if `t.status` is `done` or `cancelled`;
+2. `0` if `t.required` is `false` and no `planned` work block has
+   `taskId` = *t*;
+3. otherwise `max(0, t.estimatedMinutes − done minutes of blocks with taskId = t)`.
+   A task without `estimatedMinutes` contributes `0` (its time is part of the
+   assignment's untasked remainder).
+
+**Remaining minutes of an assignment** *a*:
+
+1. `0` if `a.status` is `done` or `cancelled`;
+2. `0` if `a.required` is `false` and no `planned` work block references *a*;
+3. `0` if `a.sourceState` is `missing` or `withdrawn` and `a.status` is not
+   `in_progress`;
+4. otherwise, if *a* has at least one task with `estimatedMinutes`:
+   `Σ remaining minutes of its tasks + max(0, (a.estimatedMinutes or 0) − Σ estimatedMinutes of its non-cancelled tasks − done minutes of blocks of a without taskId)`;
+5. otherwise: `max(0, (a.estimatedMinutes or 0) − done minutes of all blocks of a)`.
+
+**Scheduled minutes** of an assignment = Σ minutes of its `planned` work
+blocks that end after now. **Unscheduled minutes** = `max(0, remaining −
+scheduled)`.
+
+Work that rules 1–3 set to 0 is not planned automatically (by generators or
+by the website's planner) and is not part of remaining-workload or overload
+totals. When `availability` is empty the website shows no overload at all
+(§ 11).
+
+*Worked example* (the Othello essay of § 18.2): `estimatedMinutes` 240; tasks
+30 (done) + 30 + 120 + 60 = 240. Remaining = 0 + 30 + 120 + 60 + max(0, 240 −
+240 − 0) = 210. Its planned blocks after now add up to 30 + 50 + 70 + 60 =
+210, so 0 minutes are unscheduled.
+
+### 8.2 Reference
+
+References appear on assignments and on classes (§ 7).
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -333,45 +575,56 @@ Large assignments are split into tasks. Simple homework normally has no tasks.
 
 ```json
 {
-  "id": "gc-NzAwMDAwMDAwMDAx-t3",
-  "title": "Draft body paragraphs",
-  "estimatedMinutes": 90,
-  "dependsOn": [ "gc-NzAwMDAwMDAwMDAx-t2" ],
-  "recommendedStartDate": "2026-10-13",
-  "recommendedCompletionDate": "2026-10-14",
+  "id": "gc-NzAwMDAwMDAwMDAx-t2",
+  "title": "Outline (printed copy due in class)",
+  "estimatedMinutes": 30,
+  "dependsOn": [ "gc-NzAwMDAwMDAwMDAx-t1" ],
+  "recommendedCompletionDate": "2026-10-12",
+  "due": "2026-10-13",
   "status": "not_started"
 }
 ```
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `id` | ID | **yes** | | Unique in the whole file. Recommended form: `<assignmentId>-t<N>`. |
-| `origin`, `locked`, `issues` | | no | | See § 6. |
+| `id` | ID | **yes** | | Unique in the whole file. Form: `<assignmentId>-t<N>` (§ 14.1). |
+| `origin`, `locked`, `overrides`, `issues` | | no | | See § 6. The tasks of a protected assignment are protected with it. |
 | `title` | Text 1–200 | **yes** | | What to do. |
 | `description` | Text ≤ 5000 | no | | Details. |
 | `notes` | Text ≤ 10000 | no | | The person's notes (person-owned). |
-| `estimatedMinutes` | Minutes | no | | Estimated time for this task. |
-| `estimateRange` | `{ "min", "max" }` | no | | As for assignments. |
+| `estimatedMinutes` | Minutes | no | | Total effort for this task, including work already done. **Required** when `estimateRange` is present. |
+| `estimateRange` | `{ "min", "max" }` | no | | As for assignments; requires `estimatedMinutes`. |
 | `status` | `"not_started"` \| `"in_progress"` \| `"done"` \| `"cancelled"` | no | `"not_started"` | |
 | `completedAt` | LocalDateTime | no | | Only with `status: "done"`. |
+| `required` | boolean | no | `true` | `false` for an optional step; it is not planned automatically and not counted in remaining work unless it already has planned blocks (§ 8.1). |
+| `due` | DateOrDateTime | no | | **Checkpoint deadline**: a hard deadline for this step set by the source (e.g. "bring your outline to class on Tuesday"). Not later than the assignment's `due`. A Date without a time means "time not stated" (§ 8). |
 | `dependsOn` | array of task IDs | no | `[]` | Tasks **of the same assignment** that must be done first. No cycles. |
 | `recommendedStartDate` | Date | no | | Earliest sensible day to start. |
-| `recommendedCompletionDate` | DateOrDateTime | no | | When it should be done. |
+| `recommendedCompletionDate` | DateOrDateTime | no | | When it should be done (a soft target). |
+
+Task dates are ordered (§ 13.3): `recommendedStartDate` ≤
+`recommendedCompletionDate` ≤ `due` (each when present); a task's `due` is not
+later than the assignment's `due`; and no task date is later than the
+assignment's `due` or `assessmentDate` (the later of the two when both are
+present). The website warns about a block that ends after its task's `due`.
 
 When an assignment has tasks with estimates, its `estimatedMinutes` SHOULD
-equal the sum of the task estimates (it MAY be larger if some work is not
-represented as a task).
+equal the sum of the estimates of its non-cancelled tasks (it MAY be larger if
+some work is not represented as a task).
 
 ## 10. Events (recurring and one-time)
 
 Events are fixed commitments: school, classes, practice, lessons, jobs,
-appointments. They block study time unless `busy` is `false`.
+appointments, and the sittings of assessments outside school. They block
+study time unless `busy` is `false`.
 
 An event is **one-time** (has `date`) **or** **recurring** (has
 `recurrence`) — exactly one of the two.
 
+Created by the person in the website:
+
 ```json
-{ "id": "evt-school", "title": "School", "category": "school",
+{ "id": "u-evt-7k2m9q4d", "title": "School", "category": "school",
   "startTime": "08:00", "endTime": "15:00",
   "recurrence": { "frequency": "weekly", "daysOfWeek": ["mon","tue","wed","thu","fri"],
                   "startDate": "2026-09-02", "endDate": "2027-06-18",
@@ -379,24 +632,40 @@ An event is **one-time** (has `date`) **or** **recurring** (has
   "origin": "user" }
 ```
 
+Created by a generator from what the person said on Friday, Oct 9 ("I have
+fencing Mondays 4–6", no start date given, so the start date is the Monday of
+that week, § 15.5):
+
 ```json
 { "id": "evt-fencing", "title": "Fencing", "category": "activity",
   "startTime": "16:00", "endTime": "18:00",
-  "recurrence": { "frequency": "weekly", "daysOfWeek": ["mon"], "startDate": "2026-09-07" },
-  "origin": "user" }
+  "recurrence": { "frequency": "weekly", "daysOfWeek": ["mon"], "startDate": "2026-10-05" },
+  "origin": "generated", "source": { "kind": "user", "label": "Told /schedule on 2026-10-09" } }
 ```
 
+A one-time event:
+
 ```json
-{ "id": "evt-doctor-2026-10-12", "title": "Doctor appointment", "category": "appointment",
+{ "id": "u-evt-q3v8m1xa", "title": "Doctor appointment", "category": "appointment",
   "date": "2026-10-12", "startTime": "15:30", "endTime": "16:30", "origin": "user" }
+```
+
+The sitting of an assessment outside school, linked to its assignment:
+
+```json
+{ "id": "evt-piano-theory-exam-2026-10-24", "title": "Piano theory exam", "category": "appointment",
+  "assignmentId": "piano-theory-exam-2026-10-24",
+  "date": "2026-10-24", "startTime": "09:00", "endTime": "11:00",
+  "origin": "generated", "source": { "kind": "user", "label": "Told /schedule on 2026-10-11" } }
 ```
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `id`, `origin`, `locked`, `source`, `issues` | | | | See § 6. |
+| `id`, `origin`, `locked`, `overrides`, `source`, `sources`, `issues` | | | | See § 6. |
 | `title` | Text 1–200 | **yes** | | Name. |
 | `category` | `"school"` \| `"class"` \| `"activity"` \| `"appointment"` \| `"work"` \| `"personal"` \| `"other"` | no | `"other"` | For display. |
-| `classId` | ID | no | | Related class (e.g. a class meeting or a test's room booking). |
+| `classId` | ID | no | | Related class (e.g. a class meeting). MUST reference an existing class. |
+| `assignmentId` | ID | no | | The assessment this event is the **sitting** of (see below). MUST reference an existing assignment. |
 | `date` | Date | one of `date`/`recurrence` | | Day of a one-time event. |
 | `endDate` | Date | no | | Last day (inclusive) of a **multi-day all-day** one-time event. Only with `date` and `allDay: true`; must be ≥ `date`. |
 | `recurrence` | [Recurrence](#recurrence) | one of `date`/`recurrence` | | Repetition rule. |
@@ -407,6 +676,15 @@ An event is **one-time** (has `date`) **or** **recurring** (has
 | `location` | Text ≤ 200 | no | | Where. |
 | `notes` | Text ≤ 10000 | no | | Person-owned notes. |
 
+**Assessment sittings outside school.** An assessment that takes place
+outside the regular school day (for example a standardized test on a
+Saturday 08:00–12:00, or a music exam) is represented once as an
+**assignment** (the preparation, `type` `exam`/`test`/`quiz`, with
+`assessmentDate` = the start of the sitting) and once as a busy one-time
+**event** with `assignmentId` (the sitting itself, which blocks that time).
+The website shows the link between the two and does not show the assessment
+twice. Assessments held during school need no event.
+
 ### Recurrence
 
 | Field | Type | Required | Default | Description |
@@ -414,7 +692,7 @@ An event is **one-time** (has `date`) **or** **recurring** (has
 | `frequency` | `"weekly"` | **yes** | | Only weekly repetition exists in 1.0 (use all seven days for "daily"). |
 | `daysOfWeek` | array of Weekday, 1–7 unique values | **yes** | | Days on which it occurs. |
 | `interval` | integer 1–52 | no | `1` | Every N weeks (`2` = every other week). |
-| `startDate` | Date | **yes** | | First day the rule applies. |
+| `startDate` | Date | **yes** | | First day the rule applies. When the person gives none, generators use the Monday of the week containing `meta.generatedAt` (§ 15.5). |
 | `endDate` | Date | no | | Last day (inclusive). Absent = no end. Must be ≥ `startDate`. |
 | `exceptDates` | array of Date | no | `[]` | Days on which it does **not** occur (holidays, cancellations). |
 
@@ -440,20 +718,21 @@ An availability window is **recurring** (`recurrence`) or for **one date**
 (`date`), with a start and end time:
 
 ```json
-{ "id": "avail-weekdays", "label": "After school",
+{ "id": "u-avl-a5f7t3r9", "label": "After school",
   "startTime": "15:30", "endTime": "21:30",
   "recurrence": { "frequency": "weekly", "daysOfWeek": ["mon","tue","wed","thu","fri"], "startDate": "2026-09-02" },
   "origin": "user" }
 ```
 
 ```json
-{ "id": "avail-2026-10-18", "label": "Saturday morning", "date": "2026-10-18",
-  "startTime": "10:00", "endTime": "12:00", "origin": "user" }
+{ "id": "avail-saturday-morning-1000-1200", "label": "Saturday morning", "date": "2026-10-17",
+  "startTime": "10:00", "endTime": "12:00",
+  "origin": "generated", "source": { "kind": "user", "label": "Told /schedule on 2026-10-11" } }
 ```
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id`, `origin`, `locked`, `source`, `issues` | | | See § 6. |
+| `id`, `origin`, `locked`, `overrides`, `source`, `sources`, `issues` | | | See § 6. |
 | `label` | Text ≤ 200 | no | Name shown in the website. |
 | `date` | Date | one of `date`/`recurrence` | A single day. |
 | `recurrence` | [Recurrence](#recurrence) | one of `date`/`recurrence` | Repetition rule (same rules as events). |
@@ -463,6 +742,12 @@ An availability window is **recurring** (`recurrence`) or for **one date**
 **Free study time** on a day = the union of that day's availability windows,
 minus all busy events of that day. Overlapping windows are merged.
 
+**Empty availability.** An empty `availability` array means "not provided",
+not "never free". The website then shows no "Available"/free time, skips all
+overload calculations and prompts the person to add their study time.
+Generators MUST ask the person for their study time before planning blocks
+when `availability` is empty and the person has not stated it (§ 15.7).
+
 ## 12. Schedule blocks (scheduled work)
 
 A schedule block puts work on the calendar. It **references** the assignment
@@ -470,81 +755,162 @@ A schedule block puts work on the calendar. It **references** the assignment
 
 ```json
 {
-  "id": "blk-gc-NzAwMDAwMDAwMDAx-01",
+  "id": "blk-gc-NzAwMDAwMDAwMDAx-202610092000-3",
   "assignmentId": "gc-NzAwMDAwMDAwMDAx",
-  "taskId": "gc-NzAwMDAwMDAwMDAx-t1",
-  "start": "2026-10-13T16:00:00",
-  "end": "2026-10-13T16:45:00",
+  "taskId": "gc-NzAwMDAwMDAwMDAx-t3",
+  "start": "2026-10-13T16:30:00",
+  "end": "2026-10-13T17:20:00",
   "status": "planned",
-  "notes": "Outline: thesis + three body paragraph claims",
+  "description": "Introduction and first body paragraph.",
   "origin": "generated"
 }
 ```
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `id`, `origin`, `locked`, `source`, `issues` | | | | See § 6. |
+| `id`, `origin`, `locked`, `overrides`, `source`, `sources`, `issues` | | | | See § 6. `origin` may be `"planner"` (placed by the website's planner). Moving or resizing a `generated` or `planner` block in the website sets `locked: true`. |
 | `start` | LocalDateTime | **yes** | | Start. |
 | `end` | LocalDateTime | **yes** | | End. Same calendar day as `start`, later than `start`, at least 5 minutes after it. |
 | `assignmentId` | ID | one of `assignmentId`/`title` | | The assignment worked on. MUST exist. |
 | `taskId` | ID | no | | A task of that assignment. Requires `assignmentId`; MUST belong to it. |
 | `title` | Text 1–200 | one of `assignmentId`/`title` | | Label for blocks without an assignment (e.g. `"Review flashcards"`), or an override label. |
 | `kind` | `"work"` \| `"break"` | no | `"work"` | `break` = an intentional break (needs `title`, no `assignmentId`). |
-| `status` | `"planned"` \| `"done"` \| `"skipped"` | no | `"planned"` | Progress of this session. |
+| `status` | `"planned"` \| `"done"` \| `"skipped"` | no | `"planned"` | Progress of this session. `skipped`: the session did not happen. Person-owned (§ 15.2). |
 | `completedAt` | LocalDateTime | no | | Only with `status: "done"`. |
-| `notes` | Text ≤ 10000 | no | | What to do in this session. |
+| `description` | Text ≤ 5000 | no | | **Generator-owned**: what to do in this session, e.g. `"Introduction and first body paragraph."` |
+| `notes` | Text ≤ 10000 | no | | **Person-owned**: the person's own notes. Generators never write it (§ 15.2). |
 
-Blocks for an assessment (type `quiz`, `test`, `exam`, `presentation`)
-represent **preparation** sessions and SHOULD be placed **before** the
-`assessmentDate`, spread over several days. Blocks SHOULD end before the
-assignment's `due` time.
+### 12.1 Past, future and in-progress blocks
 
-Blocks may overlap events or each other; the website shows overlaps as
-conflicts but accepts them.
+"Now" is, for a generator, the current time in `meta.timezone` (§ 15.1); for
+the website's import, the incoming file's `meta.generatedAt` (or the import
+time when it is absent, § 16.1); otherwise the website's current time.
+
+- A block is **past** when `end ≤ now`, **future** when `start ≥ now`, and
+  **in progress** when `start < now < end`.
+- Generators and the import treat an in-progress block as past: it is kept
+  unchanged. In remaining work it counts as `planned` (§ 8.1).
+- A past block whose `status` is still `planned` counts as **not done**. The
+  website prompts the person to mark such blocks `done` or `skipped`.
+
+### 12.2 Placing blocks
+
+- Blocks for an assessment (type `quiz`, `test`, `exam`, `presentation`)
+  represent **preparation** sessions and SHOULD end **before** the
+  `assessmentDate` (a date-only `assessmentDate` means 00:00 of that day),
+  spread over several days.
+- Blocks SHOULD end before the assignment's `due` (a date-only `due` means
+  `settings.defaultDueTime` on that day) and before their task's `due`.
+- Blocks may overlap events or each other; the website shows overlaps as
+  conflicts but accepts them.
+- The session settings (§ 5 Settings) apply to `generated` and `planner`
+  blocks only; a `user` or locked block may be of any length.
 
 ## 13. Validation rules
 
-A file is valid only if **all** of the following hold. The website rejects an
-invalid file as a whole and lists every problem with its location (e.g.
-`assignments[3].due`).
+A file is valid only if **all** rules in § 13.1–13.3 hold. The website
+rejects an invalid file as a whole and lists every problem with its location
+(e.g. `assignments[3].due`). Each rule is marked:
 
-**Structure** (also in the JSON Schema):
+- **[S]** — expressed in the JSON Schema; any JSON Schema 2020-12 validator
+  enforces it.
+- **[V]** — semantic; the JSON Schema cannot express it. The website and
+  `validate_schedule.py` enforce it.
 
-1. Root is an object; `schemaVersion` is `"1.0"`; the five collections are
-   present and are arrays.
-2. Every field has the type, format, length and enum value listed above.
-3. No unknown properties except `x-…` properties.
-4. No `null` values.
+### 13.1 Structure
 
-**Semantics** (enforced by the website and the skill's validator):
+1. **[S]** The root is an object; `schemaVersion` is the string `"1.0"`;
+   `classes`, `assignments`, `events`, `availability` and `scheduleBlocks`
+   are present and are arrays.
+2. **[S]** Every field has the type, format, length, numeric range, array size
+   and enum value given in §§ 3–12 (for example `sources` ≤ 20 entries, class
+   `topics` and `references` ≤ 200 entries, `deleted` ≤ 5000 entries,
+   `requestedChanges[].reason` 1–500 characters).
+3. **[S]** No unknown properties except `x-…` properties (§ 1).
+4. **[S]** No `null` values.
+5. **[S]** Events and availability have exactly one of `date` and
+   `recurrence`. Events: `allDay: true` → no `startTime`/`endTime`;
+   otherwise both are present and `endDate` is absent; `endDate` requires
+   `date`. Recurrence `daysOfWeek` has 1–7 unique values.
+6. **[S]** Blocks have an `assignmentId` or a `title`; `taskId` only with
+   `assignmentId`; a `break` block has a `title` and no `assignmentId`.
+7. **[S]** `completedAt` only when `status` is `"done"` (assignments, tasks,
+   blocks).
+8. **[S]** `estimateRange` only together with `estimatedMinutes`
+   (assignments and tasks).
+9. **[S]** `origin: "planner"` only on schedule blocks.
+10. **[S]** `itemId` only on root issues, never in an item's `issues`.
+11. **[S]** `overrides` entries are unique, and each is a name allowed for
+    that item type (§ 6.3) or an `x-…` name.
+12. **[V]** Every Date, and the date part of every LocalDateTime, is a real
+    calendar date (`2026-02-30` matches the schema's pattern but is invalid).
 
-5. Every `id` is unique across the whole file (classes, assignments, tasks,
-   events, availability, blocks).
-6. `assignments[].classId`, `events[].classId` reference existing classes.
-7. `assignments[].dependsOn` references existing assignments, not itself, and
-   the dependency graph has no cycles. Same for `tasks[].dependsOn` within one
-   assignment.
-8. `scheduleBlocks[].assignmentId` references an existing assignment;
-   `taskId` references a task of **that** assignment; a block has an
-   `assignmentId` or a `title`; a `break` block has a `title` and no
-   `assignmentId`.
-9. Block `end` is on the same date as `start` and at least 5 minutes later.
-10. Events/availability: exactly one of `date` and `recurrence`; `endTime` >
-    `startTime`; all-day events have no times; `endDate` only on all-day
-    one-time events and ≥ `date`; recurrence `endDate` ≥ `startDate`;
-    `daysOfWeek` has no duplicates.
-11. `estimateRange.min ≤ estimateRange.max`, and when `estimatedMinutes` is
-    present, `min ≤ estimatedMinutes ≤ max`.
-12. `completedAt` only when the status is `done`.
-13. `recommendedCompletionDate` is not later than `due` (compared as
-    date-times; a Date means its end of day).
-14. `settings.dayEndTime` > `dayStartTime`; `maxSessionMinutes` ≥
+### 13.2 IDs and references
+
+13. **[V]** Every item `id` is unique across the whole file (classes,
+    assignments, tasks, events, availability, blocks).
+14. **[V]** `deleted[].id` values are unique, and no item in the file has an
+    `id` listed in `deleted`.
+15. **[V]** Issue `id`s are unique among all issues of the file (the root
+    issues and the issues of every item and task).
+16. **[V]** `meta.requestedChanges[].id` values are unique.
+17. **[V]** References resolve:
+    - `assignments[].classId` and `events[].classId` reference existing
+      classes;
+    - `events[].assignmentId` references an existing assignment;
+    - `scheduleBlocks[].assignmentId` references an existing assignment, and
+      `taskId` a task of **that** assignment;
+    - `assignments[].dependsOn` references other existing assignments (not
+      itself); `tasks[].dependsOn` references other tasks of the same
+      assignment;
+    - root `issues[].itemId` references an existing item of any collection,
+      tasks included.
+18. **[V]** The dependency graphs have no cycles (assignments; tasks within
+    one assignment).
+
+### 13.3 Times, dates and estimates
+
+19. **[V]** Block `end` is on the same date as `start` and at least 5 minutes
+    later.
+20. **[V]** Events and availability: `endTime` > `startTime`; event `endDate`
+    ≥ `date`; recurrence `endDate` ≥ `startDate`.
+21. **[V]** Assignments: `recommendedCompletionDate` ≤ `due`; when there is no
+    `due`, `recommendedCompletionDate` ≤ `assessmentDate`.
+22. **[V]** Tasks:
+    - `recommendedStartDate` ≤ `recommendedCompletionDate`;
+    - `recommendedCompletionDate` ≤ the task's `due`;
+    - the task's `due` ≤ the assignment's `due` (when both exist);
+    - each task date (`recommendedStartDate`, `recommendedCompletionDate`,
+      `due`) ≤ the assignment's `due` or `assessmentDate` — the later of the
+      two when both are present.
+23. **[V]** `estimateRange.min` ≤ `estimateRange.max`, and `min` ≤
+    `estimatedMinutes` ≤ `max`.
+24. **[V]** `settings.dayEndTime` > `dayStartTime`; `maxSessionMinutes` ≥
     `minSessionMinutes`.
 
-Warnings (accepted, but shown in the import preview): a block after its
-assignment's `due`; a preparation block after its `assessmentDate`; overlapping
-blocks or blocks overlapping busy events; a recurrence that never occurs;
-dates more than 5 years away from today.
+**Comparing dates in rules 21–22:** when both values have a time, they are
+compared as date-times; when either value is a Date without a time, only the
+dates are compared. So `"2026-10-16"` and `"2026-10-16T09:00"` count as equal,
+and validity never depends on `settings.defaultDueTime`.
+
+### 13.4 Warnings
+
+Warnings do not make a file invalid; the website shows them in the import
+preview and next to the affected items:
+
+- a block that ends after its assignment's `due` or after its task's `due`
+  (a date-only `due` means `settings.defaultDueTime` on that day);
+- a preparation block that ends after its assignment's `assessmentDate` (a
+  date-only `assessmentDate` means 00:00 of that day);
+- overlapping blocks, or blocks overlapping busy events;
+- a `generated` or `planner` block shorter than `minSessionMinutes` or longer
+  than `maxSessionMinutes`, or a day whose work blocks exceed
+  `maxDailyStudyMinutes` and that contains `generated` or `planner` blocks —
+  never for `user` or locked blocks alone;
+- a recurrence that never occurs;
+- dates more than 5 years away from today;
+- `overrides` on an `origin: "user"` item (ignored);
+- a `meta.timezone` that is not a known IANA time-zone name.
 
 ## 14. IDs: format, generation and preservation
 
@@ -556,66 +922,342 @@ work session) **forever**.
 2. Once an item has an ID, that ID MUST NOT change in later versions of the
    schedule, even if the title, dates or anything else change.
 3. An ID MUST NOT be reused for a different item, even after the original item
-   was deleted.
-4. **Derive IDs from stable source identifiers** when they exist, so that two
-   independent runs produce the same IDs:
-   - Google Classroom class: `gc-class-<courseId>` (the id from the Classroom
-     export's `class-info.json`, e.g. `gc-class-NjI3ODk0MjE0NTQ5`).
-   - Google Classroom item (assignment, material, question, announcement):
-     `gc-<classroomId>` (from the item's `metadata.json`).
-   - Items from other documents: a readable slug with the class and the date,
-     e.g. `english-midterm-2026-10-21`, `bio-lab-3-2026-10-14`.
-   - Tasks: `<assignmentId>-t<N>` (N = 1, 2, …; keep the number of an existing
-     task even if tasks are reordered or removed).
-   - Generated schedule blocks: `blk-<assignmentId>-<NN>` or any other unique
-     scheme; never reuse a number that was used before.
-5. IDs created by the website start with `u-` (e.g. `u-asg-k3j9x2p1`).
-   Generators MUST NOT create IDs starting with `u-`, but MUST keep existing
-   `u-` IDs unchanged.
-6. Referencing fields (`classId`, `assignmentId`, `taskId`, `dependsOn`)
-   always use IDs, never titles.
+   was deleted. The root `deleted` list records deleted generated items (§ 5).
+4. IDs created by the website start with `u-`
+   (`u-<kind>-<8 random characters>`, e.g. `u-asg-k3j9x2p1`); this includes
+   blocks placed by the website's planner. Generators MUST NOT create IDs
+   starting with `u-`, but MUST keep existing `u-` IDs unchanged.
+5. Referencing fields (`classId`, `assignmentId`, `taskId`, `dependsOn`,
+   `itemId`, and the `id` of tombstones and requested changes) always use IDs,
+   never titles.
+6. Generators **match before they create** (§ 15.3). The derivation rules in
+   § 14.1 are used only when an item is created for the first time; later runs
+   find the existing item and reuse its ID. IDs are never re-derived from
+   changed data.
+
+### 14.1 Deriving IDs for new items (generators)
+
+`slug(x)`: (1) remove diacritics (`é` → `e`) and convert to lowercase ASCII;
+(2) replace every run of characters other than `a`–`z` and `0`–`9` with one
+`-`; (3) trim `-` from both ends; (4) cut to 40 characters and trim a trailing
+`-` again. If the result is empty, use `item`.
+
+| New item | ID | Example |
+| --- | --- | --- |
+| Google Classroom class | `gc-class-<courseId>` | `gc-class-NjI3ODk0MjE0NTQ5` |
+| Google Classroom item (assignment, question, other coursework) | `gc-<itemId>` | `gc-NzAwMDAwMDAwMDAx` |
+| Work announced in the text of a Classroom item (e.g. an announcement) | `gc-<itemId>-<slug(title)>` | `gc-NzAwMDAwMDAwMDA2-read-chapter-5` |
+| Class not from Classroom | `cls-<slug(name)>` | `cls-biology` |
+| Item from a document (syllabus, calendar, sheet, photo) | `<slug(classShortName)>-<slug(title)>-<date>` | `biology-unit-2-test-cells-2026-10-16` |
+| Item without a class (e.g. from what the person said) | `<slug(title)>-<date>` | `piano-theory-exam-2026-10-24` |
+| One occurrence of recurring academic work (§ 15.5) | `<seriesSlug>-<YYYY-MM-DD>` | `english-vocab-quiz-2026-10-23` |
+| Recurring event | `evt-<slug(title)>` | `evt-fencing` |
+| One-time event | `evt-<slug(title)>-<YYYY-MM-DD>` | `evt-piano-theory-exam-2026-10-24` |
+| Availability window | `avail-<slug(label or days)>-<HHMM>-<HHMM>` | `avail-weekend-mornings-1000-1300` |
+| Task | `<assignmentId>-t<N>` | `gc-NzAwMDAwMDAwMDAx-t3` |
+| Schedule block | `blk-<assignmentId or slug(title)>-<YYYYMMDDHHMM>-<N>` | `blk-gc-NzAwMDAwMDAwMDAx-202610092000-3` |
+
+- **Classroom ids** (`courseId`, `itemId`) are normalized to the form used in
+  the exporter's URLs: the unpadded base64 of the decimal id (decimal
+  `627894214549` → `NjI3ODk0MjE0NTQ5`). An id already in that form is used as
+  is. `source.id` uses the same form.
+- **`<date>`** is the date part of the item's `due` (or, without a `due`, its
+  `assessmentDate`) as known when the item is first created, or `nodate` when
+  it has neither. It is the first-seen date and is never re-derived: when the
+  due date later moves, the ID keeps the old date.
+- **`classShortName`**: a short name of the class, e.g. `biology`,
+  `english-10`.
+- **Availability**: `label` when present, otherwise the window's days joined
+  with `-` (e.g. `sat-sun`) or its date; the times are the window's start and
+  end without the colon.
+- **Tasks**: `N` is greater than every number already used by a task of that
+  assignment, including tasks listed in `deleted`.
+- **Blocks**: `YYYYMMDDHHMM` is the `meta.generatedAt` of the run that creates
+  the block; `N` = 1, 2, … counts the blocks that run creates for that
+  assignment (or title).
+- Assignment IDs derived by generators SHOULD be at most 80 characters (cut
+  the slug parts), so that derived task and block IDs stay within 100.
+- **Collisions**: when a derived ID is already used by a different item or
+  listed in `deleted` for a different item, append `-b`, `-c`, … until it is
+  free.
+- The `u-` prefix stays reserved for IDs created by the website.
+
+### 14.2 Year-less Classroom dates
+
+Classroom shows dates of the current year without the year (`Oct 10,
+11:59 PM`), and the exporter keeps them as displayed. Generators use the year
+that puts the date closest to the item's posted date (from `metadata.json` /
+`description.txt`), or to the export date when the posted date is unknown.
+When two years are about equally plausible, they add an `ambiguity` issue.
 
 ## 15. Updating an existing schedule (rules for generators)
 
 When a generator (such as the `/schedule` skill) is given an existing
-`schedule.json` and new materials, it MUST produce an **updated copy of the
-existing file**, not a new file from scratch:
+`schedule.json` together with new materials or instructions, it MUST produce
+an **updated copy of that file**, not a new file from scratch. § 15.3–15.9
+also apply when there is no input schedule.
 
-1. **Keep everything.** Every existing item that is not deliberately changed
-   below MUST appear in the output with the same `id` and the same field
-   values, including `origin`, `locked`, `notes`, statuses and `x-…` fields.
-2. **Never touch person-owned data.** Items with `origin: "user"` and items
-   with `locked: true` MUST be copied unchanged. Never delete them.
+### 15.1 Start from the input file
+
+1. **Keep everything.** Every item, task, tombstone and root issue of the
+   input MUST appear in the output with the same `id` and the same field
+   values — including `origin`, `locked`, `overrides`, `notes`, statuses,
+   `completedAt`, issue statuses and `x-…` properties — unless a rule below
+   allows the change.
+2. **Clock.** "Now" is the current time in the input schedule's
+   `meta.timezone`, or in a zone the person gives; with neither, the
+   generator asks the person, or assumes a zone and states the assumption in
+   its summary. It writes `meta.generatedAt` (now, as a LocalDateTime) and
+   `meta.timezone`. Past, future and in progress are defined in § 12.1.
+3. **Meta.** Replace `meta.generator` and `meta.generatedAt`. Set
+   `meta.sources` to the materials used in this run, including the input
+   schedule (kind `schedule`). Keep `meta.title` unless the person asks to
+   change it. `meta.requestedChanges` lists only this run's changes
+   (§ 15.9); never copy it from the input.
+4. **Settings** are person-owned: copy them unchanged unless the person asked
+   in this request to change one, and describe every changed setting in the
+   summary. (The website asks the person before it takes a file's settings,
+   § 16.6.)
+5. **Tombstones.** Copy `deleted` unchanged. Never create an item whose `id`
+   is listed there, nor an item whose `source.id` equals the `sourceId` of an
+   entry of the same collection. A generator MAY append entries for
+   `generated` items that it removes itself under these rules.
+
+### 15.2 Protected items and person-owned fields
+
+1. **Protected items** (`origin: "user"` or `locked: true`) MUST be copied
+   unchanged, including everything inside them (the tasks of a protected
+   assignment), and MUST NOT be deleted. The only exception is a requested
+   change (§ 15.9).
+2. **Person-owned fields of all other items** MUST be kept: `notes`,
+   `locked`, `overrides` and the values of the fields it names (§ 6.3),
+   `status` and `completedAt` (see 3), and the `status` of issues.
+   Generators never write `notes` on items they create; what to do in a
+   session goes into the block's `description`.
 3. **Never undo progress.** A `done` assignment, task or block stays `done`
-   with its `completedAt`. Blocks whose `status` is `done` or `skipped`, and
-   blocks that end before the time of generation (the past), MUST be kept
-   unchanged.
-4. **Update in place.** When the sources show a change (new due date, new
-   instructions, new estimate), update the fields of the **existing** item
-   (same `id`). Record surprising changes as an issue, e.g.
+   with its `completedAt`. Statuses only move forward (`not_started` →
+   `in_progress` → `done`) and only when a source shows it (e.g. Classroom
+   shows the work as turned in). Work that a source withdraws is recorded with
+   `sourceState` (§ 15.6), not with `status: "cancelled"`; a generator sets an
+   assignment's status to `cancelled` only when the person asks for it in
+   this request (tasks: § 15.4).
+4. Issues about a protected item go into the root `issues`, with `itemId`
+   (§ 15.8).
+
+### 15.3 Match before creating an item
+
+Before creating any item, a generator MUST look for an existing item that
+represents the same thing, in this order:
+
+1. an item with the same `id` (the ID § 14.1 would derive);
+2. an item with the same `source.kind` and `source.id`, as its `source` or in
+   its `sources`;
+3. an item of the same collection with the same `classId` (or both without
+   one), the same type family, the same normalized title and — when both
+   have a date — dates at most 7 days apart.
+   - Type families: assignments of type `quiz`, `test`, `exam` and
+     `presentation` form one family, all other assignment types another; in
+     the other collections the collection is the family.
+   - Normalized title: `slug(title)` without the 40-character limit (§ 14.1).
+   - Dates compared (date parts only): `due`, else `assessmentDate` for
+     assignments; `date` or `recurrence.startDate` for events and
+     availability; `start` for blocks.
+
+Tasks are matched the same way within their assignment. The generator also
+checks `deleted` (§ 15.1, rule 5).
+
+On a match the generator reuses the existing item's `id` and updates it under
+§ 15.4 where allowed. When the match is a **protected** item, it creates
+nothing new and adds a root issue `{"kind": "ambiguity", "itemId": "<that
+id>", "message": "…"}` explaining that the item was not added to avoid a
+duplicate — or, when the person asked to link the two, changes the protected
+item through a requested change (§ 15.9).
+
+### 15.4 Updating generated items
+
+1. **Update in place.** A generator MAY update the generator-owned fields
+   (§ 15.10) of an unlocked `generated` item, keeping its `id`, when the
+   sources show a change (new due date, new instructions, new estimate). It
+   MUST keep the value of every field named in the item's `overrides`. When a
+   source's value differs from an overridden value, it keeps the person's
+   value and adds an issue to the item, e.g. `{"id":
+   "gc-NzAwMDAwMDAwMDAx:conflict:due", "kind": "conflict", "field": "due",
+   "message": "Classroom now says Oct 17; you set Oct 16. Keeping Oct 16."}`.
+2. **Record surprising changes** as issues on the item, e.g.
    `{"kind": "conflict", "field": "due", "message": "Due date moved from Oct 16 to Oct 17 in Classroom."}`.
-5. **Add** new classes, assignments, tasks and events with new IDs (§ 14).
-6. **Removed work:** if an assignment that came from a source is no longer in
-   that source, do **not** delete it. Keep it, add an issue
-   (`missing_information`), stop scheduling new work for it, and tell the
-   person. Set `status: "cancelled"` only when the source explicitly says it
-   was cancelled or excused.
-7. **Rebalance only future generated work.** Generated (`origin:
-   "generated"`), unlocked blocks with `status: "planned"` that start after
-   the time of generation MAY be moved (keep the `id`, change `start`/`end`),
-   removed, or replaced by new blocks so the plan fits the new situation.
-8. Do not create commitments (events or availability) the person did not
-   state or that are not in the sources.
+3. **Estimates.** `estimatedMinutes` is the total effort including work
+   already done; a generator MUST NOT lower it to reflect progress. It
+   changes an existing estimate only when the evidence changed (new
+   instructions, a teacher's estimate, a longer reading). A point estimate
+   derived from a range is ⌈(min + max) / 2 / 5⌉ × 5 (§ 8).
+4. **Tasks.** A generator may add, change, reorder and remove only
+   `generated`, unlocked tasks of `generated`, unlocked assignments, and
+   respects each task's `overrides`. A task that is `user`, locked, `done`,
+   or referenced by a block that stays in the file MUST NOT be removed:
+   - a `generated`, unlocked task that is not done gets `status: "cancelled"`
+     instead;
+   - a `done` task stays as it is;
+   - a `user` or locked task changes only through a requested change
+     (§ 15.9).
 
-Field ownership summary:
+   New tasks get IDs `<assignmentId>-t<N>` with `N` greater than any number
+   used before (§ 14.1).
 
-| Fields | Owner | Generators may change? |
-| --- | --- | --- |
-| everything on `origin: "user"` or `locked: true` items | person | **no** |
-| `status`, `completedAt` (assignments, tasks, blocks) | person | only forward (e.g. to `done` when a source shows the work was submitted), never backward |
-| `notes` | person | no |
-| titles, descriptions, dates, estimates, priority, tasks, references, `dependsOn`, `issues` of generated items | generator | yes |
-| `start`/`end` of future planned generated blocks | generator | yes |
+### 15.5 Adding items
+
+1. **New items.** Add new classes, assignments, tasks, events and
+   availability windows (when § 15.3 finds no match) with IDs from § 14.1.
+2. **Classroom materials and announcements.** A Google Classroom
+   **Material**, or an **Announcement** that asks for no work, MUST NOT become
+   an assignment. Attach it as a Reference with `required: false` to the class
+   (`references`) or to the assignments it supports. An announcement yields
+   assignments only for the work it announces (ID
+   `gc-<itemId>-<slug(title)>`). Classroom topics go into the class's
+   `topics` and the assignment's `topic`.
+3. **What the person says.** Items created from the person's own statements
+   ("I have fencing Mondays 4–6") get `origin: "generated"` and
+   `"source": {"kind": "user", "label": "Told /schedule on <YYYY-MM-DD>"}`.
+   Later runs may update them like other generated items. § 15.6 never
+   applies to items whose `source.kind` is `user`.
+4. **Commitments.** Do not create events or availability that the person did
+   not state and the sources do not contain. When the person gives no start
+   date for a commitment, use the Monday of the week containing
+   `meta.generatedAt` as `recurrence.startDate` and omit `endDate`. Never
+   guess term dates.
+5. **Assessment sittings outside school** get an assignment and a linked
+   event (§ 10).
+6. **Recurring academic work** ("vocabulary quiz every Friday", "read 20
+   minutes every night"): create one dated assignment per occurrence within a
+   stated horizon (default: the next 3 weeks), with IDs
+   `<seriesSlug>-<YYYY-MM-DD>`. Later runs add the next occurrences. There is
+   no recurrence field on assignments.
+7. **Dates.** Write a time whenever the source states one, a Date otherwise
+   (§ 8). An online quiz or test with a deadline and no fixed sitting gets
+   `due` and no `assessmentDate`.
+8. **Optional work** gets `required: false`; reference material is not work.
+
+### 15.6 Items no longer in their source
+
+A generator MUST NOT delete a generated item because a newer source no
+longer lists it. For an **assignment**:
+
+1. It counts as **missing** only when all of these hold:
+   - the inputs of this run include an export of the same course (the same
+     class `source.id`) that covers the item's type: assignments, questions,
+     materials and other coursework are always exported; announcements, and
+     work derived from them, only when the export's `includeAnnouncements`
+     option was on (`class-info.json` → `options.includeAnnouncements`);
+   - that export reports no item-read failures: neither `class-info.json`
+     (`discovery.warnings`) nor `export-report.json` (`warnings`) says that a
+     list may be incomplete, that an item or item page could not be read, or
+     that announcements were skipped (attachment download failures do not
+     matter);
+   - for an item from a document (syllabus, calendar, …): a newer version of
+     the same document is supplied and no longer contains it.
+
+   Items whose `source.kind` is `user` are never missing.
+2. Set `sourceState: "missing"` — or `"withdrawn"` when a source explicitly
+   removes, cancels or excuses the work (e.g. an announcement "Worksheet 3 is
+   cancelled"; the conditions of rule 1 are then not needed). Leave `status`
+   unchanged. Remove the assignment's future, unlocked, planned blocks whose
+   origin is `generated` or `planner` (except blocks with notes, § 15.7), and
+   mention the change in the summary.
+3. When a missing assignment appears again in a complete export, set
+   `sourceState` back to `"present"`.
+4. Other generated items that a source no longer lists are kept; the
+   generator MAY add a `missing_information` issue to them.
+
+The website shows `missing`/`withdrawn` assignments with a badge, excludes
+them from automatic planning and from remaining-work and overload totals
+unless they are `in_progress` (§ 8.1), and lists the change under "Removed
+from source" when importing (§ 16.2).
+
+### 15.7 Planning work
+
+1. **Only future generated or planner work moves.** Blocks with origin
+   `generated` or `planner` that are unlocked, `planned` and future (§ 12.1)
+   MAY be moved (same `id`, new `start`/`end`), removed, or replaced by new
+   blocks so that the plan fits the new situation. A `generated` (or
+   `planner`) block with non-empty `notes` MAY be moved but MUST NOT be
+   removed. All other blocks —
+   `user`, locked, `done`, `skipped`, past and in-progress blocks — MUST be
+   kept unchanged. Generators never create `planner` blocks or `u-` IDs.
+2. **What to plan:** the unscheduled minutes (§ 8.1) of each assignment;
+   nothing for `required: false` work or for `missing`/`withdrawn` work that
+   is not in progress. Respect `dependsOn`, task `due` dates, `due` and
+   `assessmentDate` (§ 12.2); spread preparation and large work over several
+   days.
+3. **Where:** inside free study time (§ 11), not overlapping other blocks.
+4. **Session settings** (§ 5 Settings) shape the generated blocks: session
+   length between `minSessionMinutes` and `maxSessionMinutes`, `breakMinutes`
+   between consecutive sessions, and at most `maxDailyStudyMinutes` of work
+   blocks per day. `user` and locked blocks count toward the day's total but
+   are never moved, shortened or flagged because of these settings.
+5. **No availability:** when `availability` is empty and the person has not
+   stated their study time, the generator MUST ask before planning blocks
+   (§ 11).
+6. **Block content:** `assignmentId` (and `taskId` when the session is for one
+   task), `description` for what to do in the session, never `notes`. IDs per
+   § 14.1.
+
+### 15.8 Issues
+
+1. **Where:** an issue about an unlocked `generated` item goes into that
+   item's `issues`. An issue about a protected item goes into the root
+   `issues` with `itemId`. An issue about the whole schedule or a day goes
+   into the root `issues`, with `date` when it concerns one day.
+2. **IDs:** give an issue an `id` when it may come up again in later runs,
+   derived from what it is about: `<itemId>:<kind>:<field>` (e.g.
+   `gc-NzAwMDAwMDAwMDAx:conflict:assessmentDate`) or `<kind>:<date>` (e.g.
+   `workload:2026-10-15`).
+3. **Lifecycle:** generators MUST keep issues whose `status` is `resolved` or
+   `dismissed` (copy them unchanged, by `id`) and MUST NOT raise an issue with
+   the same `id` again. When the underlying values change (e.g. Classroom
+   moves the date once more), a new issue gets a new `id`.
+4. New issues are open (omit `status`). Open issues that no longer apply MAY
+   be removed or updated.
+
+### 15.9 Changes to the person's own items
+
+1. A generator MAY change or delete a protected item (or a protected task)
+   **only** by listing it in `meta.requestedChanges`:
+   `{"id": "<item id>", "reason": "…", "requestedByPerson": true|false}`.
+   - `requestedByPerson: true`: the person asked for it in this request
+     ("move fencing to Tuesdays", "the essay I added myself is the Classroom
+     one").
+   - `requestedByPerson: false`: a source suggests it, e.g. a school calendar
+     lists a holiday, so the generator adds the date to the `exceptDates` of
+     the person's School event.
+2. To change an item, write the changed item (same `id`) and list it. To
+   delete an item, leave it out of the file and list its `id`; items that
+   reference it are removed or changed too (and listed when they are
+   protected).
+3. Without a listing, protected items MUST be copied unchanged (§ 15.2).
+4. `requestedChanges` describes only the changes of the run that wrote the
+   file; generators never copy it from their input. Each change is also
+   explained in the summary.
+
+The website shows listed items under "Changes to your items", pre-ticked when
+`requestedByPerson` is `true` and unticked otherwise (§ 16.2).
+
+### 15.10 Field ownership summary
+
+| Data | Owner | May a generator change it? | Website import (§ 16.3) |
+| --- | --- | --- | --- |
+| everything on protected items (`origin: "user"` or `locked: true`), including the tasks of a protected assignment | person | **no**, except through `meta.requestedChanges` (§ 15.9) | current item kept ("Kept (your version)" / "Changes to your items") |
+| `notes` (every item) | person | no; copied, never written on new items | non-empty current value kept |
+| `overrides` and the values of the fields it names | person | no; copied unchanged | current overridden values kept; names unioned |
+| `locked` | person | no | file's value (a locked current item is kept as a whole) |
+| `status`, `completedAt` (assignments, tasks, blocks) | person | only forward (`not_started` → `in_progress` → `done`) when a source shows it; `cancelled` only when the person asks (tasks: § 15.4) | never goes backwards; current `cancelled` kept |
+| issue `status` | person | no; resolved/dismissed issues are kept and not raised again | current `resolved`/`dismissed` kept |
+| `settings` | person | only when the person asks in this request | "Settings", opt-in |
+| `deleted` | person (written by the website) | copied; MAY append entries for items it removes | unioned |
+| titles, names, descriptions, dates, estimates, priority, `topic`, `topics`, tasks, references, `dependsOn`, `sources`, `sourceState`, `issues` of unlocked `generated` items | generator | yes, except overridden fields | file's value |
+| `description` of unlocked `generated`/`planner` blocks | generator | yes | file's value |
+| `start`/`end` of unlocked, future, `planned` `generated`/`planner` blocks | generator | yes (move, replace; remove unless it has `notes`) | file's value; missing ones → "Outdated planned work" |
+| `meta.generator`, `meta.generatedAt`, `meta.timezone` | writer | rewritten by every writer (§ 4) | not stored; the export writes its own |
+| `meta.title`, `meta.sources` | writer | `sources`: this run's inputs; `title`: kept | stored and written back on export |
+| `meta.requestedChanges` | writer | this run's changes only | used for the preview only |
 
 ## 16. How the website imports a file
 
@@ -623,62 +1265,130 @@ Importing never runs anything from the file; it only reads data.
 
 ### 16.1 Steps
 
-1. **Read** the file (or pasted text) as JSON. Not JSON → error.
+1. **Read** the file (or pasted text) as JSON. Not JSON, or larger than
+   10 MB → error.
 2. **Check the version** (§ 2). Unsupported → clear error, nothing imported.
 3. **Validate** (§ 13). Any error → the list of errors, nothing imported.
-4. **Compare** with the current schedule by `id` and show a **preview**.
+   Warnings are shown in the preview.
+4. **Compare** with the current schedule (§ 16.2) and show a **preview**.
+   "Now" for deciding which blocks are past or future is the incoming
+   file's `meta.generatedAt`, or the import time when it is absent (§ 12.1).
 5. The person confirms → the changes are applied in one step. The previous
    state is saved, so **Undo import** can restore it.
 
-Importing the same file twice changes nothing the second time.
+Importing the same file twice changes nothing the second time. The result of
+an import is always a valid schedule: when a choice in the preview removes an
+item or does not add it, the items that reference it are removed or not
+added either, and the preview shows them in the same row.
 
 ### 16.2 What the preview shows
 
-Items are matched by `id` within the same collection (tasks are matched
-within their assignment).
+Items are matched by `id` within the same collection (tasks within their
+assignment). An `id` that a file item and a current item use in different
+collections (e.g. a file's class uses the ID of an existing assignment) is an
+error.
 
-| Category | Meaning | What happens |
-| --- | --- | --- |
-| **New** | `id` not in the current schedule | Added. |
-| **Updated** | same `id`, some fields differ | Fields replaced (except person-owned fields, § 16.3). The preview lists changed fields, e.g. *"due: Oct 16 → Oct 17"*, *"estimate: 2 h → 2 h 30 m"*. |
-| **Unchanged** | same `id`, same content | Nothing. |
-| **Kept (your version)** | the current item is `origin: "user"` or `locked` and the file has a different version | Current item kept. The person may tick it to accept the file's version instead. |
-| **Not in this file** | a current **generated**, unlocked item that the file does not contain | Kept by default; the person may tick it to remove it. |
-| **Outdated planned work** | a current generated, unlocked, **future** `planned` block that the file does not contain, whose assignment **is** in the file | Removed by default (the file has re-planned that assignment); the person may untick it to keep it. |
-| **Always kept** | current `origin: "user"` items, locked items, `done`/`skipped` blocks, past blocks, `done` assignments/tasks that the file does not contain | Never removed by an import. |
+| Category | Which items | Default | What happens |
+| --- | --- | --- | --- |
+| **New** | File items whose `id` is not in the current schedule (and not in its `deleted` list). | applied | Added. |
+| **Previously deleted** | File items whose `id` is in the current `deleted` list. | not ticked | Not added. Ticking restores the item and removes its tombstone. |
+| **Updated** | Same `id`, current item `generated` or `planner` and unlocked, different after normalization (§ 16.5). | applied | Fields replaced, except person-owned fields (§ 16.3). The preview lists the changed fields, e.g. *"due: Oct 16 → Oct 17"*, *"estimate: 2 h → 2 h 30 m"*. |
+| **Removed from source** | Updated assignments whose `sourceState` changes from `present` to `missing` or `withdrawn`. | applied | The new `sourceState` is taken; unticking keeps the current one (the other updates still apply). |
+| **Changes to your items** | Protected current items whose `id` is listed in the file's `meta.requestedChanges`: changed (in the file, different) or deleted (not in the file). The reason is shown. | ticked if `requestedByPerson` is `true`, else not ticked | Ticked: the file's version replaces the current item, or the item is removed. Not ticked: the current item is kept. |
+| **Kept (your version)** | (a) Protected current items that the file has in a different version and does not list in `requestedChanges`. (b) Current items whose `status` is `cancelled` while the file has another status. (c) Current items named by a tombstone in the file's `deleted` (shown with the note *"deleted in the imported file"*). | not ticked | Current version kept. Ticking takes the file's version — for (b) the file's status, for (c) removes the item. |
+| **Unchanged** | Same `id`, equal after normalization (§ 16.5). | — | Nothing. |
+| **Outdated planned work** | Current blocks that the file does not contain, are `generated` or `planner`, unlocked, future and `planned`, have no `notes`, and either belong to an assignment that **is** in the file, or (`generated` only) have no `assignmentId`. | applied | Removed (the file has re-planned that work). Unticking keeps them. |
+| **Not in this file** | Other current `generated` or `planner` items that are unlocked and not in the file (and not "Always kept"). | not ticked | Kept. Ticking removes them. |
+| **Settings** | One row per setting whose value in the file differs from the current value (an absent setting means its default). | not ticked | Current value kept. Ticking takes the file's value. |
+| **Always kept** | Current `user` items, locked items, `done`/`skipped` blocks, past and in-progress blocks, `done` assignments and tasks that the file does not contain (unless listed under "Changes to your items"). | — | Never removed by an import. |
 
-ID collisions between different collections (e.g. a file's class uses the ID
-of an existing assignment) are reported as errors.
+Every item of the file and of the current schedule is in exactly one of
+these categories, checked in this order: Previously deleted, New, Changes to
+your items, Kept (your version) (a), Always kept, Outdated planned work, Not
+in this file, Updated, Unchanged. "Removed from source", "Kept (your
+version)" (b) and (c), and "Settings" are additional rows: they never move an
+item out of its category.
 
 ### 16.3 Person-owned fields during an update
 
-When an existing generated item is updated from the file:
+When an existing `generated` or `planner` item is updated from the file:
 
 - **Status never goes backwards.** Order: `not_started` < `in_progress` <
-  `done`. If the current status is further along than the file's, the
-  current status (and `completedAt`) is kept. `cancelled` from the file is
-  applied unless the current status is `done`; a current `cancelled` is
-  replaced by the file's status. Blocks: a current `done` or `skipped` block
-  keeps its status.
+  `done`. If the current status is further along than the file's, the current
+  status (and `completedAt`) is kept. A current `cancelled` is kept; when the
+  file has a different status, the difference is offered under "Kept (your
+  version)" (opt-in). The file's `cancelled` is applied only when the current
+  status is `not_started` or `in_progress`. Blocks: a current `done` or
+  `skipped` block keeps its status and `completedAt`; the file's `done` or
+  `skipped` applies to a current `planned` block.
 - **Notes are kept.** A non-empty current `notes` value is kept; the file's
   `notes` is used only if the current one is empty.
+- **Overrides are kept.** Every field named in the current item's
+  `overrides` keeps its current value (including its absence). The resulting
+  `overrides` is the union of the current and the incoming names.
+- **Issue decisions are kept.** Item issues are taken from the file, except
+  that an issue whose `id` matches a current issue with status `resolved` or
+  `dismissed` keeps that current status.
+- **Tasks** are merged one by one with these same rules. A current task that
+  the file's assignment does not contain is kept if it is `user`, locked,
+  `done` or referenced by a remaining block, and removed otherwise.
 - Every other field takes the file's value (fields absent in the file are
   removed, so the file fully describes the item).
 
-### 16.4 Removing items
+### 16.4 Removing items and tombstones
 
-When the person removes an assignment through the preview, its future,
-generated, unlocked, planned blocks are removed with it. An assignment that
-has `done` blocks, or is itself `done`, cannot be removed by an import.
+- When the person removes an assignment through the preview, its blocks are
+  removed with it. An assignment that is `done`, or that has blocks that are
+  `done`, `user` or locked, cannot be removed by an import.
+- **Tombstones.** Whenever the person deletes an item whose `origin` is
+  `generated` — in the website's editors, or by ticking a removal in the
+  import preview — the website appends an entry to `deleted`: `id`,
+  `collection`, `deletedAt` (now), `sourceId` (the item's `source.id`, if
+  any) and `title` (title, name or label, cut to 300 characters). Deleting an
+  assignment also appends one entry for each of its `generated` tasks. Blocks
+  removed as "Outdated planned work" or together with their assignment get no
+  entry. Restoring an item (or undoing its deletion) removes its entry. When
+  the list would exceed 5000 entries, the oldest entries (by `deletedAt`) are
+  dropped.
+
+### 16.5 When an item is "Unchanged"
+
+Items are compared after normalization: defaults are filled in (e.g.
+`origin` `generated`, `priority` `medium`, `status` `not_started`, `required`
+`true`, `sourceState` `present`, `busy` `true`, `kind` `work`, issue `status`
+`open`), empty arrays equal absent arrays, LocalDateTimes are reduced to the
+minute (seconds dropped), Text is trimmed, and the order of object keys is
+ignored. The list of changed fields in the preview uses the same
+normalization.
+
+### 16.6 Settings, root issues, tombstones and meta
+
+- **Settings** are person-owned: each differing setting is a row under
+  "Settings", not taken unless the person ticks it.
+- **Root issues** are taken from the file, except that an issue whose `id`
+  matches a current issue with status `resolved` or `dismissed` keeps that
+  status. Issues with a `date` are shown in that day's view.
+- **Tombstones:** the file's `deleted` entries are unioned into the current
+  list (for the same `id`, the current entry wins). An entry that names an
+  item kept in the resulting schedule is not added (see "Kept (your version)"
+  (c)).
+- **Meta:** the website stores the file's `meta.title` and `meta.sources` and
+  writes them back on export (§ 17). `meta.requestedChanges` is used only for
+  this preview and is not stored.
 
 ## 17. How the website exports a file
 
 - The export is a complete, valid 1.0 file of the current schedule.
-- `meta.generator` is `{"name": "Academic Scheduler", "version": "<app version>"}`
-  and `meta.generatedAt` is the export time.
+- `meta.generator` is `{"name": "Academic Scheduler", "version": "<app version>"}`,
+  `meta.generatedAt` is the export time (a LocalDateTime) and `meta.timezone`
+  is the browser's IANA time zone; both MUST be written. `meta.title` and
+  `meta.sources` are those of the last import (if any). `meta.requestedChanges`
+  is never written.
+- `deleted` is written when it is not empty (at most 5000 entries).
 - Every item includes `id`, `origin` and its other fields; `locked` is written
-  only when `true`; empty optional arrays are omitted (except the five root
-  collections). Fields equal to their default may be written or omitted.
+  only when `true`; `overrides` only when not empty; empty optional arrays are
+  omitted (except the five root collections). Fields equal to their default
+  may be written or omitted.
 - LocalDateTimes are written as `YYYY-MM-DDTHH:MM:SS` (seconds `00`).
 - Collections are sorted deterministically (classes by name; assignments by
   date then title; events and availability by start; blocks by start), then by
@@ -703,21 +1413,68 @@ has `done` blocks, or is itself `done`, cannot be removed by an import.
 
 ### 18.2 Complete example
 
-A full example with every kind of item is shipped as
+A full example is shipped as
 [`examples/complete-schedule.json`](examples/complete-schedule.json) and is
-reproduced here:
+reproduced below. It is the output of a `/schedule` run on Sunday, Oct 11,
+2026 at 7:30 PM (New York time). The inputs were the `schedule.json` the
+person exported from the website (based on an earlier run on Friday, Oct 9
+at 8:00 PM), a new English 10 Classroom export, the Biology syllabus, a photo
+of the Biology whiteboard, and what the person said ("My piano theory exam is
+Saturday, Oct 24, 9 to 11 AM; I want to do two past papers"). It shows:
+
+- **Protected items copied unchanged:** the person's School, Piano and Doctor
+  appointment events, the After-school window, the library-books assignment
+  and its block (`u-` IDs, `origin: "user"`), and the essay session on
+  Wednesday that the person moved and lengthened to 70 minutes
+  (`locked: true`; longer than `maxSessionMinutes`, which is fine for a locked
+  block).
+- **A requested change:** an English 10 announcement says there is no school
+  on Monday, Oct 12, so the generator added that date to the School event's
+  `exceptDates` and listed the event in `meta.requestedChanges` with
+  `requestedByPerson: false`; the import offers the change unticked.
+- **Items created from what the person said:** Fencing and Weekend mornings
+  (said on Friday, Oct 9 without a start date, so they start on Monday,
+  Oct 5), and the piano theory exam: an assignment plus a sitting event with
+  `assignmentId`.
+- **Person-owned data kept:** the essay's `notes`; `overrides: ["priority"]`
+  on "Read Othello Act 3" (the person raised its priority); a `resolved`
+  issue on the essay that is not raised again.
+- **A tombstone:** the person deleted "Act 2 vocabulary crossword
+  (optional)" on Oct 10. The new Classroom export still contains it, but the
+  generator did not create it again.
+- **`sourceState: "withdrawn"`:** an announcement cancelled Grammar
+  worksheet 3; it has no planned blocks and 0 remaining minutes.
+- **Classroom structure:** the Othello text (a Classroom material) is a class
+  reference, not an assignment; Classroom topics on the class and its
+  assignments.
+- **A task checkpoint:** the outline (task `t2`) is due in class on Tuesday,
+  Oct 13; its session is on Monday evening.
+- **Totals that add up (§ 8.1):** every assignment's planned minutes equal its
+  remaining minutes (essay 210, reading 50, biology test 150, theory exam
+  120, library books 15).
+- **Issues:** a `conflict` with an `id` on the biology test (syllabus versus
+  whiteboard photo, which is also in the test's `sources`), and a root
+  `workload` issue with `itemId` and `date`.
+- **Blocks:** session text in `description`; a past `done` block; IDs from
+  two runs (`…-202610092000-N` from Oct 9, `…-202610111930-N` from this run).
 
 ```json
 {
   "schemaVersion": "1.0",
   "meta": {
     "title": "Fall 2026 — Week of Oct 12",
-    "generatedAt": "2026-10-11T19:30:00-04:00",
+    "generatedAt": "2026-10-11T19:30:00",
     "generator": { "name": "claude-schedule-skill", "version": "1.0" },
     "timezone": "America/New_York",
     "sources": [
-      { "kind": "google_classroom", "label": "English 10 - Period 3 - 2026-10-11.zip" },
-      { "kind": "syllabus", "label": "Biology syllabus.pdf" }
+      { "kind": "schedule", "label": "schedule.json (exported from Academic Scheduler on Oct 11)" },
+      { "kind": "google_classroom", "id": "NjI3ODk0MjE0NTQ5", "label": "English 10 - Period 3 - 2026-10-11.zip" },
+      { "kind": "syllabus", "label": "Biology syllabus.pdf" },
+      { "kind": "image", "label": "Biology whiteboard photo IMG_2041.jpg (Oct 9)" },
+      { "kind": "user", "label": "Told /schedule on 2026-10-11" }
+    ],
+    "requestedChanges": [
+      { "id": "u-evt-7k2m9q4d", "reason": "An English 10 announcement (Oct 9) says there is no school on Monday, Oct 12 (Indigenous Peoples' Day). Added 2026-10-12 to the exception dates of your School event.", "requestedByPerson": false }
     ]
   },
   "settings": {
@@ -736,11 +1493,15 @@ reproduced here:
       "teacher": "Ms. Rivera",
       "section": "Period 3",
       "color": "#2563EB",
+      "topics": ["Unit 2: Othello", "Grammar"],
+      "references": [
+        { "title": "Othello (Folger edition).pdf", "kind": "reading", "required": false, "path": "English 10 - Period 3/Materials/Othello full text/Attachments/Othello (Folger edition).pdf", "url": "https://classroom.google.com/c/NjI3ODk0MjE0NTQ5/m/NzAwMDAwMDAwMDA1/details" }
+      ],
       "origin": "generated",
       "source": { "kind": "google_classroom", "id": "NjI3ODk0MjE0NTQ5", "url": "https://classroom.google.com/c/NjI3ODk0MjE0NTQ5" }
     },
     {
-      "id": "biology",
+      "id": "cls-biology",
       "name": "Biology",
       "teacher": "Mr. Chen",
       "color": "#16A34A",
@@ -754,24 +1515,29 @@ reproduced here:
       "classId": "gc-class-NjI3ODk0MjE0NTQ5",
       "title": "Othello Essay",
       "type": "writing",
-      "description": "Write a 1,200–1,500 word analytical essay on jealousy in Othello. MLA format, at least three quotations from Acts 1–3.",
+      "topic": "Unit 2: Othello",
+      "description": "Write a 1,200–1,500 word analytical essay on jealousy in Othello. MLA format, at least three quotations from Acts 1–3. Bring a printed outline to class on Tuesday, Oct 13.",
+      "notes": "Ms. Rivera said quotations from Act 4 are fine too.",
       "due": "2026-10-16T23:59:00",
       "recommendedCompletionDate": "2026-10-15",
       "estimatedMinutes": 240,
-      "estimateRange": { "min": 200, "max": 300 },
+      "estimateRange": { "min": 210, "max": 270 },
       "estimateConfidence": "medium",
-      "estimateBasis": "Outline 30 min, draft 1,200–1,500 words ~150 min, revise and format 60 min.",
+      "estimateBasis": "Thesis and quotations 30 min, outline 30 min, draft of 1,200–1,500 words about 120 min, revision and MLA formatting 60 min.",
       "priority": "high",
       "status": "in_progress",
       "points": "100 points",
       "tasks": [
-        { "id": "gc-NzAwMDAwMDAwMDAx-t1", "title": "Choose thesis and quotations", "estimatedMinutes": 30, "status": "done", "completedAt": "2026-10-11T17:05:00" },
-        { "id": "gc-NzAwMDAwMDAwMDAx-t2", "title": "Outline", "estimatedMinutes": 30, "dependsOn": ["gc-NzAwMDAwMDAwMDAx-t1"], "recommendedCompletionDate": "2026-10-12" },
+        { "id": "gc-NzAwMDAwMDAwMDAx-t1", "title": "Choose thesis and quotations", "estimatedMinutes": 30, "status": "done", "completedAt": "2026-10-10T10:30:00" },
+        { "id": "gc-NzAwMDAwMDAwMDAx-t2", "title": "Outline (printed copy due in class)", "estimatedMinutes": 30, "dependsOn": ["gc-NzAwMDAwMDAwMDAx-t1"], "recommendedCompletionDate": "2026-10-12", "due": "2026-10-13" },
         { "id": "gc-NzAwMDAwMDAwMDAx-t3", "title": "Draft", "estimatedMinutes": 120, "dependsOn": ["gc-NzAwMDAwMDAwMDAx-t2"], "recommendedStartDate": "2026-10-13", "recommendedCompletionDate": "2026-10-14" },
         { "id": "gc-NzAwMDAwMDAwMDAx-t4", "title": "Revise, cite and format (MLA)", "estimatedMinutes": 60, "dependsOn": ["gc-NzAwMDAwMDAwMDAx-t3"], "recommendedCompletionDate": "2026-10-15" }
       ],
       "references": [
         { "title": "Essay rubric.pdf", "kind": "rubric", "required": true, "path": "English 10 - Period 3/Assignments/Othello Essay/Attachments/Essay rubric.pdf" }
+      ],
+      "issues": [
+        { "id": "gc-NzAwMDAwMDAwMDAx:conflict:due", "kind": "conflict", "field": "due", "status": "resolved", "message": "Classroom shows Oct 16, 11:59 PM; the rubric says 'due Friday in class'. Using Oct 16, 11:59 PM (Classroom)." }
       ],
       "origin": "generated",
       "source": { "kind": "google_classroom", "id": "NzAwMDAwMDAwMDAx", "url": "https://classroom.google.com/c/NjI3ODk0MjE0NTQ5/a/NzAwMDAwMDAwMDAx/details" }
@@ -781,19 +1547,38 @@ reproduced here:
       "classId": "gc-class-NjI3ODk0MjE0NTQ5",
       "title": "Read Othello Act 3",
       "type": "reading",
+      "topic": "Unit 2: Othello",
       "due": "2026-10-13",
-      "estimatedMinutes": 45,
-      "estimateRange": { "min": 35, "max": 60 },
+      "estimatedMinutes": 50,
+      "estimateRange": { "min": 40, "max": 60 },
       "estimateConfidence": "high",
-      "estimateBasis": "Act 3 is ~25 pages of verse; about 1.5–2 min per page.",
-      "priority": "medium",
+      "estimateBasis": "Act 3 is about 25 pages of verse; 1.5–2.5 min per page.",
+      "priority": "high",
       "status": "not_started",
+      "overrides": ["priority"],
       "origin": "generated",
-      "source": { "kind": "google_classroom", "id": "NzAwMDAwMDAwMDAy" }
+      "source": { "kind": "google_classroom", "id": "NzAwMDAwMDAwMDAy", "url": "https://classroom.google.com/c/NjI3ODk0MjE0NTQ5/a/NzAwMDAwMDAwMDAy/details" }
     },
     {
-      "id": "biology-unit-2-test-2026-10-16",
-      "classId": "biology",
+      "id": "gc-NzAwMDAwMDAwMDAz",
+      "classId": "gc-class-NjI3ODk0MjE0NTQ5",
+      "title": "Grammar worksheet 3: Commas",
+      "type": "homework",
+      "topic": "Grammar",
+      "due": "2026-10-14T23:59:00",
+      "estimatedMinutes": 25,
+      "estimateRange": { "min": 20, "max": 30 },
+      "estimateConfidence": "high",
+      "estimateBasis": "20 short sentence-correction items.",
+      "priority": "low",
+      "status": "not_started",
+      "sourceState": "withdrawn",
+      "origin": "generated",
+      "source": { "kind": "google_classroom", "id": "NzAwMDAwMDAwMDAz", "url": "https://classroom.google.com/c/NjI3ODk0MjE0NTQ5/a/NzAwMDAwMDAwMDAz/details" }
+    },
+    {
+      "id": "biology-unit-2-test-cells-2026-10-16",
+      "classId": "cls-biology",
       "title": "Unit 2 Test: Cells",
       "type": "test",
       "description": "Covers chapters 3–4: cell structure, membranes, transport.",
@@ -805,21 +1590,38 @@ reproduced here:
       "priority": "high",
       "status": "not_started",
       "tasks": [
-        { "id": "biology-unit-2-test-2026-10-16-t1", "title": "Review chapter 3 notes", "estimatedMinutes": 45 },
-        { "id": "biology-unit-2-test-2026-10-16-t2", "title": "Review chapter 4 notes", "estimatedMinutes": 45 },
-        { "id": "biology-unit-2-test-2026-10-16-t3", "title": "Practice questions and weak spots", "estimatedMinutes": 60, "dependsOn": ["biology-unit-2-test-2026-10-16-t1", "biology-unit-2-test-2026-10-16-t2"] }
+        { "id": "biology-unit-2-test-cells-2026-10-16-t1", "title": "Review chapter 3 notes", "estimatedMinutes": 45 },
+        { "id": "biology-unit-2-test-cells-2026-10-16-t2", "title": "Review chapter 4 notes", "estimatedMinutes": 45 },
+        { "id": "biology-unit-2-test-cells-2026-10-16-t3", "title": "Practice questions and weak spots", "estimatedMinutes": 60, "dependsOn": ["biology-unit-2-test-cells-2026-10-16-t1", "biology-unit-2-test-cells-2026-10-16-t2"] }
       ],
       "issues": [
-        { "kind": "conflict", "field": "assessmentDate", "message": "The syllabus says Oct 16; a Classroom announcement says 'test next Friday' (Oct 23). Using Oct 16 from the syllabus; please confirm with the teacher." }
+        { "id": "biology-unit-2-test-cells-2026-10-16:conflict:assessmentDate", "kind": "conflict", "field": "assessmentDate", "message": "The syllabus (p. 2) puts the Unit 2 test on Friday, Oct 16; the whiteboard photo from Friday, Oct 9 says 'Unit 2 test Fri 10/23'. Using Oct 16, the earlier date, so preparation is not late. Please confirm with Mr. Chen." }
       ],
       "origin": "generated",
-      "source": { "kind": "syllabus", "label": "Biology syllabus.pdf, p. 2" }
+      "source": { "kind": "syllabus", "label": "Biology syllabus.pdf, p. 2" },
+      "sources": [
+        { "kind": "image", "label": "Biology whiteboard photo IMG_2041.jpg (Oct 9)" }
+      ]
+    },
+    {
+      "id": "piano-theory-exam-2026-10-24",
+      "title": "Piano theory exam",
+      "type": "exam",
+      "assessmentDate": "2026-10-24T09:00:00",
+      "estimatedMinutes": 120,
+      "estimateRange": { "min": 90, "max": 150 },
+      "estimateConfidence": "medium",
+      "estimateBasis": "You plan two timed past papers of about 60 minutes each.",
+      "priority": "medium",
+      "status": "not_started",
+      "origin": "generated",
+      "source": { "kind": "user", "label": "Told /schedule on 2026-10-11" }
     },
     {
       "id": "u-asg-k3j9x2p1",
       "title": "Return library books",
       "type": "other",
-      "due": "2026-10-14",
+      "due": "2026-10-15",
       "estimatedMinutes": 15,
       "priority": "low",
       "status": "not_started",
@@ -828,12 +1630,12 @@ reproduced here:
   ],
   "events": [
     {
-      "id": "evt-school",
+      "id": "u-evt-7k2m9q4d",
       "title": "School",
       "category": "school",
       "startTime": "08:00",
       "endTime": "15:00",
-      "recurrence": { "frequency": "weekly", "daysOfWeek": ["mon", "tue", "wed", "thu", "fri"], "startDate": "2026-09-02", "endDate": "2027-06-18", "exceptDates": ["2026-11-26", "2026-11-27"] },
+      "recurrence": { "frequency": "weekly", "daysOfWeek": ["mon", "tue", "wed", "thu", "fri"], "startDate": "2026-09-02", "endDate": "2027-06-18", "exceptDates": ["2026-10-12", "2026-11-26", "2026-11-27"] },
       "origin": "user"
     },
     {
@@ -842,11 +1644,12 @@ reproduced here:
       "category": "activity",
       "startTime": "16:00",
       "endTime": "18:00",
-      "recurrence": { "frequency": "weekly", "daysOfWeek": ["mon"], "startDate": "2026-09-07" },
-      "origin": "user"
+      "recurrence": { "frequency": "weekly", "daysOfWeek": ["mon"], "startDate": "2026-10-05" },
+      "origin": "generated",
+      "source": { "kind": "user", "label": "Told /schedule on 2026-10-09" }
     },
     {
-      "id": "evt-piano",
+      "id": "u-evt-p4n0l7s2",
       "title": "Piano",
       "category": "activity",
       "startTime": "17:00",
@@ -855,18 +1658,29 @@ reproduced here:
       "origin": "user"
     },
     {
-      "id": "evt-doctor-2026-10-15",
+      "id": "u-evt-d8c3t5r1",
       "title": "Doctor appointment",
       "category": "appointment",
       "date": "2026-10-15",
       "startTime": "15:30",
       "endTime": "16:30",
       "origin": "user"
+    },
+    {
+      "id": "evt-piano-theory-exam-2026-10-24",
+      "title": "Piano theory exam",
+      "category": "appointment",
+      "assignmentId": "piano-theory-exam-2026-10-24",
+      "date": "2026-10-24",
+      "startTime": "09:00",
+      "endTime": "11:00",
+      "origin": "generated",
+      "source": { "kind": "user", "label": "Told /schedule on 2026-10-11" }
     }
   ],
   "availability": [
     {
-      "id": "avail-weekdays",
+      "id": "u-avl-a5f7t3r9",
       "label": "After school",
       "startTime": "15:30",
       "endTime": "21:30",
@@ -874,87 +1688,64 @@ reproduced here:
       "origin": "user"
     },
     {
-      "id": "avail-weekend",
+      "id": "avail-weekend-mornings-1000-1300",
       "label": "Weekend mornings",
       "startTime": "10:00",
       "endTime": "13:00",
-      "recurrence": { "frequency": "weekly", "daysOfWeek": ["sat", "sun"], "startDate": "2026-09-05" },
-      "origin": "user"
+      "recurrence": { "frequency": "weekly", "daysOfWeek": ["sat", "sun"], "startDate": "2026-10-05" },
+      "origin": "generated",
+      "source": { "kind": "user", "label": "Told /schedule on 2026-10-09" }
     }
   ],
   "scheduleBlocks": [
     {
-      "id": "blk-gc-NzAwMDAwMDAwMDAy-01",
+      "id": "blk-gc-NzAwMDAwMDAwMDAx-202610092000-1",
+      "assignmentId": "gc-NzAwMDAwMDAwMDAx",
+      "taskId": "gc-NzAwMDAwMDAwMDAx-t1",
+      "start": "2026-10-10T10:00:00",
+      "end": "2026-10-10T10:30:00",
+      "status": "done",
+      "completedAt": "2026-10-10T10:30:00",
+      "description": "Pick a thesis about jealousy and mark three quotations in Acts 1–3.",
+      "origin": "generated"
+    },
+    {
+      "id": "blk-gc-NzAwMDAwMDAwMDAy-202610092000-1",
       "assignmentId": "gc-NzAwMDAwMDAwMDAy",
       "start": "2026-10-12T18:30:00",
       "end": "2026-10-12T19:20:00",
       "status": "planned",
+      "description": "Read Act 3 (about 25 pages); mark where Iago plants suspicion.",
       "origin": "generated"
     },
     {
-      "id": "blk-gc-NzAwMDAwMDAwMDAx-01",
+      "id": "blk-gc-NzAwMDAwMDAwMDAx-202610092000-2",
       "assignmentId": "gc-NzAwMDAwMDAwMDAx",
       "taskId": "gc-NzAwMDAwMDAwMDAx-t2",
       "start": "2026-10-12T19:30:00",
       "end": "2026-10-12T20:00:00",
       "status": "planned",
+      "description": "Outline: thesis and three body-paragraph claims, each with a quotation. Print it for class tomorrow.",
       "origin": "generated"
     },
     {
-      "id": "blk-biology-unit-2-test-2026-10-16-01",
-      "assignmentId": "biology-unit-2-test-2026-10-16",
-      "taskId": "biology-unit-2-test-2026-10-16-t1",
+      "id": "blk-biology-unit-2-test-cells-2026-10-16-202610092000-1",
+      "assignmentId": "biology-unit-2-test-cells-2026-10-16",
+      "taskId": "biology-unit-2-test-cells-2026-10-16-t1",
       "start": "2026-10-13T15:30:00",
       "end": "2026-10-13T16:15:00",
       "status": "planned",
+      "description": "Chapter 3 notes (cell structure); redo the section review questions.",
       "origin": "generated"
     },
     {
-      "id": "blk-gc-NzAwMDAwMDAwMDAx-02",
+      "id": "blk-gc-NzAwMDAwMDAwMDAx-202610092000-3",
       "assignmentId": "gc-NzAwMDAwMDAwMDAx",
       "taskId": "gc-NzAwMDAwMDAwMDAx-t3",
       "start": "2026-10-13T16:30:00",
       "end": "2026-10-13T17:20:00",
       "status": "planned",
-      "notes": "Introduction and first body paragraph",
-      "origin": "generated"
-    },
-    {
-      "id": "blk-biology-unit-2-test-2026-10-16-02",
-      "assignmentId": "biology-unit-2-test-2026-10-16",
-      "taskId": "biology-unit-2-test-2026-10-16-t2",
-      "start": "2026-10-14T15:30:00",
-      "end": "2026-10-14T16:15:00",
-      "status": "planned",
-      "origin": "generated"
-    },
-    {
-      "id": "blk-gc-NzAwMDAwMDAwMDAx-03",
-      "assignmentId": "gc-NzAwMDAwMDAwMDAx",
-      "taskId": "gc-NzAwMDAwMDAwMDAx-t3",
-      "start": "2026-10-14T18:15:00",
-      "end": "2026-10-14T19:25:00",
-      "status": "planned",
-      "notes": "Remaining body paragraphs and conclusion",
-      "locked": true,
-      "origin": "generated"
-    },
-    {
-      "id": "blk-biology-unit-2-test-2026-10-16-03",
-      "assignmentId": "biology-unit-2-test-2026-10-16",
-      "taskId": "biology-unit-2-test-2026-10-16-t3",
-      "start": "2026-10-15T16:40:00",
-      "end": "2026-10-15T17:40:00",
-      "status": "planned",
-      "origin": "generated"
-    },
-    {
-      "id": "blk-gc-NzAwMDAwMDAwMDAx-04",
-      "assignmentId": "gc-NzAwMDAwMDAwMDAx",
-      "taskId": "gc-NzAwMDAwMDAwMDAx-t4",
-      "start": "2026-10-15T17:50:00",
-      "end": "2026-10-15T18:50:00",
-      "status": "planned",
+      "description": "Introduction and first body paragraph.",
       "origin": "generated"
     },
     {
@@ -964,10 +1755,72 @@ reproduced here:
       "end": "2026-10-14T15:15:00",
       "status": "planned",
       "origin": "user"
+    },
+    {
+      "id": "blk-biology-unit-2-test-cells-2026-10-16-202610092000-2",
+      "assignmentId": "biology-unit-2-test-cells-2026-10-16",
+      "taskId": "biology-unit-2-test-cells-2026-10-16-t2",
+      "start": "2026-10-14T15:30:00",
+      "end": "2026-10-14T16:15:00",
+      "status": "planned",
+      "description": "Chapter 4 notes (membranes and transport); redo the section review questions.",
+      "origin": "generated"
+    },
+    {
+      "id": "blk-gc-NzAwMDAwMDAwMDAx-202610092000-4",
+      "assignmentId": "gc-NzAwMDAwMDAwMDAx",
+      "taskId": "gc-NzAwMDAwMDAwMDAx-t3",
+      "start": "2026-10-14T18:15:00",
+      "end": "2026-10-14T19:25:00",
+      "status": "planned",
+      "description": "Remaining body paragraphs and conclusion.",
+      "locked": true,
+      "origin": "generated"
+    },
+    {
+      "id": "blk-biology-unit-2-test-cells-2026-10-16-202610092000-3",
+      "assignmentId": "biology-unit-2-test-cells-2026-10-16",
+      "taskId": "biology-unit-2-test-cells-2026-10-16-t3",
+      "start": "2026-10-15T16:40:00",
+      "end": "2026-10-15T17:40:00",
+      "status": "planned",
+      "description": "30-question practice set; reread the notes for every question you miss.",
+      "origin": "generated"
+    },
+    {
+      "id": "blk-gc-NzAwMDAwMDAwMDAx-202610092000-5",
+      "assignmentId": "gc-NzAwMDAwMDAwMDAx",
+      "taskId": "gc-NzAwMDAwMDAwMDAx-t4",
+      "start": "2026-10-15T17:50:00",
+      "end": "2026-10-15T18:50:00",
+      "status": "planned",
+      "description": "Revise, add MLA citations and the Works Cited page, check formatting.",
+      "origin": "generated"
+    },
+    {
+      "id": "blk-piano-theory-exam-2026-10-24-202610111930-1",
+      "assignmentId": "piano-theory-exam-2026-10-24",
+      "start": "2026-10-17T10:00:00",
+      "end": "2026-10-17T11:00:00",
+      "status": "planned",
+      "description": "Past paper 1, timed; mark it with the answer key.",
+      "origin": "generated"
+    },
+    {
+      "id": "blk-piano-theory-exam-2026-10-24-202610111930-2",
+      "assignmentId": "piano-theory-exam-2026-10-24",
+      "start": "2026-10-18T10:00:00",
+      "end": "2026-10-18T11:00:00",
+      "status": "planned",
+      "description": "Past paper 2, timed; review the mistakes from both papers.",
+      "origin": "generated"
     }
   ],
   "issues": [
-    { "kind": "workload", "message": "The essay draft (2 h) is split over Tuesday and Wednesday. If drafting runs long, Thursday after 6:50 PM is still free; Friday morning has the biology test." }
+    { "id": "workload:2026-10-15", "kind": "workload", "itemId": "u-evt-d8c3t5r1", "date": "2026-10-15", "message": "Thursday, Oct 15 is tight: after your doctor appointment (3:30–4:30 PM) there are 2 h of work (biology practice questions, then essay revision). If revision runs long, Thursday after 6:50 PM and Friday after school are still free; the essay is due Friday at 11:59 PM." }
+  ],
+  "deleted": [
+    { "id": "gc-NzAwMDAwMDAwMDA0", "collection": "assignments", "deletedAt": "2026-10-10T16:12:00", "sourceId": "NzAwMDAwMDAwMDA0", "title": "Act 2 vocabulary crossword (optional)" }
   ]
 }
 ```
@@ -978,15 +1831,26 @@ reproduced here:
 | --- | --- |
 | `"schemaVersion": 1.0` | `"schemaVersion": "1.0"` |
 | `"due": "2026-10-16T23:59:00Z"` | `"due": "2026-10-16T23:59:00"` (local time, no `Z`) |
+| `"generatedAt": "2026-10-11T23:30:00Z"` | `"generatedAt": "2026-10-11T19:30:00"` plus `"timezone": "America/New_York"` |
 | `"due": "Oct 16"` | `"due": "2026-10-16"` |
+| `"due": "2026-10-16"` when Classroom says `Oct 16, 11:59 PM` | `"due": "2026-10-16T23:59:00"` (write the time whenever the source states one) |
 | `"startTime": "4:00 PM"` | `"startTime": "16:00"` |
 | `"daysOfWeek": ["Monday"]` | `"daysOfWeek": ["mon"]` |
 | `"estimatedMinutes": "45"` or `"60-75"` | `"estimatedMinutes": 70, "estimateRange": {"min": 60, "max": 75}` |
+| `"estimateRange"` without `"estimatedMinutes"` | always both |
+| lowering `estimatedMinutes` after work was done | keep the total; progress comes from task statuses and done blocks (§ 8.1) |
 | `"status": "complete"` | `"status": "done"` |
 | `"priority": "normal"` | `"priority": "medium"` |
 | `"classId": "English 10"` (a name) | `"classId": "gc-class-NjI3ODk0MjE0NTQ5"` (an ID) |
 | `"teacher": null` | omit the field |
 | a quiz with `"due"` set to the quiz day | `"type": "quiz", "assessmentDate": "2026-10-20"` |
+| a Classroom material turned into an assignment | a class or assignment reference with `"required": false` |
+| a generator writing `"notes"` on a block | `"description"` (`notes` belongs to the person) |
+| a generator editing a `user` or locked item silently | list it in `meta.requestedChanges` (§ 15.9) |
+| re-creating an item listed in `deleted` | leave it out |
+| deleting an assignment that vanished from Classroom | keep it with `"sourceState": "missing"` (§ 15.6) |
+| `"origin": "planner"` on an assignment | `planner` exists only on schedule blocks |
+| `"itemId"` inside an item's `issues` | only root issues have `itemId` |
 | a block from 23:00 to 00:30 | two blocks, or end at 23:59 |
 | comments or text outside the JSON object | data only |
 
@@ -994,4 +1858,4 @@ reproduced here:
 
 | Version | Date | Changes |
 | --- | --- | --- |
-| 1.0 | 2026-10-07 | First version. |
+| 1.0 | 2026-10-07 | Initial version. |

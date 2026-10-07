@@ -48,7 +48,7 @@ function Shell() {
   const exportNow = useCallback(() => {
     const now = nowLocal();
     downloadText(exportFileName(now), exportJson(doc, now));
-    notify('Schedule exported. Give this file to /schedule or keep it as a backup.', { tone: 'success' });
+    notify('Schedule exported. Give this file to /academic-schedule or keep it as a backup.', { tone: 'success' });
   }, [doc, notify]);
 
   const contextDate = 'date' in route ? route.date : todayLocal();

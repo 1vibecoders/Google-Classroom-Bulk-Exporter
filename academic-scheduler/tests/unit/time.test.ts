@@ -83,7 +83,7 @@ describe('times and date-times', () => {
     expect(dateOf('2026-10-16T23:59:00')).toBe('2026-10-16');
   });
   it('treats date-only due dates as the default due time', () => {
-    expect(dueMoment('2026-10-16')).toBe('2026-10-16T23:59:00');
+    expect(dueMoment('2026-10-16')).toBe('2026-10-16T00:00:00');
     expect(dueMoment('2026-10-16', '17:00')).toBe('2026-10-16T17:00:00');
     expect(dueMoment('2026-10-16T08:00')).toBe('2026-10-16T08:00:00');
   });

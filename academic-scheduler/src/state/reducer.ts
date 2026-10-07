@@ -4,11 +4,11 @@
 // Ownership rules (SCHEDULE_FORMAT.md § 6, § 15, § 16):
 // - Items created here get origin "user".
 // - Editing a field of a generated (or planner) item adds the field name to
-//   the item's `overrides`, so later imports and /schedule runs keep the
+//   the item's `overrides`, so later imports and /academic-schedule runs keep the
 //   person's value. Status, completedAt and notes are person-owned anyway.
 // - Moving or resizing a generated or planner block sets locked: true.
 // - Deleting a generated item leaves a tombstone in `deleted`, so a later
-//   /schedule run does not re-create it.
+//   /academic-schedule run does not re-create it.
 import type {
   Assignment,
   AvailabilityWindow,

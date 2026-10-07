@@ -10,16 +10,16 @@ schedules structured data with fixed, predictable rules. It makes no network
 requests at all: everything stays in your browser.
 
 The thinking about *what* an assignment requires happens elsewhere, in the
-separate Claude [`/schedule` skill](SCHEDULE_SKILL.md). The skill reads your
+separate Claude [`/academic-schedule` skill](SCHEDULE_SKILL.md). The skill reads your
 Google Classroom export and other documents and writes a schedule file; the
 website imports that file. The two talk only through the documented
 [schedule file format](SCHEDULE_FORMAT.md).
 
 ```
-Google Classroom ─▶ Classroom Exporter (ZIP) ─▶ Claude /schedule ─▶ schedule.json
+Google Classroom ─▶ Classroom Exporter (ZIP) ─▶ Claude /academic-schedule ─▶ schedule.json
                                                                       │
               ┌────────────── edit, plan, mark done ◀── Academic Scheduler (this website)
-              └──────────────▶ Export schedule.json ─▶ Claude /schedule (update) ─▶ …
+              └──────────────▶ Export schedule.json ─▶ Claude /academic-schedule (update) ─▶ …
 ```
 
 Live site: see [Deployment](#deployment) (the project is deployed on Vercel).
@@ -31,7 +31,7 @@ Live site: see [Deployment](#deployment) (the project is deployed on Vercel).
 - [Creating a schedule by hand](#creating-a-schedule-by-hand)
 - [Importing a schedule](#importing-a-schedule)
 - [Exporting](#exporting)
-- [Using it with the /schedule skill](#using-it-with-the-schedule-skill)
+- [Using it with the /academic-schedule skill](#using-it-with-the-academic-schedule-skill)
 - [How planning works (no AI)](#how-planning-works-no-ai)
 - [Where your data lives](#where-your-data-lives)
 - [Installation and deployment](#installation-and-deployment)
@@ -60,7 +60,7 @@ Open the website (or the single offline file, see below). Then either:
 - **Start by hand:** add your classes, your commitments and your study time
   (*Commitments*), then your assignments, and schedule work blocks on the Day or
   Week view — or let *Plan unscheduled work* propose them.
-- **Import a schedule** made by the `/schedule` skill: click **Import** in the
+- **Import a schedule** made by the `/academic-schedule` skill: click **Import** in the
   header.
 - **Look around first:** *Settings → Load example schedule* fills the app with a
   complete example (October 2026). Undo or *Delete all data* afterwards.
@@ -113,19 +113,19 @@ overwritten (see [SCHEDULE_FORMAT.md § 16](SCHEDULE_FORMAT.md)).
 **Export** in the header downloads `schedule-YYYY-MM-DD.json`: your complete
 schedule in the same format, including what you created by hand, what you
 completed and which imported items you changed or deleted. Keep it as a backup,
-move it to another browser (import it there), or give it to `/schedule` to
+move it to another browser (import it there), or give it to `/academic-schedule` to
 update your plan.
 
-## Using it with the /schedule skill
+## Using it with the /academic-schedule skill
 
 1. Export your classes with the Google Classroom Bulk Exporter (one class, or
    **Export all classes** for the whole account).
 2. Give the ZIP — plus any syllabus, school calendar, rubric or other document,
    your current `schedule.json` if you have one, and your usual availability —
-   to Claude with the `/schedule` skill. See [SCHEDULE_SKILL.md](SCHEDULE_SKILL.md).
+   to Claude with the `/academic-schedule` skill. See [SCHEDULE_SKILL.md](SCHEDULE_SKILL.md).
 3. Import the `schedule.json` it produces here. Work with it, edit it, mark
    things done.
-4. When Classroom changes, export from here and run `/schedule` again with the
+4. When Classroom changes, export from here and run `/academic-schedule` again with the
    new Classroom export. It updates the plan without destroying your work.
 
 ## How planning works (no AI)
@@ -195,7 +195,7 @@ npm run test:e2e     # end-to-end tests (Playwright, against the build)
 ```
 academic-scheduler/
 ├── SCHEDULE_FORMAT.md        The schedule file format (normative, versioned)
-├── SCHEDULE_SKILL.md         The Claude /schedule skill: install and use
+├── SCHEDULE_SKILL.md         The Claude /academic-schedule skill: install and use
 ├── schema/                   JSON Schema of the format
 ├── examples/                 Example schedule files
 ├── src/
@@ -211,4 +211,4 @@ academic-scheduler/
 └── scripts/build-single-file.mjs
 ```
 
-The `/schedule` skill itself lives in [`../skills/schedule`](../skills/schedule).
+The `/academic-schedule` skill itself lives in [`../skills/academic-schedule`](../skills/academic-schedule).

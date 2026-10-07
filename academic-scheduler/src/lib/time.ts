@@ -190,7 +190,7 @@ export function timeOf(value: DateOrDateTimeStr): TimeStr | null {
  * A due date as a moment: date-only values mean `defaultDueTime` that day
  * (SCHEDULE_FORMAT.md § 8, settings.defaultDueTime).
  */
-export function dueMoment(due: DateOrDateTimeStr, defaultDueTime: TimeStr = '23:59'): LocalDateTimeStr {
+export function dueMoment(due: DateOrDateTimeStr, defaultDueTime: TimeStr = '00:00'): LocalDateTimeStr {
   return isDateOnly(due) ? toLocalDateTime(due, defaultDueTime) : normalizeLocalDateTime(due);
 }
 

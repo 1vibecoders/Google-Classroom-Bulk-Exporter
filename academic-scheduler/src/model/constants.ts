@@ -120,12 +120,13 @@ export const ISSUE_KIND_LABELS: Record<IssueKind, string> = {
   workload: 'Workload',
   other: 'Note',
 };
-export const SOURCE_KINDS: SourceKind[] = ['google_classroom', 'syllabus', 'calendar', 'document', 'user', 'schedule', 'other'];
+export const SOURCE_KINDS: SourceKind[] = ['google_classroom', 'syllabus', 'calendar', 'document', 'image', 'user', 'schedule', 'other'];
 export const SOURCE_KIND_LABELS: Record<SourceKind, string> = {
   google_classroom: 'Google Classroom',
   syllabus: 'Syllabus',
   calendar: 'Calendar',
   document: 'Document',
+  image: 'Image',
   user: 'You',
   schedule: 'Schedule file',
   other: 'Other',

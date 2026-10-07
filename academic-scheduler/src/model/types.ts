@@ -39,7 +39,7 @@ export type AssignmentType =
   | 'other';
 export type EventCategory = 'school' | 'class' | 'activity' | 'appointment' | 'work' | 'personal' | 'other';
 export type IssueKind = 'ambiguity' | 'conflict' | 'missing_information' | 'workload' | 'other';
-export type SourceKind = 'google_classroom' | 'syllabus' | 'calendar' | 'document' | 'user' | 'schedule' | 'other';
+export type SourceKind = 'google_classroom' | 'syllabus' | 'calendar' | 'document' | 'image' | 'user' | 'schedule' | 'other';
 export type ReferenceKind = 'attachment' | 'link' | 'reading' | 'rubric' | 'template' | 'other';
 export type Confidence = 'low' | 'medium' | 'high';
 export type BlockKind = 'work' | 'break';
