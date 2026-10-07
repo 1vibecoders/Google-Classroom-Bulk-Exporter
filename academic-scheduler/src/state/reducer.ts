@@ -59,7 +59,8 @@ export type IssueScope = { collection: Collection; id: string } | null;
 export type Action =
   | { type: 'replaceDocument'; doc: ScheduleDocument; label: string; now: LocalDateTimeStr; snapshotId: string }
   | { type: 'upsertClass'; item: SchoolClass }
-  | { type: 'deleteClass'; id: string; deleteAssignments: boolean; now: LocalDateTimeStr }
+  /** deleteContents: also delete the class's assignments and events (else they are kept without the class). */
+  | { type: 'deleteClass'; id: string; deleteContents: boolean; now: LocalDateTimeStr }
   | { type: 'upsertAssignment'; item: Assignment; now: LocalDateTimeStr }
   | { type: 'deleteAssignment'; id: string; now: LocalDateTimeStr }
   | { type: 'setAssignmentStatus'; id: string; status: WorkStatus; now: LocalDateTimeStr }
@@ -75,7 +76,8 @@ export type Action =
   | { type: 'setBlockStatus'; id: string; status: BlockStatus; now: LocalDateTimeStr }
   | { type: 'setLocked'; collection: Collection; id: string; locked: boolean }
   | { type: 'clearOverrides'; collection: Collection; id: string }
-  | { type: 'setIssueStatus'; scope: IssueScope; index: number; status: IssueStatus }
+  /** newIssueId (`u-iss-…`) is given to an issue without an id when it is resolved or dismissed (§ 5 Issue). */
+  | { type: 'setIssueStatus'; scope: IssueScope; index: number; status: IssueStatus; newIssueId: string }
   | { type: 'updateSettings'; settings: Settings }
   | { type: 'undo'; snapshotId?: string }
   | { type: 'loadState'; state: AppState };
@@ -149,12 +151,13 @@ function upsert<T extends { id: string; origin?: string; overrides?: string[] }>
 
 function tombstoneFor(
   collection: TombstoneCollection,
-  item: { id: string; origin?: string; source?: { id?: string }; title?: string; name?: string; label?: string },
+  item: { id: string; origin?: string; source?: { id?: string }; sources?: Array<{ id?: string }>; title?: string; name?: string; label?: string },
   now: LocalDateTimeStr,
 ): Tombstone | null {
   if ((item.origin ?? 'generated') !== 'generated') return null;
   const stone: Tombstone = { id: item.id, collection, deletedAt: now };
-  if (item.source?.id) stone.sourceId = item.source.id;
+  const sourceId = item.source?.id ?? item.sources?.find((src) => src.id)?.id;
+  if (sourceId) stone.sourceId = sourceId;
   const title = item.title ?? item.name ?? item.label;
   if (title) stone.title = title.slice(0, 300);
   return stone;
@@ -165,7 +168,12 @@ function addTombstones(doc: ScheduleDocument, stones: Array<Tombstone | null>): 
   if (!fresh.length) return doc.deleted;
   const ids = new Set(fresh.map((s) => s.id));
   const merged = [...(doc.deleted || []).filter((s) => !ids.has(s.id)), ...fresh];
-  return merged.slice(Math.max(0, merged.length - MAX_TOMBSTONES));
+  if (merged.length <= MAX_TOMBSTONES) return merged;
+  // Drop the oldest entries (by deletedAt) beyond the limit (§ 16.4).
+  const keep = new Set(
+    [...merged].sort((a, b) => (a.deletedAt < b.deletedAt ? 1 : a.deletedAt > b.deletedAt ? -1 : 0)).slice(0, MAX_TOMBSTONES).map((t) => t.id),
+  );
+  return merged.filter((t) => keep.has(t.id));
 }
 
 function assignmentTombstones(a: Assignment, now: LocalDateTimeStr): Array<Tombstone | null> {
@@ -185,7 +193,11 @@ function withDeleted(doc: ScheduleDocument, deleted: Tombstone[] | undefined): S
 // Tasks inside an edited assignment
 // ---------------------------------------------------------------------------
 
-function mergeTasks(before: Assignment | undefined, after: Assignment, now: LocalDateTimeStr): { tasks: Task[] | undefined; stones: Array<Tombstone | null> } {
+function mergeTasks(
+  before: Assignment | undefined,
+  after: Assignment,
+  now: LocalDateTimeStr,
+): { tasks: Task[] | undefined; stones: Array<Tombstone | null>; removedIds: string[]; reordered: boolean } {
   const previous = new Map((before?.tasks || []).map((t) => [t.id, t]));
   const nextIds = new Set((after.tasks || []).map((t) => t.id));
   const tasks = (after.tasks || []).map((task) => {
@@ -193,8 +205,22 @@ function mergeTasks(before: Assignment | undefined, after: Assignment, now: Loca
     if (!old) return { ...task, origin: task.origin ?? 'user' };
     return recordOverrides(old, task);
   });
-  const stones = [...previous.values()].filter((t) => !nextIds.has(t.id)).map((t) => tombstoneFor('tasks', t, now));
-  return { tasks: tasks.length ? tasks : undefined, stones };
+  const removed = [...previous.values()].filter((t) => !nextIds.has(t.id));
+  const stones = removed.map((t) => tombstoneFor('tasks', t, now));
+  // Reordering the tasks that remain is the one edit recorded as `tasks` (§ 6.3).
+  const keptBefore = (before?.tasks || []).map((t) => t.id).filter((id) => nextIds.has(id));
+  const keptAfter = (after.tasks || []).map((t) => t.id).filter((id) => previous.has(id));
+  const reordered = keptBefore.join('\u0000') !== keptAfter.join('\u0000');
+  return { tasks: tasks.length ? tasks : undefined, stones, removedIds: removed.map((t) => t.id), reordered };
+}
+
+function withoutRootIssuesFor(doc: ScheduleDocument, ids: Set<string>): ScheduleDocument {
+  if (!doc.issues || !doc.issues.some((i) => i.itemId && ids.has(i.itemId))) return doc;
+  const issues = doc.issues.filter((i) => !i.itemId || !ids.has(i.itemId));
+  if (issues.length) return { ...doc, issues };
+  const { issues: _drop, ...rest } = doc;
+  void _drop;
+  return rest;
 }
 
 // ---------------------------------------------------------------------------
@@ -222,18 +248,25 @@ function removeDependsOn<T extends { dependsOn?: string[] }>(item: T, removed: S
   return dependsOn.length ? { ...item, dependsOn } : (withoutKey(item, 'dependsOn') as T);
 }
 
-/** Remove assignments (and their blocks, links and event links); tombstone the generated ones. */
+/**
+ * Remove assignments with their dependents (§ 16.4): blocks, sitting events,
+ * dependsOn links and root issues about them, their tasks or their blocks.
+ * Generated assignments, their generated tasks and generated sitting events
+ * get tombstones; blocks removed with their assignment do not.
+ */
 function removeAssignments(doc: ScheduleDocument, ids: Set<string>, now: LocalDateTimeStr): ScheduleDocument {
-  const stones = doc.assignments.filter((a) => ids.has(a.id)).flatMap((a) => assignmentTombstones(a, now));
+  const removed = doc.assignments.filter((a) => ids.has(a.id));
+  const sittings = doc.events.filter((e) => e.assignmentId && ids.has(e.assignmentId));
+  const blocks = doc.scheduleBlocks.filter((b) => b.assignmentId && ids.has(b.assignmentId));
+  const stones = [...removed.flatMap((a) => assignmentTombstones(a, now)), ...sittings.map((e) => tombstoneFor('events', e, now))];
+  const gone = new Set<string>([...ids, ...removed.flatMap((a) => (a.tasks || []).map((t) => t.id)), ...sittings.map((e) => e.id), ...blocks.map((b) => b.id)]);
   const next: ScheduleDocument = {
     ...doc,
     assignments: doc.assignments.filter((a) => !ids.has(a.id)).map((a) => removeDependsOn(a, ids)),
     scheduleBlocks: doc.scheduleBlocks.filter((b) => !b.assignmentId || !ids.has(b.assignmentId)),
-    events: doc.events.map((e) => (e.assignmentId && ids.has(e.assignmentId) ? withoutKey(e, 'assignmentId') : e)),
-    issues: doc.issues?.filter((i) => !i.itemId || !ids.has(i.itemId)),
+    events: doc.events.filter((e) => !e.assignmentId || !ids.has(e.assignmentId)),
   };
-  if (next.issues && !next.issues.length) delete next.issues;
-  return withDeleted(next, addTombstones(doc, stones));
+  return withDeleted(withoutRootIssuesFor(next, gone), addTombstones(doc, stones));
 }
 
 function updateItem<T extends { id: string }>(list: T[], id: string, fn: (item: T) => T): T[] {
@@ -265,27 +298,38 @@ export function reducer(state: AppState, action: Action): AppState {
       const cls = doc.classes.find((c) => c.id === action.id);
       if (!cls) return state;
       let next: ScheduleDocument = { ...doc, classes: doc.classes.filter((c) => c.id !== action.id) };
-      if (action.deleteAssignments) {
+      const stones: Array<Tombstone | null> = [tombstoneFor('classes', cls, action.now)];
+      if (action.deleteContents) {
         const ids = new Set(doc.assignments.filter((a) => a.classId === action.id).map((a) => a.id));
         next = removeAssignments(next, ids, action.now);
+        const events = next.events.filter((e) => e.classId === action.id);
+        stones.push(...events.map((e) => tombstoneFor('events', e, action.now)));
+        next = withoutRootIssuesFor({ ...next, events: next.events.filter((e) => e.classId !== action.id) }, new Set(events.map((e) => e.id)));
       } else {
         next.assignments = next.assignments.map((a) => (a.classId === action.id ? withoutKey(a, 'classId') : a));
+        next.events = next.events.map((e) => (e.classId === action.id ? withoutKey(e, 'classId') : e));
       }
-      next.events = next.events.map((e) => (e.classId === action.id ? withoutKey(e, 'classId') : e));
-      return withDoc(state, withDeleted(next, addTombstones(next, [tombstoneFor('classes', cls, action.now)])));
+      next = withoutRootIssuesFor(next, new Set([action.id]));
+      return withDoc(state, withDeleted(next, addTombstones(next, stones)));
     }
 
     case 'upsertAssignment': {
       const before = doc.assignments.find((a) => a.id === action.item.id);
-      const { tasks, stones } = mergeTasks(before, action.item, action.now);
-      const item: Assignment = tasks ? { ...action.item, tasks } : withoutKey(action.item, 'tasks');
-      const assignments = upsert(doc.assignments, item);
+      const { tasks, stones, removedIds, reordered } = mergeTasks(before, action.item, action.now);
+      let item: Assignment = tasks ? { ...action.item, tasks } : withoutKey(action.item, 'tasks');
+      let assignments = upsert(doc.assignments, item);
+      if (before && reordered && isGeneratedLike(before)) {
+        const overrides = Array.from(new Set([...(item.overrides ?? before.overrides ?? []), 'tasks'])).sort();
+        item = { ...assignments.find((a) => a.id === item.id)!, overrides };
+        assignments = assignments.map((a) => (a.id === item.id ? item : a));
+      }
       // Blocks pointing at tasks that no longer exist lose their taskId.
       const taskIds = new Set((tasks || []).map((t) => t.id));
       const scheduleBlocks = doc.scheduleBlocks.map((b) =>
         b.assignmentId === item.id && b.taskId && !taskIds.has(b.taskId) ? withoutKey(b, 'taskId') : b,
       );
-      return withDoc(state, withDeleted({ ...doc, assignments, scheduleBlocks }, addTombstones(doc, stones)));
+      const next = withoutRootIssuesFor({ ...doc, assignments, scheduleBlocks }, new Set(removedIds));
+      return withDoc(state, withDeleted(next, addTombstones(doc, stones)));
     }
 
     case 'deleteAssignment':
@@ -309,7 +353,7 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'deleteEvent': {
       const event = doc.events.find((e) => e.id === action.id);
       if (!event) return state;
-      const next = { ...doc, events: doc.events.filter((e) => e.id !== action.id) };
+      const next = withoutRootIssuesFor({ ...doc, events: doc.events.filter((e) => e.id !== action.id) }, new Set([action.id]));
       return withDoc(state, withDeleted(next, addTombstones(doc, [tombstoneFor('events', event, action.now)])));
     }
 
@@ -319,7 +363,7 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'deleteAvailability': {
       const win = doc.availability.find((w) => w.id === action.id);
       if (!win) return state;
-      const next = { ...doc, availability: doc.availability.filter((w) => w.id !== action.id) };
+      const next = withoutRootIssuesFor({ ...doc, availability: doc.availability.filter((w) => w.id !== action.id) }, new Set([action.id]));
       return withDoc(state, withDeleted(next, addTombstones(doc, [tombstoneFor('availability', win, action.now)])));
     }
 
@@ -336,7 +380,7 @@ export function reducer(state: AppState, action: Action): AppState {
       const ids = new Set(action.ids);
       const removed = doc.scheduleBlocks.filter((b) => ids.has(b.id));
       if (!removed.length) return state;
-      const next = { ...doc, scheduleBlocks: doc.scheduleBlocks.filter((b) => !ids.has(b.id)) };
+      const next = withoutRootIssuesFor({ ...doc, scheduleBlocks: doc.scheduleBlocks.filter((b) => !ids.has(b.id)) }, ids);
       return withDoc(state, withDeleted(next, addTombstones(doc, removed.map((b) => tombstoneFor('scheduleBlocks', b, action.now)))));
     }
 
@@ -373,7 +417,8 @@ export function reducer(state: AppState, action: Action): AppState {
       const apply = <T extends { issues?: ScheduleDocument['issues'] }>(holder: T): T => {
         const issues = (holder.issues || []).map((issue, i) => {
           if (i !== action.index) return issue;
-          return action.status === 'open' ? withoutKey(issue, 'status') : { ...issue, status: action.status };
+          if (action.status === 'open') return withoutKey(issue, 'status');
+          return { ...issue, id: issue.id ?? action.newIssueId, status: action.status };
         });
         return { ...holder, issues };
       };

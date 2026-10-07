@@ -12,6 +12,8 @@ export type ChangeCategory =
   | 'yourItems'
   /** File item whose id is in the current `deleted` tombstones: not restored unless selected. */
   | 'previouslyDeleted'
+  /** New file item that matches a current item under § 15.3 rule 2 or 3: not added unless selected. */
+  | 'possibleDuplicate'
   /** Assignment whose sourceState changes from present to missing/withdrawn: applied by default. */
   | 'removedFromSource'
   /** Current generated, unlocked item absent from the file: kept unless the person removes it. */

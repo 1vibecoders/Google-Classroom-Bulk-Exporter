@@ -69,6 +69,8 @@ export interface Source {
   url?: string;
   path?: string;
   label?: string;
+  /** When the source was captured (local wall-clock time). */
+  retrievedAt?: LocalDateTimeStr;
 }
 
 export interface EstimateRange {

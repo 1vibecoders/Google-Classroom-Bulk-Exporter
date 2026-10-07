@@ -113,11 +113,11 @@ describe('reducer', () => {
       assignments: [{ ...essay, issues: [{ id: 'i1', kind: 'conflict', message: 'm' }] }],
       issues: [{ kind: 'workload', message: 'busy', date: '2026-10-08' }],
     });
-    let next = reducer(state, { type: 'setIssueStatus', scope: { collection: 'assignments', id: 'gc-essay' }, index: 0, status: 'resolved' });
-    next = reducer(next, { type: 'setIssueStatus', scope: null, index: 0, status: 'dismissed' });
+    let next = reducer(state, { type: 'setIssueStatus', scope: { collection: 'assignments', id: 'gc-essay' }, index: 0, status: 'resolved', newIssueId: 'u-iss-1' });
+    next = reducer(next, { type: 'setIssueStatus', scope: null, index: 0, status: 'dismissed', newIssueId: 'u-iss-2' });
     expect(next.doc.assignments[0].issues?.[0].status).toBe('resolved');
     expect(next.doc.issues?.[0].status).toBe('dismissed');
-    next = reducer(next, { type: 'setIssueStatus', scope: null, index: 0, status: 'open' });
+    next = reducer(next, { type: 'setIssueStatus', scope: null, index: 0, status: 'open', newIssueId: 'u-iss-3' });
     expect(next.doc.issues?.[0].status).toBeUndefined();
   });
 
@@ -134,5 +134,50 @@ describe('reducer', () => {
   it('compares fields ignoring empty values and key order', () => {
     expect(changedFields({ a: [], b: { x: 1, y: 2 } }, { b: { y: 2, x: 1 } })).toEqual([]);
     expect(changedFields({ title: 'A' }, { title: 'B', status: 'done' })).toEqual(['title']);
+  });
+
+  it('gives an id to an issue resolved without one', () => {
+    const state = stateWith({ issues: [{ kind: 'workload', message: 'busy' }] });
+    const next = reducer(state, { type: 'setIssueStatus', scope: null, index: 0, status: 'resolved', newIssueId: 'u-iss-abc' });
+    expect(next.doc.issues?.[0]).toMatchObject({ id: 'u-iss-abc', status: 'resolved' });
+  });
+
+  it('records a task reorder as a `tasks` override', () => {
+    const state = stateWith({ assignments: [essay] });
+    const reordered = { ...essay, tasks: [essay.tasks![1], essay.tasks![0]] };
+    const next = reducer(state, { type: 'upsertAssignment', item: reordered, now: NOW });
+    expect(next.doc.assignments[0].overrides).toEqual(['tasks']);
+  });
+
+  it('deletes sitting events and root issues together with an assignment', () => {
+    const state = stateWith({
+      assignments: [essay],
+      events: [{ id: 'evt-sitting', origin: 'generated', title: 'Essay presentation', assignmentId: 'gc-essay', date: '2026-10-17', startTime: '08:00', endTime: '09:00' }],
+      scheduleBlocks: [{ id: 'blk-9', origin: 'generated', start: '2026-10-08T16:00:00', end: '2026-10-08T16:30:00', assignmentId: 'gc-essay' }],
+      issues: [
+        { kind: 'conflict', message: 'task', itemId: 'gc-essay-t1' },
+        { kind: 'conflict', message: 'block', itemId: 'blk-9' },
+        { kind: 'workload', message: 'keep' },
+      ],
+    });
+    const next = reducer(state, { type: 'deleteAssignment', id: 'gc-essay', now: NOW });
+    expect(next.doc.events).toEqual([]);
+    expect(next.doc.issues?.map((i) => i.message)).toEqual(['keep']);
+    expect(next.doc.deleted?.map((d) => d.id)).toEqual(['gc-essay', 'gc-essay-t1', 'gc-essay-t2', 'evt-sitting']);
+  });
+
+  it("deletes or detaches a class's contents as asked", () => {
+    const doc = {
+      classes: [{ id: 'gc-class-1', origin: 'generated' as const, name: 'English' }],
+      assignments: [{ ...essay, classId: 'gc-class-1' }],
+      events: [{ id: 'u-evt-1', origin: 'user' as const, title: 'English club', classId: 'gc-class-1', date: '2026-10-09', startTime: '15:00', endTime: '16:00' }],
+    };
+    const kept = reducer(stateWith(doc), { type: 'deleteClass', id: 'gc-class-1', deleteContents: false, now: NOW });
+    expect(kept.doc.assignments[0].classId).toBeUndefined();
+    expect(kept.doc.events[0].classId).toBeUndefined();
+    const removed = reducer(stateWith(doc), { type: 'deleteClass', id: 'gc-class-1', deleteContents: true, now: NOW });
+    expect(removed.doc.assignments).toEqual([]);
+    expect(removed.doc.events).toEqual([]);
+    expect(removed.doc.deleted?.map((d) => d.id)).toContain('gc-class-1');
   });
 });

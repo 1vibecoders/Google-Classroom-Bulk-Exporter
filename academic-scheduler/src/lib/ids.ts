@@ -4,7 +4,8 @@
 import { ID_PATTERN } from '../model/constants';
 import type { ScheduleDocument } from '../model/types';
 
-export type IdKind = 'cls' | 'asg' | 'tsk' | 'evt' | 'avl' | 'blk';
+/** `iss`: issue ids the website assigns; `exp`: export ids (meta.exportId). */
+export type IdKind = 'cls' | 'asg' | 'tsk' | 'evt' | 'avl' | 'blk' | 'iss' | 'exp';
 
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 

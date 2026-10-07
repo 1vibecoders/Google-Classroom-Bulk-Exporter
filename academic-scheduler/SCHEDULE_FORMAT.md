@@ -2,7 +2,7 @@
 
 This document is the complete, normative description of the JSON file that the
 **Academic Scheduler** website imports and exports, and that the Claude
-**`/schedule`** skill generates. The two components communicate only through
+**`/academic-schedule`** skill generates. The two components communicate only through
 this format.
 
 It is written so that a developer or an AI can produce valid files without
@@ -11,13 +11,13 @@ rules is shipped next to this file:
 [`schema/schedule-1.0.schema.json`](schema/schedule-1.0.schema.json).
 The JSON Schema cannot express every rule; the **semantic rules** in
 [§ 13](#13-validation-rules) also apply, and the website and the skill's
-validator (`skills/schedule/scripts/validate_schedule.py`) enforce all of them.
+validator (`skills/academic-schedule/scripts/validate_schedule.py`) enforce all of them.
 
 Terms used in this document:
 
 - **Person**: the student whose schedule this is.
 - **Writer**: any program that writes a schedule file: a **generator** (such
-  as the `/schedule` skill) or the website's export.
+  as the `/academic-schedule` skill) or the website's export.
 - **Item**: a class, assignment, task, event, availability window or schedule
   block.
 - **Protected item**: an item with `origin: "user"` or `locked: true` (§ 6).
@@ -64,11 +64,14 @@ are used as in RFC 2119.
   (camelCase).
 - **Unknown properties are invalid**, with one exception: property names that
   start with `x-` (for example `"x-myTool": {...}`) are allowed on the root
-  object, on every item and on every other object defined here except
-  `estimateRange`. Readers MUST ignore their meaning and MUST preserve them
-  unchanged when they re-export the object.
+  object, on every item and on every other object defined here
+  (`estimateRange`, `recurrence`, sources, references, issues, … included).
+  Their values are opaque JSON (any value, `null` included). Readers MUST
+  ignore their meaning and MUST preserve them unchanged when they re-export
+  the object (an import merges them key by key, § 16.3).
 - `null` is **not** a valid value for any field defined here. Omit an optional
-  field instead of setting it to `null`.
+  field instead of setting it to `null`. (Inside the value of an `x-…`
+  property, `null` is allowed.)
 - The maximum file size the website accepts is 10 MB.
 
 ## 2. Versioning
@@ -100,17 +103,32 @@ Rules:
 | --- | --- | --- | --- |
 | **ID** | 1–100 characters; first character a letter or digit; then letters, digits, `.` `_` `:` `-`. Regex `^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$`. Case-sensitive. | `english-essay-2026-10-16`, `gc-NjI3ODk0MjE0NTQ5`, `blk:001` | `""`, `-abc`, `my essay`, `essay/1` |
 | **Date** | `YYYY-MM-DD`, a real calendar date | `2026-10-16` | `2026-2-3`, `2026-02-30`, `10/16/2026` |
-| **Time** | `HH:MM`, 24-hour clock, zero-padded, `00:00`–`23:59` | `08:00`, `15:30`, `23:59` | `8:00`, `3:30 PM`, `24:00` |
-| **LocalDateTime** | `YYYY-MM-DDTHH:MM` or `YYYY-MM-DDTHH:MM:SS`, **no** time-zone suffix | `2026-10-16T23:59:00`, `2026-10-13T16:00` | `2026-10-16T23:59:00Z`, `2026-10-16T23:59:00-04:00`, `2026-10-16 23:59` |
+| **Time** | `HH:MM`, 24-hour clock, zero-padded, `00:00`–`23:59` | `08:00`, `15:30`, `23:59` | `8:00`, `3:30 PM`, `24:00` (allowed only where the type is EndTime) |
+| **EndTime** | a Time, or `24:00` (midnight at the end of the day). Used for event and availability `endTime` and `settings.dayEndTime`. Regex `^(([01][0-9]\|2[0-3]):[0-5][0-9]\|24:00)$` | `21:30`, `24:00` | `24:30`, `25:00` |
+| **LocalDateTime** | `YYYY-MM-DDTHH:MM` or `YYYY-MM-DDTHH:MM:SS` with seconds `00`, **no** time-zone suffix | `2026-10-16T23:59:00`, `2026-10-13T16:00` | `2026-10-16T23:59:00Z`, `2026-10-16T23:59:00-04:00`, `2026-10-16 23:59`, `2026-10-16T23:59:30` |
 | **DateOrDateTime** | a Date **or** a LocalDateTime | `2026-10-20`, `2026-10-20T09:00` | as above |
 | **Weekday** | one of `"mon"`, `"tue"`, `"wed"`, `"thu"`, `"fri"`, `"sat"`, `"sun"` | `"wed"` | `"Wednesday"`, `"W"`, `3` |
 | **Color** | `#RRGGBB` hexadecimal | `#3B82F6`, `#e11d48` | `blue`, `#FFF`, `rgb(0,0,0)` |
 | **Minutes** | integer, `0`–`10000` | `45`, `180` | `45.5`, `"45"`, `-10` |
 | **URL** | absolute `http:` or `https:` URL, ≤ 2000 characters | `https://classroom.google.com/c/abc` | `javascript:alert(1)`, `/relative/path` |
-| **Text** | string; limits per field below; leading/trailing whitespace is trimmed by the website | | |
+| **Text** | string; limits per field below | | a required Text of only spaces |
 
-Seconds in a LocalDateTime are accepted but the website works in whole
-minutes; `:SS` other than `:00` is rounded down to the minute.
+- **Seconds.** The seconds of a LocalDateTime, when present, MUST be `:00`
+  (regex `…T([01][0-9]|2[0-3]):[0-5][0-9](:00)?`); the format works in whole
+  minutes.
+- **Lengths** (of Text, IDs and URLs) are counted in Unicode code points, not
+  in UTF-16 units or bytes (`"😀"` is 1 character).
+- **Text.** Implementations trim leading and trailing whitespace of Text on
+  input. A **required** Text field (`title`, `name`, `message`, `reason`,
+  reference `title`, `generator.name`) MUST contain at least one
+  non-whitespace character.
+- **Integers** (Minutes, `interval`, the session settings) are JSON numbers
+  whose value has no fractional part (`45`; `45.0` is the same number).
+  Writers write them without a decimal point.
+- **Patterns** (the regexes above and in the JSON Schema) must match the
+  **whole** value. Python validators MUST use full-match semantics
+  (`re.fullmatch`), because Python's `$` also matches before a trailing
+  newline (`"2026-10-16\n"` is not a valid Date).
 
 What a Date without a time means for a `due` or an `assessmentDate` is defined
 in § 8 ("Date-only values"); how dates are compared by the validation rules
@@ -176,17 +194,19 @@ All fields optional.
 | --- | --- | --- |
 | `title` | Text ≤ 200 | A name for the schedule, e.g. `"Fall 2026"`. |
 | `generatedAt` | LocalDateTime | When the file was written, as wall-clock time in `timezone` (§ 4), e.g. `2026-10-11T19:30:00`. No offset, no `Z`. |
-| `generator` | object `{ "name": Text 1–100 (required), "version": Text ≤ 50 }` | The program that wrote the file, e.g. `{"name": "claude-schedule-skill", "version": "1.0"}` or `{"name": "Academic Scheduler", "version": "1.0.0"}`. |
+| `generator` | object `{ "name": Text 1–100 (required), "version": Text ≤ 50 }` | The program that wrote the file, e.g. `{"name": "academic-schedule-skill", "version": "1.0"}` or `{"name": "Academic Scheduler", "version": "1.0.0"}`. |
 | `timezone` | Text ≤ 100 | IANA time-zone name (§ 4). |
+| `exportId` | ID | **Website only.** A new ID that the website writes on every export (§ 17), e.g. `u-exp-r8k2m4v1`. Generators MUST NOT write it. |
+| `basedOn` | ID | **Generators only.** The `exportId` of the input schedule this file was made from (or the input's `basedOn` when it has no `exportId`). Absent when no existing schedule was given: the file is then a "fresh" file (§ 16.2). |
 | `sources` | array of [Source](#source) | The materials the file was generated from (input schedule, Classroom export, syllabus, …). |
 | `requestedChanges` | array of [Requested change](#requested-change) | The changes a generator made to protected items in the run that wrote this file (§ 15.9). |
 
 Every writer replaces `generator` and `generatedAt` with its own values and
-writes `timezone` (§ 4). Generators set `sources` to the materials used in
-the run, keep `title` unless the person asks to change it, and write
-`requestedChanges` only for the run's own changes (§ 15.1). The website keeps
-`title` and `sources` from the last import and never writes
-`requestedChanges` (§ 17).
+writes `timezone` (§ 4). Generators set `basedOn` (§ 15.1), set `sources` to
+the materials used in the run, keep `title` unless the person asks to change
+it, and write `requestedChanges` only for the run's own changes (§ 15.1). The
+website writes a fresh `exportId`, keeps `title` and `sources` from the last
+import and never writes `basedOn` or `requestedChanges` (§ 17).
 
 ### Settings
 
@@ -199,7 +219,7 @@ a file's settings (§ 16.6).
 | --- | --- | --- | --- |
 | `weekStartsOn` | `"monday"` \| `"sunday"` | `"monday"` | First day of the week in week views. |
 | `dayStartTime` | Time | `"07:00"` | Earliest time shown in day/week timelines. |
-| `dayEndTime` | Time | `"22:00"` | Latest time shown (must be later than `dayStartTime`). |
+| `dayEndTime` | EndTime | `"22:00"` | Latest time shown (must be later than `dayStartTime`; `"24:00"` = midnight). |
 | `defaultDueTime` | Time | `"00:00"` | Time of day at which a date-only `due` is planned (§ 8). The default `00:00` means "finish by the end of the day before"; the person can set e.g. `"23:59"` to plan up to the end of the due date. |
 | `minSessionMinutes` | Minutes (5–240) | `20` | Shortest work session worth scheduling. |
 | `maxSessionMinutes` | Minutes (10–480) | `60` | Longest single work session; must be ≥ `minSessionMinutes`. |
@@ -220,7 +240,7 @@ generator puts an issue is defined in § 15.8.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id` | ID | no | Stable identifier, so that the person's decision about the issue survives later runs (§ 15.8), e.g. `gc-NzAwMDAwMDAwMDAx:conflict:assessmentDate`, `workload:2026-10-15`. Unique among all issues of the file (root issues and the issues of every item and task). Issue IDs are a separate namespace from item IDs. |
+| `id` | ID | no (generators MUST write it, § 15.8) | Stable identifier, so that the person's decision about the issue survives later runs (§ 15.8), e.g. `gc-NzAwMDAwMDAwMDAx:conflict:due:20261017T2359`, `workload:2026-10-15`. Unique among all issues of the file (root issues and the issues of every item and task). Issue IDs are a separate namespace from item IDs. When the person resolves or dismisses an issue that has no `id`, the website gives it one (`u-iss-<8 random characters>`). |
 | `kind` | `"ambiguity"` \| `"conflict"` \| `"missing_information"` \| `"workload"` \| `"other"` | **yes** | `ambiguity`: the source can be read more than one way. `conflict`: sources disagree, or a source disagrees with a value the person set. `missing_information`: something needed is not in the sources. `workload`: the schedule is tight or impossible. |
 | `message` | Text 1–1000 | **yes** | Plain-language explanation, e.g. `"Syllabus says the midterm is Oct 21; Classroom says Oct 20. Using Oct 21 (syllabus)."` |
 | `field` | Text ≤ 100 | no | The field the issue is about, e.g. `"due"`, `"estimatedMinutes"`. |
@@ -235,10 +255,11 @@ Where an item (or the whole file) came from. Informational; preserved as is.
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `kind` | see below | **yes** | Type of source. |
-| `id` | Text ≤ 200 | no | The source's own identifier (e.g. the Google Classroom course or item id in URL form, § 14.1). |
+| `id` | Text ≤ 200 | no | The source's own identifier (e.g. the Google Classroom course or item id in URL form, § 14.1). Work derived from the text of a Classroom item has no own identifier: its `source` has no `id` (§ 14.1). |
 | `url` | URL | no | Link to the source (e.g. the Classroom page). |
 | `path` | Text ≤ 500 | no | Path of the file inside an export, e.g. `English 10/Assignments/Othello Essay/metadata.json`. |
 | `label` | Text ≤ 200 | no | Human-readable name, e.g. `"English 10 syllabus (PDF), p. 2"`. |
+| `retrievedAt` | LocalDateTime | no | When the source was captured, as wall-clock time in `meta.timezone` (§ 4). For a Google Classroom export: its `exportedAt` (`class-info.json` or `export-manifest.json`, a UTC time) converted to local time. Generators write it on the `source` of Classroom classes and on the Classroom entries of `meta.sources`; it decides whether a later export is newer (§ 15.6). |
 
 | `kind` | Use for |
 | --- | --- |
@@ -247,7 +268,7 @@ Where an item (or the whole file) came from. Informational; preserved as is.
 | `calendar` | A school calendar, exam calendar or personal calendar export. |
 | `document` | Any other document: assignment sheet, rubric, handbook, … |
 | `image` | A photo or screenshot, e.g. of a whiteboard or a planner page. |
-| `user` | What the person told the generator; `label` e.g. `"Told /schedule on 2026-10-11"` (§ 15.5). |
+| `user` | What the person told the generator; `label` e.g. `"Told /academic-schedule on 2026-10-11"` (§ 15.5). |
 | `schedule` | An input `schedule.json`. |
 | `other` | Anything else. |
 
@@ -262,7 +283,7 @@ import does not silently bring it back (§ 16.2).
 | `id` | ID | **yes** | The deleted item's ID. Unique within `deleted`; no item in the file may have this ID. |
 | `collection` | `"classes"` \| `"assignments"` \| `"tasks"` \| `"events"` \| `"availability"` \| `"scheduleBlocks"` | **yes** | Where the item was. |
 | `deletedAt` | LocalDateTime | **yes** | When the person deleted it. |
-| `sourceId` | Text ≤ 200 | no | The deleted item's `source.id`, when it had one (never for tasks, which have no `source`). |
+| `sourceId` | Text ≤ 200 | no | The deleted item's `source.id`; when its `source` has no `id`, the `id` of the first entry of its `sources` that has one. Absent when it had neither (always for tasks, which have no `source`). |
 | `title` | Text ≤ 300 | no | The item's title, name or label, for display. |
 
 The list holds at most 5000 entries; when it would grow beyond that, the
@@ -303,7 +324,7 @@ Tasks have `id`, `origin`, `locked`, `overrides` and `issues`, but no
 - **`user`**: created by the person in the website (IDs start with `u-`,
   § 14). The whole item, including its tasks, is person-owned. Generators
   MUST NOT modify or delete it, except through a requested change (§ 15.9).
-- **`generated`**: created by a generator such as the `/schedule` skill,
+- **`generated`**: created by a generator such as the `/academic-schedule` skill,
   including items it created from what the person told it (those carry a
   `source` of kind `user`, § 15.5). Later generator runs MAY update its
   generator-owned fields unless it is locked or the field is overridden
@@ -345,6 +366,13 @@ the **person** set. It is person-owned:
   to the item.
 - An array or object field (`tasks`, `references`, `recurrence`,
   `estimateRange`, …) is overridden as a whole.
+- Each edit is recorded in one way only. An edit of a task goes into that
+  task's own `overrides`; the website adds `tasks` to the assignment's
+  `overrides` only when the person reorders its tasks. A task the person adds
+  is a `user` task; deleting a `generated` task writes a tombstone (§ 16.4).
+  Moving or resizing a block sets `locked` (§ 6.2) and writes nothing to
+  `overrides`. Changes that the website makes as a consequence of a deletion
+  (§ 16.4) are not edits and add nothing to `overrides`.
 - On an `origin: "user"` item `overrides` has no effect (the whole item is
   person-owned); the website does not write it there.
 - During an import the current item's overridden values are kept (§ 16.3).
@@ -388,7 +416,8 @@ later runs keep `"high"`:
       "path": "English 10 - Period 3/Materials/Othello full text/Attachments/Othello (Folger edition).pdf" }
   ],
   "origin": "generated",
-  "source": { "kind": "google_classroom", "id": "NjI3ODk0MjE0NTQ5", "url": "https://classroom.google.com/c/NjI3ODk0MjE0NTQ5" }
+  "source": { "kind": "google_classroom", "id": "NjI3ODk0MjE0NTQ5", "url": "https://classroom.google.com/c/NjI3ODk0MjE0NTQ5",
+              "retrievedAt": "2026-10-11T18:05:00" }
 }
 ```
 
@@ -464,7 +493,7 @@ exams, or a study goal.
 | `sourceState` | `"present"` \| `"missing"` \| `"withdrawn"` | no | `"present"` | Generator-owned. `missing`: not found in a newer, complete export of the same source (§ 15.6). `withdrawn`: the source explicitly removed, cancelled or excused it. The website shows `missing`/`withdrawn` work with a badge and excludes it from automatic planning and from remaining-work and overload totals unless `status` is `"in_progress"`. |
 | `tasks` | array of [Task](#9-tasks-subtasks) | no | `[]` | Steps of the assignment, in recommended order. |
 | `references` | array of [Reference](#82-reference) | no | `[]` | Attachments, links and materials. |
-| `dependsOn` | array of assignment IDs | no | `[]` | Assignments that should be finished first (e.g. a reading before its quiz). Must exist, must not include itself, no cycles. |
+| `dependsOn` | array of assignment IDs, unique | no | `[]` | Assignments that should be finished first (e.g. a reading before its quiz). Must exist, must not include itself, no cycles. |
 
 **`type` values:**
 
@@ -598,7 +627,7 @@ Large assignments are split into tasks. Simple homework normally has no tasks.
 | `completedAt` | LocalDateTime | no | | Only with `status: "done"`. |
 | `required` | boolean | no | `true` | `false` for an optional step; it is not planned automatically and not counted in remaining work unless it already has planned blocks (§ 8.1). |
 | `due` | DateOrDateTime | no | | **Checkpoint deadline**: a hard deadline for this step set by the source (e.g. "bring your outline to class on Tuesday"). Not later than the assignment's `due`. A Date without a time means "time not stated" (§ 8). |
-| `dependsOn` | array of task IDs | no | `[]` | Tasks **of the same assignment** that must be done first. No cycles. |
+| `dependsOn` | array of task IDs, unique | no | `[]` | Tasks **of the same assignment** that must be done first. No cycles. |
 | `recommendedStartDate` | Date | no | | Earliest sensible day to start. |
 | `recommendedCompletionDate` | DateOrDateTime | no | | When it should be done (a soft target). |
 
@@ -640,7 +669,7 @@ that week, § 15.5):
 { "id": "evt-fencing", "title": "Fencing", "category": "activity",
   "startTime": "16:00", "endTime": "18:00",
   "recurrence": { "frequency": "weekly", "daysOfWeek": ["mon"], "startDate": "2026-10-05" },
-  "origin": "generated", "source": { "kind": "user", "label": "Told /schedule on 2026-10-09" } }
+  "origin": "generated", "source": { "kind": "user", "label": "Told /academic-schedule on 2026-10-09" } }
 ```
 
 A one-time event:
@@ -656,7 +685,7 @@ The sitting of an assessment outside school, linked to its assignment:
 { "id": "evt-piano-theory-exam-2026-10-24", "title": "Piano theory exam", "category": "appointment",
   "assignmentId": "piano-theory-exam-2026-10-24",
   "date": "2026-10-24", "startTime": "09:00", "endTime": "11:00",
-  "origin": "generated", "source": { "kind": "user", "label": "Told /schedule on 2026-10-11" } }
+  "origin": "generated", "source": { "kind": "user", "label": "Told /academic-schedule on 2026-10-11" } }
 ```
 
 | Field | Type | Required | Default | Description |
@@ -671,7 +700,7 @@ The sitting of an assessment outside school, linked to its assignment:
 | `recurrence` | [Recurrence](#recurrence) | one of `date`/`recurrence` | | Repetition rule. |
 | `allDay` | boolean | no | `false` | All-day event; then `startTime`/`endTime` MUST be absent. |
 | `startTime` | Time | if not `allDay` | | Start. |
-| `endTime` | Time | if not `allDay` | | End; MUST be later than `startTime` (events cannot cross midnight in 1.0). |
+| `endTime` | EndTime | if not `allDay` | | End; MUST be later than `startTime`. `"24:00"` means midnight at the end of the day; events cannot cross midnight in 1.0. |
 | `busy` | boolean | no | `true` | `true`: the person is not available for study during the event. `false`: informational only. An all-day busy event blocks the whole day. |
 | `location` | Text ≤ 200 | no | | Where. |
 | `notes` | Text ≤ 10000 | no | | Person-owned notes. |
@@ -703,7 +732,18 @@ An event occurs on date *d* when **all** of these hold:
 3. *d* is not in `exceptDates`;
 4. `((monday(d) − monday(startDate)) in days / 7) mod interval = 0`, where
    `monday(x)` is the Monday of the Monday-to-Sunday week containing *x*
-   (independent of `settings.weekStartsOn`).
+   (independent of `settings.weekStartsOn`). The difference is in whole
+   calendar days computed on dates (e.g. as epoch-day numbers), never on
+   timestamps, so daylight-saving changes cannot shift it.
+
+   Worked vectors (`interval: 2`):
+   - `startDate` 2026-10-14 (a Wednesday), `daysOfWeek` `["mon"]` → 2026-10-26,
+     2026-11-09, 2026-11-23, … (Monday 2026-10-12 is before `startDate`;
+     2026-10-19 is in an odd week).
+   - `startDate` 2026-10-11 (a Sunday), `daysOfWeek` `["sun", "mon"]` →
+     2026-10-11, 2026-10-19, 2026-10-25, 2026-11-02, 2026-11-08, … (the week of
+     2026-10-11 starts on Monday 2026-10-05, so Monday 2026-10-12 is in the
+     following, odd week).
 
 To cancel one occurrence (e.g. "no school on Nov 26"), add the date to
 `exceptDates`. To move one occurrence, add the original date to
@@ -727,7 +767,7 @@ An availability window is **recurring** (`recurrence`) or for **one date**
 ```json
 { "id": "avail-saturday-morning-1000-1200", "label": "Saturday morning", "date": "2026-10-17",
   "startTime": "10:00", "endTime": "12:00",
-  "origin": "generated", "source": { "kind": "user", "label": "Told /schedule on 2026-10-11" } }
+  "origin": "generated", "source": { "kind": "user", "label": "Told /academic-schedule on 2026-10-11" } }
 ```
 
 | Field | Type | Required | Description |
@@ -737,7 +777,7 @@ An availability window is **recurring** (`recurrence`) or for **one date**
 | `date` | Date | one of `date`/`recurrence` | A single day. |
 | `recurrence` | [Recurrence](#recurrence) | one of `date`/`recurrence` | Repetition rule (same rules as events). |
 | `startTime` | Time | **yes** | Start. |
-| `endTime` | Time | **yes** | End; later than `startTime`. |
+| `endTime` | EndTime | **yes** | End; later than `startTime` (`"24:00"` = midnight at the end of the day). |
 
 **Free study time** on a day = the union of that day's availability windows,
 minus all busy events of that day. Overlapping windows are merged.
@@ -770,7 +810,7 @@ A schedule block puts work on the calendar. It **references** the assignment
 | --- | --- | --- | --- | --- |
 | `id`, `origin`, `locked`, `overrides`, `source`, `sources`, `issues` | | | | See § 6. `origin` may be `"planner"` (placed by the website's planner). Moving or resizing a `generated` or `planner` block in the website sets `locked: true`. |
 | `start` | LocalDateTime | **yes** | | Start. |
-| `end` | LocalDateTime | **yes** | | End. Same calendar day as `start`, later than `start`, at least 5 minutes after it. |
+| `end` | LocalDateTime | **yes** | | End, at least 5 minutes after `start`. On the same calendar date as `start`, or `00:00` of the next date, which means midnight at the end of the start date (`"start": "2026-10-13T23:00:00", "end": "2026-10-14T00:00:00"`). |
 | `assignmentId` | ID | one of `assignmentId`/`title` | | The assignment worked on. MUST exist. |
 | `taskId` | ID | no | | A task of that assignment. Requires `assignmentId`; MUST belong to it. |
 | `title` | Text 1–200 | one of `assignmentId`/`title` | | Label for blocks without an assignment (e.g. `"Review flashcards"`), or an override label. |
@@ -789,7 +829,9 @@ time when it is absent, § 16.1); otherwise the website's current time.
 - A block is **past** when `end ≤ now`, **future** when `start ≥ now`, and
   **in progress** when `start < now < end`.
 - Generators and the import treat an in-progress block as past: it is kept
-  unchanged. In remaining work it counts as `planned` (§ 8.1).
+  unchanged, except that a past `planned` block may be marked `done` or
+  `skipped` (§ 15.7, § 16.3). In remaining work it counts as `planned`
+  (§ 8.1).
 - A past block whose `status` is still `planned` counts as **not done**. The
   website prompts the person to mark such blocks `done` or `skipped`.
 
@@ -812,8 +854,11 @@ A file is valid only if **all** rules in § 13.1–13.3 hold. The website
 rejects an invalid file as a whole and lists every problem with its location
 (e.g. `assignments[3].due`). Each rule is marked:
 
-- **[S]** — expressed in the JSON Schema; any JSON Schema 2020-12 validator
-  enforces it.
+- **[S]** — expressed in the JSON Schema; any conforming JSON Schema 2020-12
+  validator enforces it. Patterns must match the whole value (§ 3): a Python
+  validator MUST check them with full-match semantics, because Python's `$`
+  also matches before a trailing newline (so, for example, the `jsonschema`
+  package on its own accepts `"2026-10-16\n"` as a Date).
 - **[V]** — semantic; the JSON Schema cannot express it. The website and
   `validate_schedule.py` enforce it.
 
@@ -822,12 +867,14 @@ rejects an invalid file as a whole and lists every problem with its location
 1. **[S]** The root is an object; `schemaVersion` is the string `"1.0"`;
    `classes`, `assignments`, `events`, `availability` and `scheduleBlocks`
    are present and are arrays.
-2. **[S]** Every field has the type, format, length, numeric range, array size
-   and enum value given in §§ 3–12 (for example `sources` ≤ 20 entries, class
-   `topics` and `references` ≤ 200 entries, `deleted` ≤ 5000 entries,
-   `requestedChanges[].reason` 1–500 characters).
+2. **[S]** Every field has the type, format, length, numeric range, array size,
+   uniqueness and enum value given in §§ 3–12 (for example `sources` ≤ 20
+   entries, class `topics` and `references` ≤ 200 entries, `deleted` ≤ 5000
+   entries, `requestedChanges[].reason` 1–500 characters, unique `dependsOn`
+   entries).
 3. **[S]** No unknown properties except `x-…` properties (§ 1).
-4. **[S]** No `null` values.
+4. **[S]** No `null` values, except inside the value of an `x-…` property
+   (§ 1).
 5. **[S]** Events and availability have exactly one of `date` and
    `recurrence`. Events: `allDay: true` → no `startTime`/`endTime`;
    otherwise both are present and `endDate` is absent; `endDate` requires
@@ -844,6 +891,8 @@ rejects an invalid file as a whole and lists every problem with its location
     that item type (§ 6.3) or an `x-…` name.
 12. **[V]** Every Date, and the date part of every LocalDateTime, is a real
     calendar date (`2026-02-30` matches the schema's pattern but is invalid).
+    Every required Text field (`title`, `name`, `message`, `reason`, …)
+    contains a non-whitespace character (§ 3).
 
 ### 13.2 IDs and references
 
@@ -870,10 +919,12 @@ rejects an invalid file as a whole and lists every problem with its location
 
 ### 13.3 Times, dates and estimates
 
-19. **[V]** Block `end` is on the same date as `start` and at least 5 minutes
-    later.
-20. **[V]** Events and availability: `endTime` > `startTime`; event `endDate`
-    ≥ `date`; recurrence `endDate` ≥ `startDate`.
+19. **[V]** Block `end` is at least 5 minutes after `start`, and is on the
+    same date as `start` or is `00:00` of the next date (midnight at the end
+    of the start date).
+20. **[V]** Events and availability: `endTime` > `startTime` (`24:00` is
+    later than every Time); event `endDate` ≥ `date`; recurrence `endDate` ≥
+    `startDate`.
 21. **[V]** Assignments: `recommendedCompletionDate` ≤ `due`; when there is no
     `due`, `recommendedCompletionDate` ≤ `assessmentDate`.
 22. **[V]** Tasks:
@@ -886,7 +937,10 @@ rejects an invalid file as a whole and lists every problem with its location
 23. **[V]** `estimateRange.min` ≤ `estimateRange.max`, and `min` ≤
     `estimatedMinutes` ≤ `max`.
 24. **[V]** `settings.dayEndTime` > `dayStartTime`; `maxSessionMinutes` ≥
-    `minSessionMinutes`.
+    `minSessionMinutes`. These are checked after defaults are applied (an
+    absent setting takes its default), so `{"dayStartTime": "23:00"}` (end
+    `22:00` by default) and `{"minSessionMinutes": 100}` (maximum `60` by
+    default) are invalid.
 
 **Comparing dates in rules 21–22:** when both values have a time, they are
 compared as date-times; when either value is a Date without a time, only the
@@ -975,11 +1029,21 @@ work session) **forever**.
 - **Blocks**: `YYYYMMDDHHMM` is the `meta.generatedAt` of the run that creates
   the block; `N` = 1, 2, … counts the blocks that run creates for that
   assignment (or title).
-- Assignment IDs derived by generators SHOULD be at most 80 characters (cut
-  the slug parts), so that derived task and block IDs stay within 100.
+- **Derived work** (`gc-<itemId>-<slug(title)>`): its `source` names the
+  Classroom item it was found in (`kind` `google_classroom`, with `url`,
+  `path` and `label`) but has **no `id`**, because several items can come
+  from one announcement. Such items are matched by ID and title (§ 15.3).
+- **Length.** Assignment IDs derived by generators SHOULD be at most 78
+  characters **including** any collision suffix (cut the slug parts before
+  appending `-b`, `-c`, …), so that derived task IDs and block IDs (`blk-` +
+  78 + `-YYYYMMDDHHMM-` + up to 4 digits) stay within 100 characters. Every
+  derived ID MUST be at most 100 characters: when it would be longer (for
+  example because it contains a long ID written by another tool), cut the
+  part taken from that ID or slug until it fits.
 - **Collisions**: when a derived ID is already used by a different item or
   listed in `deleted` for a different item, append `-b`, `-c`, … until it is
-  free.
+  free. Whether an existing item with the derived ID is the same item or a
+  different one is decided by § 15.3, rule 1.
 - The `u-` prefix stays reserved for IDs created by the website.
 
 ### 14.2 Year-less Classroom dates
@@ -992,7 +1056,7 @@ When two years are about equally plausible, they add an `ambiguity` issue.
 
 ## 15. Updating an existing schedule (rules for generators)
 
-When a generator (such as the `/schedule` skill) is given an existing
+When a generator (such as the `/academic-schedule` skill) is given an existing
 `schedule.json` together with new materials or instructions, it MUST produce
 an **updated copy of that file**, not a new file from scratch. § 15.3–15.9
 also apply when there is no input schedule.
@@ -1010,18 +1074,27 @@ also apply when there is no input schedule.
    its summary. It writes `meta.generatedAt` (now, as a LocalDateTime) and
    `meta.timezone`. Past, future and in progress are defined in § 12.1.
 3. **Meta.** Replace `meta.generator` and `meta.generatedAt`. Set
-   `meta.sources` to the materials used in this run, including the input
-   schedule (kind `schedule`). Keep `meta.title` unless the person asks to
-   change it. `meta.requestedChanges` lists only this run's changes
-   (§ 15.9); never copy it from the input.
+   `meta.basedOn` to the input schedule's `meta.exportId` (or, when the input
+   has no `exportId`, copy its `basedOn`); omit `basedOn` when no existing
+   schedule was given. Never write `meta.exportId` (only the website's export
+   writes it, § 17). Set `meta.sources` to the materials used in this run,
+   including the input schedule (kind `schedule`). Keep `meta.title` unless
+   the person asks to change it. `meta.requestedChanges` lists only this
+   run's changes (§ 15.9); never copy it from the input.
 4. **Settings** are person-owned: copy them unchanged unless the person asked
    in this request to change one, and describe every changed setting in the
-   summary. (The website asks the person before it takes a file's settings,
-   § 16.6.)
+   summary, telling the person to tick it in the import preview (the website
+   asks the person before it takes a file's settings, § 16.6).
 5. **Tombstones.** Copy `deleted` unchanged. Never create an item whose `id`
-   is listed there, nor an item whose `source.id` equals the `sourceId` of an
-   entry of the same collection. A generator MAY append entries for
-   `generated` items that it removes itself under these rules.
+   is listed there, nor an item whose `source.id`, or the `id` of an entry of
+   its `sources`, equals the `sourceId` of an entry of the same collection.
+   An item without a source id, and a task, MUST NOT be created either when a
+   tombstone of the same collection has the same normalized `title` (§ 15.3;
+   for a task: a tombstone whose ID starts with `<assignmentId>-t`), unless
+   the person asks for it in this request; occurrences of recurring academic
+   work (§ 15.5) are exempt, since their date is part of their ID. A
+   generator MAY append entries for `generated` items that it removes itself
+   under these rules.
 
 ### 15.2 Protected items and person-owned fields
 
@@ -1046,28 +1119,70 @@ also apply when there is no input schedule.
 
 ### 15.3 Match before creating an item
 
-Before creating any item, a generator MUST look for an existing item that
-represents the same thing, in this order:
+Matching applies to classes, assignments, tasks, events and availability
+windows. Before creating one, a generator MUST look for an item that
+represents the same thing — in the input schedule and among the items it has
+already created in this run — in this order:
 
-1. an item with the same `id` (the ID § 14.1 would derive);
-2. an item with the same `source.kind` and `source.id`, as its `source` or in
-   its `sources`;
-3. an item of the same collection with the same `classId` (or both without
-   one), the same type family, the same normalized title and — when both
-   have a date — dates at most 7 days apart.
+1. an item of the same collection with the same `id` (the ID § 14.1 would
+   derive), when that ID comes from a source id (`gc-class-…`, `gc-…`) or is
+   an occurrence of recurring academic work (`<seriesSlug>-<YYYY-MM-DD>`).
+   For an ID derived from a title (`cls-…`, `evt-…`, `avail-…`, the IDs of
+   items from documents or from what the person said), an existing item with
+   that ID is a match only when rule 3 also holds; otherwise the new item is
+   a different one and gets a collision suffix (§ 14.1);
+2. an item of the same collection whose `source`, or an entry of whose
+   `sources`, has the same `kind` and `id` (derived work has no `source.id`,
+   § 14.1, so it is matched by rules 1 and 3 only);
+3. as a **fallback** for what rules 1–2 cannot match: an item of the same
+   collection with the same `classId` (or both without one), the same type
+   family, the same normalized title, and either no date on both or dates
+   **fewer than 7 days** apart.
    - Type families: assignments of type `quiz`, `test`, `exam` and
      `presentation` form one family, all other assignment types another; in
      the other collections the collection is the family.
-   - Normalized title: `slug(title)` without the 40-character limit (§ 14.1).
+   - Normalized title: `slug(x)` without the 40-character limit (§ 14.1) of
+     the `title` — for classes the `name`, for availability the `label` (or,
+     without one, its days or date as in § 14.1).
    - Dates compared (date parts only): `due`, else `assessmentDate` for
-     assignments; `date` or `recurrence.startDate` for events and
-     availability; `start` for blocks.
+     assignments; `due`, else `recommendedCompletionDate` for tasks; `date` or
+     `recurrence.startDate` for events and availability. Classes have none.
+   - Rule 3 MUST NOT match: (a) two items whose sources have the same `kind`
+     and both have an `id`, when the ids differ (e.g. this week's and last
+     week's Classroom post "Reading log"), except for a re-post (below);
+     (b) occurrences of recurring academic work (§ 15.5), which are matched
+     by ID only; (c) items of which only one has a date; (d) the two parts of
+     a recurring commitment that was split at a date (§ 15.5).
 
-Tasks are matched the same way within their assignment. The generator also
-checks `deleted` (§ 15.1, rule 5).
+Tasks are matched the same way within their assignment. **Schedule blocks are
+never matched**: every block a run creates is a new session, and existing
+blocks change only under § 15.7. The generator also checks `deleted`
+(§ 15.1, rule 5).
+
+- **Re-post.** A new Classroom item that looks like a re-post of an existing
+  item (rule 3 holds except for the different ids) whose own Classroom item
+  is absent from the same complete export (§ 15.6, rule 1) MAY be matched to
+  it: the existing item keeps its `id`, the new Classroom item becomes its
+  `source`, the old one moves into `sources`, `sourceState` stays
+  `"present"`, and an `ambiguity` issue is added.
+- **Several inputs, one item.** When two inputs of a run describe the same
+  work or the same course (a Classroom assignment and the syllabus entry for
+  the same test; a Classroom class and the syllabus's course), the generator
+  creates **one** item. Its ID and `source` come from the most specific
+  source, in this order: `google_classroom`, `syllabus` or `document`,
+  `calendar`, `image`, `user`; the other sources go into `sources`, and
+  disagreements become `conflict` issues. An existing item that gains a new
+  source keeps its ID and adds the source to `sources`.
+- **Different titles.** When the titles differ but the generator judges that
+  two items are the same (e.g. "Unit 2 Test" and "Unit 2 Test: Cells"), it
+  MAY match them (never against exclusions (a)–(d)) and adds an `ambiguity`
+  issue naming both titles.
 
 On a match the generator reuses the existing item's `id` and updates it under
-§ 15.4 where allowed. When the match is a **protected** item, it creates
+§ 15.4 where allowed. When a rule-1 or rule-2 match is a **protected** item,
+it is the same item: the generator leaves it unchanged and, when the source's
+values differ from it, adds a root `conflict` issue with `itemId` (§ 15.8).
+When a rule-3 (or different-titles) match is a protected item, it creates
 nothing new and adds a root issue `{"kind": "ambiguity", "itemId": "<that
 id>", "message": "…"}` explaining that the item was not added to avoid a
 duplicate — or, when the person asked to link the two, changes the protected
@@ -1081,10 +1196,15 @@ item through a requested change (§ 15.9).
    MUST keep the value of every field named in the item's `overrides`. When a
    source's value differs from an overridden value, it keeps the person's
    value and adds an issue to the item, e.g. `{"id":
-   "gc-NzAwMDAwMDAwMDAx:conflict:due", "kind": "conflict", "field": "due",
-   "message": "Classroom now says Oct 17; you set Oct 16. Keeping Oct 16."}`.
+   "gc-NzAwMDAwMDAwMDAx:conflict:due:20261017T2359", "kind": "conflict",
+   "field": "due", "message": "Classroom now says Oct 17, 11:59 PM; you set
+   Oct 16. Keeping Oct 16."}` (issue IDs: § 15.8). When the person asks in
+   this request to change an overridden field ("use the teacher's new
+   date"), the generator still keeps the person's value (the import keeps it
+   too, § 16.3) and tells the person in its summary to change the field in
+   the website.
 2. **Record surprising changes** as issues on the item, e.g.
-   `{"kind": "conflict", "field": "due", "message": "Due date moved from Oct 16 to Oct 17 in Classroom."}`.
+   `{"id": "gc-NzAwMDAwMDAwMDAy:conflict:due:20261014", "kind": "conflict", "field": "due", "message": "Due date moved from Oct 13 to Oct 14 in Classroom."}`.
 3. **Estimates.** `estimatedMinutes` is the total effort including work
    already done; a generator MUST NOT lower it to reflect progress. It
    changes an existing estimate only when the evidence changed (new
@@ -1096,12 +1216,32 @@ item through a requested change (§ 15.9).
    or referenced by a block that stays in the file MUST NOT be removed:
    - a `generated`, unlocked task that is not done gets `status: "cancelled"`
      instead;
-   - a `done` task stays as it is;
+   - a `done` task is neither removed nor cancelled; its other
+     generator-owned fields may still be updated;
    - a `user` or locked task changes only through a requested change
      (§ 15.9).
 
    New tasks get IDs `<assignmentId>-t<N>` with `N` greater than any number
-   used before (§ 14.1).
+   used before (§ 14.1). A task never changes assignment: generators MUST NOT
+   move a task to another assignment; they cancel the old task (or leave it,
+   under the rules above) and create a new one.
+5. **Only values the source states replace current ones.** A field is
+   changed only when the source states a value for it. When the field is
+   absent from the source, when the Classroom export was made with
+   `options.readItemPages` `false` or reports that the item's page could not
+   be read, or when the source gives a date without the time that an earlier
+   source gave, the generator keeps the current value — and writes it, since
+   an import removes fields that the file leaves out (§ 16.3).
+6. **Deadlines that move earlier.** When a generator moves a `due` or
+   `assessmentDate` earlier, it also moves the generator-owned dates that
+   § 13.3 orders before it (the assignment's `recommendedCompletionDate`, and
+   the dates of its `generated`, unlocked tasks, `done` ones included) so
+   that the file stays valid. It never changes a person-owned or protected
+   value (a field named in `overrides`, a date of a `user` or locked task):
+   when such a value would be later than the new deadline, it keeps the
+   current deadline, adds a `conflict` issue to the item saying that the
+   source moved the deadline and that the person's date must be changed
+   first, and plans the work so that it is finished by the new deadline.
 
 ### 15.5 Adding items
 
@@ -1116,20 +1256,33 @@ item through a requested change (§ 15.9).
    `topics` and the assignment's `topic`.
 3. **What the person says.** Items created from the person's own statements
    ("I have fencing Mondays 4–6") get `origin: "generated"` and
-   `"source": {"kind": "user", "label": "Told /schedule on <YYYY-MM-DD>"}`.
+   `"source": {"kind": "user", "label": "Told /academic-schedule on <YYYY-MM-DD>"}`.
    Later runs may update them like other generated items. § 15.6 never
    applies to items whose `source.kind` is `user`.
 4. **Commitments.** Do not create events or availability that the person did
    not state and the sources do not contain. When the person gives no start
-   date for a commitment, use the Monday of the week containing
+   date for a **new** commitment, use the Monday of the week containing
    `meta.generatedAt` as `recurrence.startDate` and omit `endDate`. Never
    guess term dates.
+
+   **Changing a recurring commitment from a date onward** ("fencing moved to
+   Tuesdays") does not rewrite its past. Let *d* be the date the person gives,
+   otherwise the date of the earliest occurrence of the old or the new rule
+   that starts after `meta.generatedAt`. Set the existing item's
+   `recurrence.endDate` to the day before *d*, and create a new item for the
+   new rule with `recurrence.startDate` *d* and an ID per § 14.1 with a
+   collision suffix (e.g. `evt-fencing-b`). For a protected item, the change
+   to the existing item is a requested change (§ 15.9). Edit the existing item in place
+   only when the person corrects a mistake ("fencing was always on
+   Tuesdays") or when *d* is not after its `startDate`. § 15.3 rule 3 never
+   matches the two parts of such a split.
 5. **Assessment sittings outside school** get an assignment and a linked
    event (§ 10).
 6. **Recurring academic work** ("vocabulary quiz every Friday", "read 20
    minutes every night"): create one dated assignment per occurrence within a
    stated horizon (default: the next 3 weeks), with IDs
-   `<seriesSlug>-<YYYY-MM-DD>`. Later runs add the next occurrences. There is
+   `<seriesSlug>-<YYYY-MM-DD>`. Later runs add the next occurrences, which
+   are matched by ID only (§ 15.3), never to an earlier occurrence. There is
    no recurrence field on assignments.
 7. **Dates.** Write a time whenever the source states one, a Date otherwise
    (§ 8). An online quiz or test with a deadline and no fixed sitting gets
@@ -1139,29 +1292,60 @@ item through a requested change (§ 15.9).
 ### 15.6 Items no longer in their source
 
 A generator MUST NOT delete a generated item because a newer source no
-longer lists it. For an **assignment**:
+longer lists it.
+
+**Only newer exports count.** A Google Classroom export is used to change
+items (§ 15.4) or to mark them missing only when its `exportedAt`
+(`class-info.json` or `export-manifest.json`) is later than the `retrievedAt`
+of the class's `source` (§ 5 Source); without a `retrievedAt` it counts as
+newer. When several exports of one course are supplied, only the newest is
+used. An older or equally old export changes nothing and is mentioned in the
+summary. After using an export, the generator sets the class's
+`source.retrievedAt` to the export's time (unless the class is protected).
+
+For an **assignment**:
 
 1. It counts as **missing** only when all of these hold:
-   - the inputs of this run include an export of the same course (the same
-     class `source.id`) that covers the item's type: assignments, questions,
-     materials and other coursework are always exported; announcements, and
-     work derived from them, only when the export's `includeAnnouncements`
-     option was on (`class-info.json` → `options.includeAnnouncements`);
+   - the inputs of this run include a newer export of the same course (the
+     same class `source.id`) that covers the item's type: assignments,
+     questions, materials and other coursework are always exported;
+     announcements, and work derived from them, only when the export's
+     `includeAnnouncements` option was on (`class-info.json` →
+     `options.includeAnnouncements`);
    - that export reports no item-read failures: neither `class-info.json`
      (`discovery.warnings`) nor `export-report.json` (`warnings`) says that a
      list may be incomplete, that an item or item page could not be read, or
      that announcements were skipped (attachment download failures do not
      matter);
+   - in an archive whose `export-manifest.json` has `kind` `"account"` (one
+     folder per class): the course's `classes[]` entry has `status`
+     `"exported"`, or `"partial"` without `error` (only attachments failed),
+     and its folder contains both `class-info.json` and `export-report.json`.
+     A course with status `"failed"`, with an `error`, or with either file
+     missing counts as not exported;
    - for an item from a document (syllabus, calendar, …): a newer version of
-     the same document is supplied and no longer contains it.
+     the same document is supplied and no longer contains it. A document
+     counts as a newer version of the same document only when the person
+     says so or its own date or version is later; otherwise the generator
+     adds an `ambiguity` issue and marks nothing missing.
 
-   Items whose `source.kind` is `user` are never missing.
+   Items whose `source.kind` is `user` are never missing. An item with
+   several sources (`source` and `sources`) is missing only when each of its
+   sources meets these conditions. A course that a newer account export no
+   longer lists (archived or left) does not make its work missing: the
+   generator adds a `missing_information` issue about the class (§ 15.8)
+   asking whether to archive it.
 2. Set `sourceState: "missing"` — or `"withdrawn"` when a source explicitly
    removes, cancels or excuses the work (e.g. an announcement "Worksheet 3 is
    cancelled"; the conditions of rule 1 are then not needed). Leave `status`
    unchanged. Remove the assignment's future, unlocked, planned blocks whose
    origin is `generated` or `planner` (except blocks with notes, § 15.7), and
-   mention the change in the summary.
+   mention the change in the summary. For a **protected** assignment, write
+   the new `sourceState` and list the assignment in `meta.requestedChanges`
+   with `requestedByPerson: false` (§ 15.9), so that the import offers the
+   change unticked; its blocks are kept. For each future `user` or locked
+   block of a missing or withdrawn assignment, add a root issue with
+   `itemId` (the block) so that the person can decide about it.
 3. When a missing assignment appears again in a complete export, set
    `sourceState` back to `"present"`.
 4. Other generated items that a source no longer lists are kept; the
@@ -1181,7 +1365,10 @@ from source" when importing (§ 16.2).
    `planner`) block with non-empty `notes` MAY be moved but MUST NOT be
    removed. All other blocks —
    `user`, locked, `done`, `skipped`, past and in-progress blocks — MUST be
-   kept unchanged. Generators never create `planner` blocks or `u-` IDs.
+   kept unchanged, with one exception: a generator MAY change the `status` of
+   a past `planned` block to `done` (with `completedAt`) or `skipped` when
+   the evidence shows it (e.g. Classroom shows the work as turned in).
+   Generators never create `planner` blocks or `u-` IDs.
 2. **What to plan:** the unscheduled minutes (§ 8.1) of each assignment;
    nothing for `required: false` work or for `missing`/`withdrawn` work that
    is not in progress. Respect `dependsOn`, task `due` dates, `due` and
@@ -1206,14 +1393,28 @@ from source" when importing (§ 16.2).
    item's `issues`. An issue about a protected item goes into the root
    `issues` with `itemId`. An issue about the whole schedule or a day goes
    into the root `issues`, with `date` when it concerns one day.
-2. **IDs:** give an issue an `id` when it may come up again in later runs,
-   derived from what it is about: `<itemId>:<kind>:<field>` (e.g.
-   `gc-NzAwMDAwMDAwMDAx:conflict:assessmentDate`) or `<kind>:<date>` (e.g.
-   `workload:2026-10-15`).
+2. **IDs:** generators MUST give every issue an `id`, derived from what it
+   is about, so that two runs (or two generators) give the same problem the
+   same ID and a different problem a different one:
+   - about an item: `<itemId>:<kind>:<field>:<value>`, where `<value>` is the
+     source value the issue is about (for a conflict: the value that was
+     **not** used). A date or date-time is written without `-` and `:`
+     (`20261017`, `20261017T2359`), any other value as `slug(value)`
+     (§ 14.1). Leave out `:<field>` or `:<value>` when there is none, e.g.
+     `gc-NzAwMDAwMDAwMDAx:conflict:due:20261017T2359`,
+     `biology-unit-2-test-cells-2026-10-16:conflict:assessmentDate:20261023`;
+   - about a day: `<kind>:<date>`, e.g. `workload:2026-10-15`;
+   - about the whole schedule: `<kind>:<slug(subject)>`, e.g.
+     `missing_information:availability`.
+
+   When the result would be longer than 100 characters, cut the `<itemId>`
+   part.
 3. **Lifecycle:** generators MUST keep issues whose `status` is `resolved` or
    `dismissed` (copy them unchanged, by `id`) and MUST NOT raise an issue with
    the same `id` again. When the underlying values change (e.g. Classroom
-   moves the date once more), a new issue gets a new `id`.
+   moves the date once more), the new issue has a new `<value>` and so a new
+   `id`. The only exception: every writer removes root issues whose `itemId`
+   names an item that no longer exists (an invalid reference, § 13.2).
 4. New issues are open (omit `status`). Open issues that no longer apply MAY
    be removed or updated.
 
@@ -1254,8 +1455,11 @@ The website shows listed items under "Changes to your items", pre-ticked when
 | `deleted` | person (written by the website) | copied; MAY append entries for items it removes | unioned |
 | titles, names, descriptions, dates, estimates, priority, `topic`, `topics`, tasks, references, `dependsOn`, `sources`, `sourceState`, `issues` of unlocked `generated` items | generator | yes, except overridden fields | file's value |
 | `description` of unlocked `generated`/`planner` blocks | generator | yes | file's value |
-| `start`/`end` of unlocked, future, `planned` `generated`/`planner` blocks | generator | yes (move, replace; remove unless it has `notes`) | file's value; missing ones → "Outdated planned work" |
+| `start`/`end` of unlocked, future, `planned` `generated`/`planner` blocks | generator | yes (move, replace; remove unless it has `notes`) | file's value; missing ones → "Outdated planned work" (files with `meta.basedOn`) |
+| `done`/`skipped` blocks | person | no (a past `planned` block MAY become `done` or `skipped` on evidence, § 15.7) | current block kept as a whole |
+| `origin` | fixed when the item is created | no | current value |
 | `meta.generator`, `meta.generatedAt`, `meta.timezone` | writer | rewritten by every writer (§ 4) | not stored; the export writes its own |
+| `meta.exportId` / `meta.basedOn` | website / generator | `basedOn`: the input's `exportId`; never writes `exportId` | `basedOn` used for the preview; the export writes a fresh `exportId` |
 | `meta.title`, `meta.sources` | writer | `sources`: this run's inputs; `title`: kept | stored and written back on export |
 | `meta.requestedChanges` | writer | this run's changes only | used for the preview only |
 
@@ -1273,54 +1477,96 @@ Importing never runs anything from the file; it only reads data.
 4. **Compare** with the current schedule (§ 16.2) and show a **preview**.
    "Now" for deciding which blocks are past or future is the incoming
    file's `meta.generatedAt`, or the import time when it is absent (§ 12.1).
-5. The person confirms → the changes are applied in one step. The previous
+   A block that the preview would move or remove but that has already ended
+   at the import time is marked *"This session has passed — did you do
+   it?"*; marking it done or skipped there changes the current block first,
+   so that it is kept (§ 16.3). A file whose `meta.basedOn` is not the
+   website's most recent `exportId` gets the warning *"This file was made
+   from an older export; changes you made since then are kept where they are
+   protected, but review the list carefully."* (the website remembers its
+   recent export IDs).
+5. **Check the result.** The website builds the merged schedule from the
+   person's current choices and validates it with every rule of § 13.
+   "Import" is enabled only when it is valid; otherwise the preview shows the
+   problem on the affected rows (e.g. a date the person set that is later
+   than the file's new `due`: untick that item's update, or change the date
+   first).
+6. The person confirms → the changes are applied in one step. The previous
    state is saved, so **Undo import** can restore it.
 
-Importing the same file twice changes nothing the second time. The result of
-an import is always a valid schedule: when a choice in the preview removes an
-item or does not add it, the items that reference it are removed or not
-added either, and the preview shows them in the same row.
+Importing the same file twice changes nothing the second time. When a choice
+in the preview does not add a file item, the file items that reference it
+are not added either, and the preview shows them in the same row. A choice
+can remove a current item only if every item that references it
+(`classId`, `assignmentId`, `taskId`) can be removed with it — `generated`
+or `planner`, unlocked, not `done`, not "Always kept" — and then removes them
+together (in the same row); otherwise the row cannot be ticked and shows the
+reason, e.g. *"3 of your own assignments use this class"*. A removal also
+removes the item's ID from `dependsOn` lists and the root issues about it
+(§ 16.4).
 
 ### 16.2 What the preview shows
 
-Items are matched by `id` within the same collection (tasks within their
-assignment). An `id` that a file item and a current item use in different
-collections (e.g. a file's class uses the ID of an existing assignment) is an
-error.
+Items are matched by `id`. An `id` that a file item and a current item use in
+different collections (e.g. a file's class uses the ID of an existing
+assignment) is an error, and so is a file task whose `id` belongs to a task
+of a **different** current assignment (a task never changes assignment): the
+import is rejected with a clear error.
+
+**Tasks** are not categorized on their own; they belong to their
+assignment's row. Under an assignment that is kept (Kept (your version),
+Always kept, or Unchanged), the file's tasks are ignored with it. Under an
+Updated assignment, § 16.3 decides each task, and the row lists the tasks
+that are added, changed or removed.
+
+A file **without** `meta.basedOn` is a **fresh** file (made without the
+person's schedule): "Outdated planned work" is not used for it, so current
+blocks that it does not contain fall under "Not in this file" (kept by
+default).
 
 | Category | Which items | Default | What happens |
 | --- | --- | --- | --- |
-| **New** | File items whose `id` is not in the current schedule (and not in its `deleted` list). | applied | Added. |
-| **Previously deleted** | File items whose `id` is in the current `deleted` list. | not ticked | Not added. Ticking restores the item and removes its tombstone. |
-| **Updated** | Same `id`, current item `generated` or `planner` and unlocked, different after normalization (§ 16.5). | applied | Fields replaced, except person-owned fields (§ 16.3). The preview lists the changed fields, e.g. *"due: Oct 16 → Oct 17"*, *"estimate: 2 h → 2 h 30 m"*. |
-| **Removed from source** | Updated assignments whose `sourceState` changes from `present` to `missing` or `withdrawn`. | applied | The new `sourceState` is taken; unticking keeps the current one (the other updates still apply). |
+| **Previously deleted** | File items whose `id` is in the current `deleted` list, or whose `source.id` (or the `id` of an entry of their `sources`) equals the `sourceId` of a current tombstone of the same collection. | not ticked | Not added. Ticking restores the item and removes its tombstone. |
+| **Possible duplicate** | Other file items whose `id` is not in the current schedule but that match a current item under § 15.3, rule 2 or 3 (same collection and the same source kind and id; or the same class, type family and normalized title, with dates fewer than 7 days apart). The row names the current item. | not ticked | Not added. Ticking adds the file item. |
+| **New** | Other file items whose `id` is not in the current schedule. | applied | Added. |
+| **Updated** | Same `id`, current item `generated` or `planner` and unlocked (for a block: not `done` or `skipped`), and the merged item (§ 16.3) differs from the current item (§ 16.5). | applied | The merged item replaces the current one. The preview lists the fields whose merged value differs from the current value, e.g. *"due: Oct 16 → Oct 17"*, *"estimate: 2 h → 2 h 30 m"*. |
+| **Removed from source** | Updated assignments whose `sourceState` changes from `present` to `missing` or `withdrawn`. | applied | The new `sourceState` is taken; unticking keeps the current one (the other updates still apply) and also unticks the "Outdated planned work" rows of that assignment's blocks, which are shown in the same row. |
 | **Changes to your items** | Protected current items whose `id` is listed in the file's `meta.requestedChanges`: changed (in the file, different) or deleted (not in the file). The reason is shown. | ticked if `requestedByPerson` is `true`, else not ticked | Ticked: the file's version replaces the current item, or the item is removed. Not ticked: the current item is kept. |
-| **Kept (your version)** | (a) Protected current items that the file has in a different version and does not list in `requestedChanges`. (b) Current items whose `status` is `cancelled` while the file has another status. (c) Current items named by a tombstone in the file's `deleted` (shown with the note *"deleted in the imported file"*). | not ticked | Current version kept. Ticking takes the file's version — for (b) the file's status, for (c) removes the item. |
-| **Unchanged** | Same `id`, equal after normalization (§ 16.5). | — | Nothing. |
-| **Outdated planned work** | Current blocks that the file does not contain, are `generated` or `planner`, unlocked, future and `planned`, have no `notes`, and either belong to an assignment that **is** in the file, or (`generated` only) have no `assignmentId`. | applied | Removed (the file has re-planned that work). Unticking keeps them. |
+| **Kept (your version)** | (a) Protected current items that the file has in a different version and does not list in `requestedChanges`; and current `done` or `skipped` blocks that the file has in a different version (shown, **not selectable**: they are history). (b) Current items whose `status` is `cancelled` while the file has another status. (c) Current items named by a tombstone in the file's `deleted` that no other category removes (shown with the note *"deleted in the imported file"*). | not ticked | Current version kept. Ticking takes the file's version — for (b) the file's status, for (c) removes the item. |
+| **Unchanged** | Same `id`, and the merged item (§ 16.3) equals the current item (§ 16.5). | — | Nothing. |
+| **Outdated planned work** | Only for files with `meta.basedOn`. Current blocks that the file does not contain, are `generated` or `planner`, unlocked, future and `planned`, have no `notes`, and either belong to an assignment that **is** in the file, or (`generated` only, and only when the file contains at least one `generated` block) have no `assignmentId`. | applied | Removed (the file has re-planned that work). Unticking keeps them. |
 | **Not in this file** | Other current `generated` or `planner` items that are unlocked and not in the file (and not "Always kept"). | not ticked | Kept. Ticking removes them. |
 | **Settings** | One row per setting whose value in the file differs from the current value (an absent setting means its default). | not ticked | Current value kept. Ticking takes the file's value. |
 | **Always kept** | Current `user` items, locked items, `done`/`skipped` blocks, past and in-progress blocks, `done` assignments and tasks that the file does not contain (unless listed under "Changes to your items"). | — | Never removed by an import. |
 
-Every item of the file and of the current schedule is in exactly one of
-these categories, checked in this order: Previously deleted, New, Changes to
-your items, Kept (your version) (a), Always kept, Outdated planned work, Not
-in this file, Updated, Unchanged. "Removed from source", "Kept (your
-version)" (b) and (c), and "Settings" are additional rows: they never move an
-item out of its category.
+Every item of the file and of the current schedule (tasks: with their
+assignment) is in exactly one of these categories, checked in this order:
+Previously deleted, Possible duplicate, New, Changes to your items, Kept
+(your version) (a), Always kept, Outdated planned work, Not in this file,
+Updated, Unchanged. "Removed from source", "Kept (your version)" (b) and (c),
+and "Settings" are additional rows: they never move an item out of its
+category.
 
 ### 16.3 Person-owned fields during an update
 
-When an existing `generated` or `planner` item is updated from the file:
+When an existing `generated` or `planner` item is updated from the file, the
+**merged** item is built like this:
 
+- **`origin`** is never taken from the file: the merged origin is the current
+  origin. (A file item whose `id` matches a current `user` item is treated as
+  a `user` item, whatever origin the file gives it.)
 - **Status never goes backwards.** Order: `not_started` < `in_progress` <
   `done`. If the current status is further along than the file's, the current
   status (and `completedAt`) is kept. A current `cancelled` is kept; when the
   file has a different status, the difference is offered under "Kept (your
   version)" (opt-in). The file's `cancelled` is applied only when the current
-  status is `not_started` or `in_progress`. Blocks: a current `done` or
-  `skipped` block keeps its status and `completedAt`; the file's `done` or
-  `skipped` applies to a current `planned` block.
+  status is `not_started` or `in_progress`.
+- **Blocks.** A current `done` or `skipped` block is kept as a whole, every
+  field included; a different file version is only shown, under "Kept (your
+  version)", and cannot be selected. For a current `planned` block that is
+  past or in progress (§ 12.1), only the file's `done` or `skipped` (with
+  `completedAt`) is taken; its other fields stay as they are. Future
+  `planned` blocks are merged like other items.
 - **Notes are kept.** A non-empty current `notes` value is kept; the file's
   `notes` is used only if the current one is empty.
 - **Overrides are kept.** Every field named in the current item's
@@ -1329,9 +1575,18 @@ When an existing `generated` or `planner` item is updated from the file:
 - **Issue decisions are kept.** Item issues are taken from the file, except
   that an issue whose `id` matches a current issue with status `resolved` or
   `dismissed` keeps that current status.
-- **Tasks** are merged one by one with these same rules. A current task that
-  the file's assignment does not contain is kept if it is `user`, locked,
-  `done` or referenced by a remaining block, and removed otherwise.
+- **`x-…` properties** are merged key by key: each `x-…` key of the file
+  takes the file's value, and `x-…` keys that only the current item has are
+  kept. (Items that are kept keep all their current `x-…` keys.)
+- **Tasks** are merged task by task (not replaced as one field), each with
+  these same rules; a current `user` or locked task keeps its current
+  version. The merged `tasks` array is the file's tasks in file order,
+  followed by the current tasks that the file does not contain but that are
+  kept — `user`, locked, `done`, or referenced by a block that remains — in
+  their current order. A current `generated`, unlocked, not-done task that
+  the file does not contain and that no remaining block references is
+  removed (and listed in the assignment's row). When `tasks` is named in the
+  assignment's `overrides`, the current tasks are kept as they are.
 - Every other field takes the file's value (fields absent in the file are
   removed, so the file fully describes the item).
 
@@ -1340,31 +1595,48 @@ When an existing `generated` or `planner` item is updated from the file:
 - When the person removes an assignment through the preview, its blocks are
   removed with it. An assignment that is `done`, or that has blocks that are
   `done`, `user` or locked, cannot be removed by an import.
+- **Dependents.** Deleting an item — in the website's editors, or by ticking
+  a removal in the import preview — also removes its ID from every
+  `dependsOn`; deletes the events that are its sitting (`assignmentId`);
+  deletes its blocks (in the editors, after asking when some are `done`);
+  removes `taskId` from the blocks of a deleted task (they stay with the
+  assignment); and deletes the root issues whose `itemId` names it, one of
+  its tasks or one of the deleted blocks. Deleting a class asks whether to
+  delete its assignments and events too or to keep them without the class
+  (`classId` removed). These follow-on changes are not edits by the person
+  and add nothing to `overrides`.
 - **Tombstones.** Whenever the person deletes an item whose `origin` is
   `generated` — in the website's editors, or by ticking a removal in the
   import preview — the website appends an entry to `deleted`: `id`,
-  `collection`, `deletedAt` (now), `sourceId` (the item's `source.id`, if
-  any) and `title` (title, name or label, cut to 300 characters). Deleting an
-  assignment also appends one entry for each of its `generated` tasks. Blocks
-  removed as "Outdated planned work" or together with their assignment get no
-  entry. Restoring an item (or undoing its deletion) removes its entry. When
-  the list would exceed 5000 entries, the oldest entries (by `deletedAt`) are
-  dropped.
+  `collection`, `deletedAt` (now), `sourceId` (the item's `source.id`, or
+  else the `id` of the first entry of its `sources` that has one, if any)
+  and `title` (title, name or label, cut to 300 characters). Deleting an
+  assignment also appends one entry for each of its `generated` tasks and for
+  a `generated` sitting event. Blocks removed as "Outdated planned work" or
+  together with their assignment get no entry. Restoring an item (or undoing
+  its deletion) removes its entry. When the list would exceed 5000 entries,
+  the oldest entries (by `deletedAt`) are dropped.
 
 ### 16.5 When an item is "Unchanged"
 
-Items are compared after normalization: defaults are filled in (e.g.
-`origin` `generated`, `priority` `medium`, `status` `not_started`, `required`
-`true`, `sourceState` `present`, `busy` `true`, `kind` `work`, issue `status`
-`open`), empty arrays equal absent arrays, LocalDateTimes are reduced to the
-minute (seconds dropped), Text is trimmed, and the order of object keys is
-ignored. The list of changed fields in the preview uses the same
-normalization.
+An item is **Unchanged** when the merged item that § 16.3 would produce
+equals the current item. Items are compared after normalization: defaults
+are filled in (e.g. `origin` `generated`, `priority` `medium`, `status`
+`not_started`, `required` `true`, `sourceState` `present`, `busy` `true`,
+`kind` `work`, issue `status` `open`), empty arrays equal absent arrays,
+LocalDateTimes are reduced to the minute (seconds dropped), Text is trimmed,
+and the order of object keys is ignored. The preview's list of changed fields
+uses the same normalization and contains only fields whose merged value
+differs from the current value: person-owned values that the merge keeps
+(notes, overridden fields, a `cancelled` status, an issue decision) are not
+listed.
 
 ### 16.6 Settings, root issues, tombstones and meta
 
 - **Settings** are person-owned: each differing setting is a row under
-  "Settings", not taken unless the person ticks it.
+  "Settings", not taken unless the person ticks it. The preview marks the
+  settings that the current schedule has never set (it uses the defaults)
+  and offers to take those all at once.
 - **Root issues** are taken from the file, except that an issue whose `id`
   matches a current issue with status `resolved` or `dismissed` keeps that
   status. Issues with a `date` are shown in that day's view.
@@ -1373,17 +1645,19 @@ normalization.
   item kept in the resulting schedule is not added (see "Kept (your version)"
   (c)).
 - **Meta:** the website stores the file's `meta.title` and `meta.sources` and
-  writes them back on export (§ 17). `meta.requestedChanges` is used only for
-  this preview and is not stored.
+  writes them back on export (§ 17). `meta.basedOn` and
+  `meta.requestedChanges` are used only for this preview and are not stored.
 
 ## 17. How the website exports a file
 
 - The export is a complete, valid 1.0 file of the current schedule.
 - `meta.generator` is `{"name": "Academic Scheduler", "version": "<app version>"}`,
   `meta.generatedAt` is the export time (a LocalDateTime) and `meta.timezone`
-  is the browser's IANA time zone; both MUST be written. `meta.title` and
-  `meta.sources` are those of the last import (if any). `meta.requestedChanges`
-  is never written.
+  is the browser's IANA time zone; both MUST be written. Every export writes
+  a fresh `meta.exportId` (`u-exp-<8 random characters>`) and remembers it,
+  so that a file made from it can be recognized later (`meta.basedOn`,
+  § 16.1). `meta.title` and `meta.sources` are those of the last import (if
+  any). `meta.basedOn` and `meta.requestedChanges` are never written.
 - `deleted` is written when it is not empty (at most 5000 entries).
 - Every item includes `id`, `origin` and its other fields; `locked` is written
   only when `true`; `overrides` only when not empty; empty optional arrays are
@@ -1393,7 +1667,7 @@ normalization.
 - Collections are sorted deterministically (classes by name; assignments by
   date then title; events and availability by start; blocks by start), then by
   `id`, so repeated exports of the same schedule are identical apart from
-  `meta.generatedAt`.
+  `meta.generatedAt` and `meta.exportId`.
 - `x-…` properties from imported files are written back unchanged.
 
 ## 18. Examples
@@ -1415,19 +1689,24 @@ normalization.
 
 A full example is shipped as
 [`examples/complete-schedule.json`](examples/complete-schedule.json) and is
-reproduced below. It is the output of a `/schedule` run on Sunday, Oct 11,
+reproduced below. It is the output of a `/academic-schedule` run on Sunday, Oct 11,
 2026 at 7:30 PM (New York time). The inputs were the `schedule.json` the
 person exported from the website (based on an earlier run on Friday, Oct 9
 at 8:00 PM), a new English 10 Classroom export, the Biology syllabus, a photo
 of the Biology whiteboard, and what the person said ("My piano theory exam is
 Saturday, Oct 24, 9 to 11 AM; I want to do two past papers"). It shows:
 
-- **Protected items copied unchanged:** the person's School, Piano and Doctor
+- **Based on an export:** `meta.basedOn` is the `exportId` of the
+  `schedule.json` the person exported; the English 10 class and its
+  `meta.sources` entry record when the Classroom export was made
+  (`retrievedAt`).
+- **Protected items copied unchanged:** the person's Piano and Doctor
   appointment events, the After-school window, the library-books assignment
   and its block (`u-` IDs, `origin: "user"`), and the essay session on
   Wednesday that the person moved and lengthened to 70 minutes
   (`locked: true`; longer than `maxSessionMinutes`, which is fine for a locked
-  block).
+  block). The person's School event is unchanged except for the requested
+  change below.
 - **A requested change:** an English 10 announcement says there is no school
   on Monday, Oct 12, so the generator added that date to the School event's
   `exceptDates` and listed the event in `meta.requestedChanges` with
@@ -1452,9 +1731,10 @@ Saturday, Oct 24, 9 to 11 AM; I want to do two past papers"). It shows:
 - **Totals that add up (§ 8.1):** every assignment's planned minutes equal its
   remaining minutes (essay 210, reading 50, biology test 150, theory exam
   120, library books 15).
-- **Issues:** a `conflict` with an `id` on the biology test (syllabus versus
-  whiteboard photo, which is also in the test's `sources`), and a root
-  `workload` issue with `itemId` and `date`.
+- **Issues** (IDs per § 15.8): a `conflict` on the biology test (syllabus
+  versus whiteboard photo, which is also in the test's `sources`) whose `id`
+  ends with the date that was not used (`…:assessmentDate:20261023`), and a
+  root `workload` issue with `itemId` and `date`.
 - **Blocks:** session text in `description`; a past `done` block; IDs from
   two runs (`…-202610092000-N` from Oct 9, `…-202610111930-N` from this run).
 
@@ -1464,14 +1744,15 @@ Saturday, Oct 24, 9 to 11 AM; I want to do two past papers"). It shows:
   "meta": {
     "title": "Fall 2026 — Week of Oct 12",
     "generatedAt": "2026-10-11T19:30:00",
-    "generator": { "name": "claude-schedule-skill", "version": "1.0" },
+    "generator": { "name": "academic-schedule-skill", "version": "1.0" },
     "timezone": "America/New_York",
+    "basedOn": "u-exp-h7w2c9qe",
     "sources": [
       { "kind": "schedule", "label": "schedule.json (exported from Academic Scheduler on Oct 11)" },
-      { "kind": "google_classroom", "id": "NjI3ODk0MjE0NTQ5", "label": "English 10 - Period 3 - 2026-10-11.zip" },
+      { "kind": "google_classroom", "id": "NjI3ODk0MjE0NTQ5", "label": "English 10 - Period 3 - 2026-10-11.zip", "retrievedAt": "2026-10-11T18:05:00" },
       { "kind": "syllabus", "label": "Biology syllabus.pdf" },
       { "kind": "image", "label": "Biology whiteboard photo IMG_2041.jpg (Oct 9)" },
-      { "kind": "user", "label": "Told /schedule on 2026-10-11" }
+      { "kind": "user", "label": "Told /academic-schedule on 2026-10-11" }
     ],
     "requestedChanges": [
       { "id": "u-evt-7k2m9q4d", "reason": "An English 10 announcement (Oct 9) says there is no school on Monday, Oct 12 (Indigenous Peoples' Day). Added 2026-10-12 to the exception dates of your School event.", "requestedByPerson": false }
@@ -1498,7 +1779,7 @@ Saturday, Oct 24, 9 to 11 AM; I want to do two past papers"). It shows:
         { "title": "Othello (Folger edition).pdf", "kind": "reading", "required": false, "path": "English 10 - Period 3/Materials/Othello full text/Attachments/Othello (Folger edition).pdf", "url": "https://classroom.google.com/c/NjI3ODk0MjE0NTQ5/m/NzAwMDAwMDAwMDA1/details" }
       ],
       "origin": "generated",
-      "source": { "kind": "google_classroom", "id": "NjI3ODk0MjE0NTQ5", "url": "https://classroom.google.com/c/NjI3ODk0MjE0NTQ5" }
+      "source": { "kind": "google_classroom", "id": "NjI3ODk0MjE0NTQ5", "url": "https://classroom.google.com/c/NjI3ODk0MjE0NTQ5", "retrievedAt": "2026-10-11T18:05:00" }
     },
     {
       "id": "cls-biology",
@@ -1537,7 +1818,7 @@ Saturday, Oct 24, 9 to 11 AM; I want to do two past papers"). It shows:
         { "title": "Essay rubric.pdf", "kind": "rubric", "required": true, "path": "English 10 - Period 3/Assignments/Othello Essay/Attachments/Essay rubric.pdf" }
       ],
       "issues": [
-        { "id": "gc-NzAwMDAwMDAwMDAx:conflict:due", "kind": "conflict", "field": "due", "status": "resolved", "message": "Classroom shows Oct 16, 11:59 PM; the rubric says 'due Friday in class'. Using Oct 16, 11:59 PM (Classroom)." }
+        { "id": "gc-NzAwMDAwMDAwMDAx:conflict:due:20261016", "kind": "conflict", "field": "due", "status": "resolved", "message": "Classroom shows Oct 16, 11:59 PM; the rubric says 'due Friday in class'. Using Oct 16, 11:59 PM (Classroom)." }
       ],
       "origin": "generated",
       "source": { "kind": "google_classroom", "id": "NzAwMDAwMDAwMDAx", "url": "https://classroom.google.com/c/NjI3ODk0MjE0NTQ5/a/NzAwMDAwMDAwMDAx/details" }
@@ -1595,7 +1876,7 @@ Saturday, Oct 24, 9 to 11 AM; I want to do two past papers"). It shows:
         { "id": "biology-unit-2-test-cells-2026-10-16-t3", "title": "Practice questions and weak spots", "estimatedMinutes": 60, "dependsOn": ["biology-unit-2-test-cells-2026-10-16-t1", "biology-unit-2-test-cells-2026-10-16-t2"] }
       ],
       "issues": [
-        { "id": "biology-unit-2-test-cells-2026-10-16:conflict:assessmentDate", "kind": "conflict", "field": "assessmentDate", "message": "The syllabus (p. 2) puts the Unit 2 test on Friday, Oct 16; the whiteboard photo from Friday, Oct 9 says 'Unit 2 test Fri 10/23'. Using Oct 16, the earlier date, so preparation is not late. Please confirm with Mr. Chen." }
+        { "id": "biology-unit-2-test-cells-2026-10-16:conflict:assessmentDate:20261023", "kind": "conflict", "field": "assessmentDate", "message": "The syllabus (p. 2) puts the Unit 2 test on Friday, Oct 16; the whiteboard photo from Friday, Oct 9 says 'Unit 2 test Fri 10/23'. Using Oct 16, the earlier date, so preparation is not late. Please confirm with Mr. Chen." }
       ],
       "origin": "generated",
       "source": { "kind": "syllabus", "label": "Biology syllabus.pdf, p. 2" },
@@ -1615,7 +1896,7 @@ Saturday, Oct 24, 9 to 11 AM; I want to do two past papers"). It shows:
       "priority": "medium",
       "status": "not_started",
       "origin": "generated",
-      "source": { "kind": "user", "label": "Told /schedule on 2026-10-11" }
+      "source": { "kind": "user", "label": "Told /academic-schedule on 2026-10-11" }
     },
     {
       "id": "u-asg-k3j9x2p1",
@@ -1646,7 +1927,7 @@ Saturday, Oct 24, 9 to 11 AM; I want to do two past papers"). It shows:
       "endTime": "18:00",
       "recurrence": { "frequency": "weekly", "daysOfWeek": ["mon"], "startDate": "2026-10-05" },
       "origin": "generated",
-      "source": { "kind": "user", "label": "Told /schedule on 2026-10-09" }
+      "source": { "kind": "user", "label": "Told /academic-schedule on 2026-10-09" }
     },
     {
       "id": "u-evt-p4n0l7s2",
@@ -1675,7 +1956,7 @@ Saturday, Oct 24, 9 to 11 AM; I want to do two past papers"). It shows:
       "startTime": "09:00",
       "endTime": "11:00",
       "origin": "generated",
-      "source": { "kind": "user", "label": "Told /schedule on 2026-10-11" }
+      "source": { "kind": "user", "label": "Told /academic-schedule on 2026-10-11" }
     }
   ],
   "availability": [
@@ -1694,7 +1975,7 @@ Saturday, Oct 24, 9 to 11 AM; I want to do two past papers"). It shows:
       "endTime": "13:00",
       "recurrence": { "frequency": "weekly", "daysOfWeek": ["sat", "sun"], "startDate": "2026-10-05" },
       "origin": "generated",
-      "source": { "kind": "user", "label": "Told /schedule on 2026-10-09" }
+      "source": { "kind": "user", "label": "Told /academic-schedule on 2026-10-09" }
     }
   ],
   "scheduleBlocks": [
@@ -1851,7 +2132,10 @@ Saturday, Oct 24, 9 to 11 AM; I want to do two past papers"). It shows:
 | deleting an assignment that vanished from Classroom | keep it with `"sourceState": "missing"` (§ 15.6) |
 | `"origin": "planner"` on an assignment | `planner` exists only on schedule blocks |
 | `"itemId"` inside an item's `issues` | only root issues have `itemId` |
-| a block from 23:00 to 00:30 | two blocks, or end at 23:59 |
+| a block from 23:00 to 00:30 | two blocks: `"start": "2026-10-13T23:00:00", "end": "2026-10-14T00:00:00"` and 00:00–00:30 on the next date |
+| `"endTime": "00:00"` for an event that ends at midnight | `"endTime": "24:00"` |
+| `"due": "2026-10-16T23:59:59"` | `"due": "2026-10-16T23:59:00"` (seconds are always `00`) |
+| a generator writing `meta.exportId` | write `meta.basedOn` (the input's `exportId`); only the website writes `exportId` |
 | comments or text outside the JSON object | data only |
 
 ## 20. Changelog

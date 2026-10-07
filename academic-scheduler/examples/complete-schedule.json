@@ -3,14 +3,15 @@
   "meta": {
     "title": "Fall 2026 — Week of Oct 12",
     "generatedAt": "2026-10-11T19:30:00",
-    "generator": { "name": "claude-schedule-skill", "version": "1.0" },
+    "generator": { "name": "academic-schedule-skill", "version": "1.0" },
     "timezone": "America/New_York",
+    "basedOn": "u-exp-h7w2c9qe",
     "sources": [
       { "kind": "schedule", "label": "schedule.json (exported from Academic Scheduler on Oct 11)" },
-      { "kind": "google_classroom", "id": "NjI3ODk0MjE0NTQ5", "label": "English 10 - Period 3 - 2026-10-11.zip" },
+      { "kind": "google_classroom", "id": "NjI3ODk0MjE0NTQ5", "label": "English 10 - Period 3 - 2026-10-11.zip", "retrievedAt": "2026-10-11T18:05:00" },
       { "kind": "syllabus", "label": "Biology syllabus.pdf" },
       { "kind": "image", "label": "Biology whiteboard photo IMG_2041.jpg (Oct 9)" },
-      { "kind": "user", "label": "Told /schedule on 2026-10-11" }
+      { "kind": "user", "label": "Told /academic-schedule on 2026-10-11" }
     ],
     "requestedChanges": [
       { "id": "u-evt-7k2m9q4d", "reason": "An English 10 announcement (Oct 9) says there is no school on Monday, Oct 12 (Indigenous Peoples' Day). Added 2026-10-12 to the exception dates of your School event.", "requestedByPerson": false }
@@ -37,7 +38,7 @@
         { "title": "Othello (Folger edition).pdf", "kind": "reading", "required": false, "path": "English 10 - Period 3/Materials/Othello full text/Attachments/Othello (Folger edition).pdf", "url": "https://classroom.google.com/c/NjI3ODk0MjE0NTQ5/m/NzAwMDAwMDAwMDA1/details" }
       ],
       "origin": "generated",
-      "source": { "kind": "google_classroom", "id": "NjI3ODk0MjE0NTQ5", "url": "https://classroom.google.com/c/NjI3ODk0MjE0NTQ5" }
+      "source": { "kind": "google_classroom", "id": "NjI3ODk0MjE0NTQ5", "url": "https://classroom.google.com/c/NjI3ODk0MjE0NTQ5", "retrievedAt": "2026-10-11T18:05:00" }
     },
     {
       "id": "cls-biology",
@@ -76,7 +77,7 @@
         { "title": "Essay rubric.pdf", "kind": "rubric", "required": true, "path": "English 10 - Period 3/Assignments/Othello Essay/Attachments/Essay rubric.pdf" }
       ],
       "issues": [
-        { "id": "gc-NzAwMDAwMDAwMDAx:conflict:due", "kind": "conflict", "field": "due", "status": "resolved", "message": "Classroom shows Oct 16, 11:59 PM; the rubric says 'due Friday in class'. Using Oct 16, 11:59 PM (Classroom)." }
+        { "id": "gc-NzAwMDAwMDAwMDAx:conflict:due:20261016", "kind": "conflict", "field": "due", "status": "resolved", "message": "Classroom shows Oct 16, 11:59 PM; the rubric says 'due Friday in class'. Using Oct 16, 11:59 PM (Classroom)." }
       ],
       "origin": "generated",
       "source": { "kind": "google_classroom", "id": "NzAwMDAwMDAwMDAx", "url": "https://classroom.google.com/c/NjI3ODk0MjE0NTQ5/a/NzAwMDAwMDAwMDAx/details" }
@@ -134,7 +135,7 @@
         { "id": "biology-unit-2-test-cells-2026-10-16-t3", "title": "Practice questions and weak spots", "estimatedMinutes": 60, "dependsOn": ["biology-unit-2-test-cells-2026-10-16-t1", "biology-unit-2-test-cells-2026-10-16-t2"] }
       ],
       "issues": [
-        { "id": "biology-unit-2-test-cells-2026-10-16:conflict:assessmentDate", "kind": "conflict", "field": "assessmentDate", "message": "The syllabus (p. 2) puts the Unit 2 test on Friday, Oct 16; the whiteboard photo from Friday, Oct 9 says 'Unit 2 test Fri 10/23'. Using Oct 16, the earlier date, so preparation is not late. Please confirm with Mr. Chen." }
+        { "id": "biology-unit-2-test-cells-2026-10-16:conflict:assessmentDate:20261023", "kind": "conflict", "field": "assessmentDate", "message": "The syllabus (p. 2) puts the Unit 2 test on Friday, Oct 16; the whiteboard photo from Friday, Oct 9 says 'Unit 2 test Fri 10/23'. Using Oct 16, the earlier date, so preparation is not late. Please confirm with Mr. Chen." }
       ],
       "origin": "generated",
       "source": { "kind": "syllabus", "label": "Biology syllabus.pdf, p. 2" },
@@ -154,7 +155,7 @@
       "priority": "medium",
       "status": "not_started",
       "origin": "generated",
-      "source": { "kind": "user", "label": "Told /schedule on 2026-10-11" }
+      "source": { "kind": "user", "label": "Told /academic-schedule on 2026-10-11" }
     },
     {
       "id": "u-asg-k3j9x2p1",
@@ -185,7 +186,7 @@
       "endTime": "18:00",
       "recurrence": { "frequency": "weekly", "daysOfWeek": ["mon"], "startDate": "2026-10-05" },
       "origin": "generated",
-      "source": { "kind": "user", "label": "Told /schedule on 2026-10-09" }
+      "source": { "kind": "user", "label": "Told /academic-schedule on 2026-10-09" }
     },
     {
       "id": "u-evt-p4n0l7s2",
@@ -214,7 +215,7 @@
       "startTime": "09:00",
       "endTime": "11:00",
       "origin": "generated",
-      "source": { "kind": "user", "label": "Told /schedule on 2026-10-11" }
+      "source": { "kind": "user", "label": "Told /academic-schedule on 2026-10-11" }
     }
   ],
   "availability": [
@@ -233,7 +234,7 @@
       "endTime": "13:00",
       "recurrence": { "frequency": "weekly", "daysOfWeek": ["sat", "sun"], "startDate": "2026-10-05" },
       "origin": "generated",
-      "source": { "kind": "user", "label": "Told /schedule on 2026-10-09" }
+      "source": { "kind": "user", "label": "Told /academic-schedule on 2026-10-09" }
     }
   ],
   "scheduleBlocks": [
