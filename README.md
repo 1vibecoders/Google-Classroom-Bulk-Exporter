@@ -36,18 +36,43 @@ English 10 - Period 3/
 └── Other Coursework/                 (items whose type could not be determined)
 ```
 
-## Install (load unpacked)
+## Install
+
+Chrome 116 or newer (or another Chromium browser: Edge, Brave, …) is required.
+
+### From a release (recommended)
+
+Each [release](https://github.com/1vibecoders/Google-Classroom-Bulk-Exporter/releases) has three files:
+
+| File | What it is |
+| --- | --- |
+| `google-classroom-bulk-exporter-<version>.zip` | The extension's files with `manifest.json` at the root. Extract it and **Load unpacked** (below), upload it to the Chrome Web Store, or pack it yourself. |
+| `google-classroom-bulk-exporter-<version>.crx` | The packed, signed extension (its extension ID is in the release notes). |
+| `SHA256SUMS.txt` | Checksums: `sha256sum -c SHA256SUMS.txt`. |
+
+**Load unpacked (ZIP, works everywhere):**
+
+1. Extract the ZIP into a folder you will keep; Chrome loads the extension from it.
+2. Open `chrome://extensions` (`edge://extensions`, `brave://extensions`, …) and turn on **Developer mode** (top right).
+3. Click **Load unpacked** and select the extracted folder (the one containing `manifest.json`).
+4. Pin the extension (puzzle-piece icon → pin) so its button is easy to reach.
+
+To update, extract the new ZIP over the same folder and click the reload icon on the extension card.
+
+**Packed (CRX):** Chrome only accepts `.crx` files from outside the Chrome Web
+Store in some setups. On Linux, open `chrome://extensions` with **Developer
+mode** on and drag the `.crx` onto the page. On managed devices (any OS),
+deploy it with the `ExtensionInstallForcelist` policy and an update manifest
+pointing at the `.crx`. On Windows and macOS, regular Chrome disables
+extensions installed from a `.crx` that are not in the Web Store, so use the
+ZIP there.
+
+### From source
 
 1. Download or clone this repository.
-2. Open `chrome://extensions` in Chrome (or Edge/Brave: `edge://extensions`, `brave://extensions`).
-3. Turn on **Developer mode** (top right).
-4. Click **Load unpacked** and select the repository folder (the one containing `manifest.json`).
-5. Pin the extension (puzzle-piece icon → pin) so its button is easy to reach.
+2. In `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and select the repository folder.
 
-No build step is needed. Chrome 116 or newer is required.
-
-To produce a ZIP for the Chrome Web Store or for sharing: `npm run package`
-(writes `dist/google-classroom-bulk-exporter-<version>.zip`).
+No build step is needed.
 
 ## Use
 
@@ -280,14 +305,18 @@ npm install          # installs playwright-core (test-only dependency)
 npm run check        # manifest references, syntax, no remote code / eval
 npm test             # unit tests (Node): URL model, link classifier, file names,
                      # ZIP writer (verified with Python zipfile + unzip -t),
-                     # downloader error handling/retries, full export engine
+                     # downloader error handling/retries, full export engine,
+                     # CRX packing (signatures checked with OpenSSL)
 npm run test:dom     # browser tests: discovery against the mock Classroom
                      # (lazy loading, accordions, frame fallback, navigation,
-                     # empty class) and against fixture page structures
+                     # empty class), fixture page structures, and the CRX
+                     # compared with one packed by Chromium
 npm run test:e2e     # loads the real unpacked extension in Chromium, maps the
                      # Google hosts to a local HTTPS mock and drives the popup
                      # through scan → export → saved ZIP (needs port 443)
 npm run package      # build dist/google-classroom-bulk-exporter-<version>.zip
+npm run pack:crx -- --key crx-key.pem
+                     # build the signed dist/...-<version>.crx (see Releasing)
 ```
 
 Layout:
@@ -316,7 +345,8 @@ tests/
   unit/  dom/  e2e/       test suites (node:test)
   mock/classroom-mock.mjs simulated Classroom/Drive/Docs used by dom and e2e tests
   fixtures/classroom/     page-structure variants for extractor tests
-scripts/                  check, package, icon generation
+scripts/                  check, package, CRX packing, release notes, icon generation
+.github/workflows/release.yml  builds and publishes a release when a version tag is pushed
 ```
 
 Content scripts are plain scripts (not modules) that publish their API on
@@ -324,6 +354,37 @@ Content scripts are plain scripts (not modules) that publish their API on
 modules. The background injects the content scripts with
 `chrome.scripting.executeScript` only when the popup is opened on a Classroom
 tab.
+
+### Releasing
+
+Releases are built by GitHub Actions (`.github/workflows/release.yml`):
+
+1. Bump `version` in both `manifest.json` and `package.json` (for example to `1.1.0`) and merge it.
+2. Push a matching tag: `git tag v1.1.0 && git push origin v1.1.0`.
+3. The workflow checks that the tag matches the version, runs `npm run check`
+   and the unit tests, builds the ZIP and the CRX, and publishes a release
+   with both files, `SHA256SUMS.txt` and installation notes. Running the
+   workflow again from the Actions tab for an existing tag replaces its files.
+
+**CRX signing key.** The CRX is signed with an RSA private key, and that key
+determines the extension ID. Generate one once and keep it private (never
+commit it; `*.pem` is git-ignored):
+
+```bash
+node scripts/pack-crx.mjs --generate-key crx-key.pem   # also prints the extension ID
+```
+
+Then add the contents of `crx-key.pem` as a repository secret named
+`CRX_PRIVATE_KEY` (Settings → Secrets and variables → Actions). Every release
+signed with it keeps the same extension ID, so installed copies can be
+updated. If the secret is missing, the workflow signs the CRX with a one-time
+key and the release notes say so; the ZIP is unaffected. You can also pack
+locally with Chrome's own **Pack extension** button and the same key: the ID
+is identical.
+
+`scripts/lib/crx.mjs` writes and verifies the CRX3 format with Node's crypto.
+The unit tests check signatures with OpenSSL, and a browser test checks the
+key, ID and header layout against a CRX packed by Chromium itself.
 
 ### When Classroom changes
 

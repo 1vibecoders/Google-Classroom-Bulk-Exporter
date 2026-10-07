@@ -1,0 +1,86 @@
+# Builds the extension ZIP and a signed CRX and publishes them as a GitHub
+# release. Runs when a version tag (v1.2.3, matching manifest.json) is pushed;
+# can also be re-run for an existing tag from the Actions tab, which replaces
+# that release's files.
+#
+# Signing: add the repository secret CRX_PRIVATE_KEY (an RSA private key in
+# PEM format) so every release's CRX has the same extension ID. Without it the
+# CRX is signed with a one-time key and the release notes say so.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and publish (for example v1.0.0)
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check the tag matches the extension version
+        run: node scripts/check-version.mjs "$TAG"
+
+      - name: Static checks and unit tests
+        run: |
+          npm run check
+          npm test
+
+      - name: Build the ZIP
+        run: npm run package
+
+      - name: Build the CRX
+        env:
+          CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
+        run: |
+          if [ -n "$CRX_PRIVATE_KEY" ]; then
+            node scripts/pack-crx.mjs
+          else
+            echo "::warning::The CRX_PRIVATE_KEY secret is not set; signing the CRX with a one-time key, so its extension ID will change in the next release."
+            node scripts/pack-crx.mjs --generate-key "$RUNNER_TEMP/one-time-key.pem"
+            rm -f "$RUNNER_TEMP/one-time-key.pem"
+          fi
+
+      - name: Write release notes and checksums
+        run: node scripts/release-notes.mjs "$TAG"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${TAG#v}"
+          assets=(
+            "dist/google-classroom-bulk-exporter-${version}.zip"
+            "dist/google-classroom-bulk-exporter-${version}.crx"
+            "dist/SHA256SUMS.txt"
+          )
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" --clobber
+            gh release edit "$TAG" --notes-file dist/RELEASE_NOTES.md
+          else
+            gh release create "$TAG" "${assets[@]}" \
+              --verify-tag \
+              --title "Google Classroom Bulk Exporter $TAG" \
+              --notes-file dist/RELEASE_NOTES.md
+          fi
