@@ -52,6 +52,33 @@ function isActive(job) {
   return !!job && P.ACTIVE_PHASES.includes(job.phase);
 }
 
+function isAccount(job) {
+  return !!job && job.kind === P.JOB_KIND.ACCOUNT;
+}
+
+/**
+ * A running job is shown everywhere; a finished or scanned one only for its
+ * own tab, and a class list waiting for confirmation only while the tab is on
+ * that account's Classroom.
+ */
+function isVisible(job) {
+  if (!job) return false;
+  if (isActive(job)) return true;
+  if (job.tabId !== state.tabId) return false;
+  const account = state.inspect && state.inspect.account;
+  return !(isAccount(job) && job.phase === P.PHASE.SCANNED && state.inspect && !(account && account.authuser === job.account.authuser));
+}
+
+function classLabel(c) {
+  return [c.name, c.section].filter(Boolean).join(' · ') || 'Class';
+}
+
+/** The class an account export is working on, or null while it lists or finishes. */
+function currentClass(job) {
+  const a = job.account;
+  return a.classIndex < a.classes.length && job.phase !== P.PHASE.SCANNED ? a.classes[a.classIndex] : null;
+}
+
 // ---------------------------------------------------------------------------
 // Rendering
 // ---------------------------------------------------------------------------
@@ -59,10 +86,18 @@ function isActive(job) {
 function renderClass() {
   const job = state.job;
   const insp = state.inspect;
-  const jobVisible = job && (isActive(job) || job.tabId === state.tabId);
+  const jobVisible = isVisible(job);
+  // An account export in progress (or waiting for confirmation) is about all classes, not the tab's.
+  const allClasses = jobVisible && isAccount(job) && (isActive(job) || job.phase === P.PHASE.SCANNED);
+  setText('class-label', allClasses ? 'Account' : 'Class');
+  if (allClasses) {
+    setText('class-name', 'All classes');
+    setText('class-hint', isActive(job) ? 'Leave the Classroom tab open: each class is opened in turn.' : 'Every active class of this Google account. Archived classes are not exported.');
+    return;
+  }
   let name = null;
   let hint = '';
-  if (jobVisible && job.className) name = job.className;
+  if (jobVisible && !isAccount(job) && job.className) name = job.className;
   else if (insp && insp.supported) name = [insp.className, insp.section].filter(Boolean).join(' · ') || null;
 
   if (insp && !insp.supported && !jobVisible) {
@@ -71,7 +106,7 @@ function renderClass() {
       hint = 'Open a class on classroom.google.com, then click the extension again.';
     } else if (insp.reason === 'no-class') {
       name = 'No class open';
-      hint = 'Open one of your classes (its Stream or Classwork page) to export it.';
+      hint = 'Open one of your classes (its Stream or Classwork page) to export it, or export all your classes at once.';
     } else {
       name = 'No Google Classroom tab';
     }
@@ -88,7 +123,7 @@ function renderClass() {
 }
 
 function renderCounts() {
-  const c = state.job && state.job.counts;
+  const c = state.job && !isAccount(state.job) && state.job.counts;
   show('counts', !!c);
   if (!c) return;
   if (state.job.phase === P.PHASE.SCANNED) {
@@ -108,15 +143,59 @@ function renderCounts() {
   show('row-links', c.links > 0);
 }
 
+/** Account export: the classes found, then each one's outcome. */
+function renderClasses() {
+  const job = state.job;
+  const classes = isAccount(job) && isVisible(job) && job.account.classes.length ? job.account.classes : null;
+  show('classes', !!classes);
+  if (!classes) return;
+  const confirming = job.phase === P.PHASE.SCANNED;
+  const current = currentClass(job);
+  setText('classes-title', confirming ? `${plural(classes.length, 'class', 'classes')} found` : `Classes (${classes.length})`);
+  const marks = { exported: '✓', partial: '!', failed: '✗' };
+  $('classes-list').replaceChildren(
+    ...classes.map((c) => {
+      const el = document.createElement('li');
+      el.className = c === current && isActive(job) ? 'current' : c.status;
+      const mark = document.createElement('span');
+      mark.className = 'mark';
+      mark.textContent = c === current && isActive(job) ? '›' : marks[c.status] || '';
+      const text = document.createElement('span');
+      text.textContent = classLabel(c);
+      if (c.teacher) {
+        const sub = document.createElement('span');
+        sub.className = 'sub';
+        sub.textContent = ` — ${c.teacher}`;
+        text.append(sub);
+      }
+      if (c.error) {
+        const reason = document.createElement('span');
+        reason.className = 'reason';
+        reason.textContent = c.error;
+        text.append(reason);
+      }
+      el.append(mark, text);
+      return el;
+    }),
+  );
+  show('classes-buttons', confirming);
+  setText('all-confirm-btn', `Export ${plural(classes.length, 'class', 'classes')}`);
+}
+
 function renderProgress() {
   const job = state.job;
   const active = isActive(job);
   show('progress', active);
   if (!active) return;
   const bar = $('progress-bar');
+  const account = isAccount(job);
+  const current = account ? currentClass(job) : null;
+  setText('progress-class', current ? `Class ${job.account.classIndex + 1} of ${job.account.classes.length}: ${classLabel(current)}` : '');
   if (job.phase === P.PHASE.PREPARING || job.phase === P.PHASE.DISCOVERING) {
     const d = job.discovery || {};
-    setText('phase-title', job.mode === 'scan' ? 'Scanning class…' : 'Exporting… (scanning class)');
+    const listing = account && !job.account.classes.length;
+    if (account) setText('phase-title', listing ? 'Finding your classes…' : 'Exporting all classes… (scanning class)');
+    else setText('phase-title', job.mode === 'scan' ? 'Scanning class…' : 'Exporting… (scanning class)');
     setText('progress-item', d.message || 'Scanning…');
     setText('progress-file', d.current || '');
     if (d.itemTotal) {
@@ -125,13 +204,13 @@ function renderProgress() {
     } else {
       bar.removeAttribute('value');
     }
-    setText('progress-count', d.itemsFound ? `${plural(d.itemsFound, 'item')} found` : '');
+    setText('progress-count', d.itemsFound ? (listing ? `${plural(d.itemsFound, 'class', 'classes')} found` : `${plural(d.itemsFound, 'item')} found`) : '');
     setText('progress-tally', '');
     return;
   }
   const p = job.progress || {};
-  if (job.phase === P.PHASE.DOWNLOADING) {
-    setText('phase-title', 'Exporting…');
+  if (job.phase === P.PHASE.DOWNLOADING || (job.phase === P.PHASE.ZIPPING && current)) {
+    setText('phase-title', account ? 'Exporting all classes…' : 'Exporting…');
     setText('progress-item', p.itemTotal ? `${p.currentItemType || 'Item'} ${p.itemIndex || 0}/${p.itemTotal}${p.currentItemTitle ? `: ${p.currentItemTitle}` : ''}` : '');
     setText('progress-file', p.currentFile ? `Downloading: ${p.currentFile}` : '');
     bar.max = Math.max(1, p.filesTotal || 0);
@@ -143,7 +222,8 @@ function renderProgress() {
     setText('progress-item', '');
     setText('progress-file', '');
     bar.removeAttribute('value');
-    setText('progress-count', `${p.filesDownloaded || 0} files downloaded`);
+    const exported = account ? job.account.classes.filter((c) => c.status !== P.CLASS_STATUS.FAILED).length : 0;
+    setText('progress-count', account ? `${plural(exported, 'class', 'classes')} exported` : `${p.filesDownloaded || 0} files downloaded`);
     setText('progress-tally', '');
   } else if (job.phase === P.PHASE.SAVING) {
     setText('phase-title', 'Saving the archive…');
@@ -179,7 +259,12 @@ function renderResult() {
   else setText('result-title', s ? 'Export finished, but the archive was not saved.' : 'Export failed.');
 
   if (s) {
-    if (!s.items) lines.append(li('No coursework or announcements were found in this class.', 'warn'));
+    if (isAccount(job)) {
+      lines.append(li(`${s.classesExported + s.classesPartial} of ${plural(s.classes, 'class', 'classes')} exported`));
+      if (s.classesFailed) lines.append(li(`${plural(s.classesFailed, 'class', 'classes')} could not be exported`, 'bad'));
+    } else if (!s.items) {
+      lines.append(li('No coursework or announcements were found in this class.', 'warn'));
+    }
     lines.append(li(`${plural(s.items, 'item')} processed`));
     lines.append(li(`${plural(s.filesDownloaded, 'file')} downloaded (${formatBytes(s.bytesDownloaded)})`));
     if (s.filesFailed) lines.append(li(`${plural(s.filesFailed, 'file')} could not be downloaded`, 'bad'));
@@ -187,7 +272,8 @@ function renderResult() {
     if (s.warnings) lines.append(li(`${plural(s.warnings, 'warning')}`, 'warn'));
     if (job.phase === P.PHASE.COMPLETE && r.archiveName) lines.append(li(`Saved: Downloads/Classroom Exports/${r.archiveName}`));
   }
-  show('details-btn', !!(r && (r.failures.length || r.links.length || r.warnings.length)));
+  const failedClasses = isAccount(job) ? job.account.classes.filter((c) => c.status === P.CLASS_STATUS.FAILED) : [];
+  show('details-btn', !!(failedClasses.length || (r && (r.failures.length || r.links.length || r.warnings.length))));
   show('show-btn', job.phase === P.PHASE.COMPLETE && r && r.downloadId != null);
   show('retry-save-btn', !!(r && r.saveError && r.blobUrl));
   show('report-btn', !!r);
@@ -197,9 +283,11 @@ function renderResult() {
 
 function renderDetails() {
   const box = $('details');
-  const r = state.job && state.job.result;
-  show('details', state.detailsOpen && !!r);
-  if (!state.detailsOpen || !r) return;
+  const job = state.job;
+  const r = job && job.result;
+  const failedClasses = isAccount(job) ? job.account.classes.filter((c) => c.status === P.CLASS_STATUS.FAILED) : [];
+  show('details', state.detailsOpen && !!(r || failedClasses.length));
+  if (!state.detailsOpen || !(r || failedClasses.length)) return;
   box.replaceChildren();
   const group = (title, entries, render) => {
     if (!entries.length) return;
@@ -220,19 +308,27 @@ function renderDetails() {
     }
     return el;
   };
-  group(`Not downloaded (${r.failures.length})`, r.failures, (f) => entry(`${f.itemType}: ${f.itemTitle} — ${f.file}`, f.reason));
-  group(`Saved as links (${r.links.length})`, r.links, (l) => entry(`${l.itemType}: ${l.itemTitle} — ${l.title}`, l.reason));
-  group(`Warnings (${r.warnings.length})`, r.warnings, (w) => entry(w.itemTitle ? `${w.itemType || 'Item'}: ${w.itemTitle}` : 'Class', w.message));
+  // Entries of an account export name their class.
+  const inClass = (e) => (e.className ? `${e.className} · ` : '');
+  group(`Classes not exported (${failedClasses.length})`, failedClasses, (c) => entry(classLabel(c), c.error));
+  if (!r) return;
+  group(`Not downloaded (${r.failures.length})`, r.failures, (f) => entry(`${inClass(f)}${f.itemType}: ${f.itemTitle} — ${f.file}`, f.reason));
+  group(`Saved as links (${r.links.length})`, r.links, (l) => entry(`${inClass(l)}${l.itemType}: ${l.itemTitle} — ${l.title}`, l.reason));
+  group(`Warnings (${r.warnings.length})`, r.warnings, (w) => entry(`${inClass(w)}${w.itemTitle ? `${w.itemType || 'Item'}: ${w.itemTitle}` : 'Class'}`, w.message));
 }
 
 function renderActions() {
   const job = state.job;
   const active = isActive(job);
-  show('actions', !active);
+  // While a class list waits for confirmation, its own buttons are the actions.
+  const confirming = isAccount(job) && isVisible(job) && job.phase === P.PHASE.SCANNED;
+  show('actions', !active && !confirming);
+  show('account-actions', !active && !confirming);
   show('options', !active);
   const supported = !!(state.inspect && state.inspect.supported);
   $('export-btn').disabled = !supported;
   $('scan-btn').disabled = !supported;
+  $('all-btn').disabled = !(state.inspect && state.inspect.account);
   const scannedThisClass = job && job.phase === P.PHASE.SCANNED && state.inspect && job.courseId === state.inspect.courseId;
   setText('scan-btn', scannedThisClass ? 'Scan again' : 'Scan only');
 }
@@ -247,6 +343,7 @@ function renderOptions() {
 function render() {
   renderClass();
   renderCounts();
+  renderClasses();
   renderActions();
   renderProgress();
   renderResult();
@@ -270,12 +367,12 @@ function showError(err) {
   setText('error', err.message || String(err));
 }
 
-async function start(mode) {
+async function start(mode, kind = P.JOB_KIND.CLASS) {
   show('error', false);
   state.detailsOpen = false;
   try {
     state.options = currentOptions();
-    state.job = await call(P.MSG.POPUP_START, { tabId: state.tabId, mode, options: state.options });
+    state.job = await call(P.MSG.POPUP_START, { tabId: state.tabId, mode, kind, options: state.options });
     render();
   } catch (err) {
     showError(err);
@@ -285,13 +382,21 @@ async function start(mode) {
 function reportTextFromJob(job) {
   const r = job.result;
   const s = r.summary;
-  const lines = ['Export Report', '', `Class: ${job.className || ''}`, `Items processed: ${s.items}`, '', 'Successful:', `  ${s.filesDownloaded} files`, '', 'Failed:', `  ${s.filesFailed} files`];
-  for (const f of r.failures) lines.push('', `  - ${f.itemType}: ${f.itemTitle}`, `    File: ${f.file}`, `    Reason: ${f.reason}`, `    URL: ${f.url}`);
+  const lines = ['Export Report', ''];
+  if (isAccount(job)) {
+    lines.push(`Classes: ${s.classesExported + s.classesPartial} of ${s.classes} exported`);
+    for (const c of job.account.classes) lines.push(`  - ${classLabel(c)}: ${c.status}${c.error ? ` (${c.error})` : ''}`);
+  } else {
+    lines.push(`Class: ${job.className || ''}`);
+  }
+  lines.push(`Items processed: ${s.items}`, '', 'Successful:', `  ${s.filesDownloaded} files`, '', 'Failed:', `  ${s.filesFailed} files`);
+  const inClass = (e) => (e.className ? `${e.className} · ` : '');
+  for (const f of r.failures) lines.push('', `  - ${inClass(f)}${f.itemType}: ${f.itemTitle}`, `    File: ${f.file}`, `    Reason: ${f.reason}`, `    URL: ${f.url}`);
   lines.push('', 'Saved as links:', `  ${s.linksSaved}`);
-  for (const l of r.links) lines.push('', `  - ${l.itemType}: ${l.itemTitle}`, `    Link: ${l.title}`, `    URL: ${l.url}`, `    Reason: ${l.reason}`);
+  for (const l of r.links) lines.push('', `  - ${inClass(l)}${l.itemType}: ${l.itemTitle}`, `    Link: ${l.title}`, `    URL: ${l.url}`, `    Reason: ${l.reason}`);
   if (r.warnings.length) {
     lines.push('', 'Warnings:');
-    for (const w of r.warnings) lines.push(`  - ${w.itemTitle ? `${w.itemType || 'Item'} "${w.itemTitle}": ` : ''}${w.message}`);
+    for (const w of r.warnings) lines.push(`  - ${inClass(w)}${w.itemTitle ? `${w.itemType || 'Item'} "${w.itemTitle}": ` : ''}${w.message}`);
   }
   return `${lines.join('\n')}\n`;
 }
@@ -313,8 +418,11 @@ function saveReport() {
 function bind() {
   $('export-btn').addEventListener('click', () => start('export'));
   $('scan-btn').addEventListener('click', () => start('scan'));
+  // "Export all classes" lists the account's classes first; the list's own button confirms.
+  $('all-btn').addEventListener('click', () => start('scan', P.JOB_KIND.ACCOUNT));
+  $('all-confirm-btn').addEventListener('click', () => start('export', P.JOB_KIND.ACCOUNT));
   $('cancel-btn').addEventListener('click', () => call(P.MSG.POPUP_CANCEL).catch(showError));
-  $('done-btn').addEventListener('click', async () => {
+  const reset = async () => {
     state.detailsOpen = false;
     try {
       state.job = await call(P.MSG.POPUP_RESET);
@@ -322,7 +430,9 @@ function bind() {
     } catch (err) {
       showError(err);
     }
-  });
+  };
+  $('done-btn').addEventListener('click', reset);
+  $('all-back-btn').addEventListener('click', reset);
   $('details-btn').addEventListener('click', () => {
     state.detailsOpen = !state.detailsOpen;
     renderResult();

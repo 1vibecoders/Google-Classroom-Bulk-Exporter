@@ -45,6 +45,9 @@
 
     // background -> offscreen document
     OFF_START: 'offscreen/start',
+    OFF_ACCOUNT_START: 'offscreen/account-start',
+    OFF_ACCOUNT_CLASS: 'offscreen/account-class',
+    OFF_ACCOUNT_FINISH: 'offscreen/account-finish',
     OFF_CANCEL: 'offscreen/cancel',
     OFF_RELEASE: 'offscreen/release',
     OFF_PING: 'offscreen/ping',
@@ -52,15 +55,35 @@
     // offscreen document -> background
     ENGINE_READY: 'engine/ready',
     ENGINE_PROGRESS: 'engine/progress',
+    ENGINE_CLASS_DONE: 'engine/class-done',
+    ENGINE_WATCHDOG: 'engine/watchdog', // periodic while an account archive is open
     ENGINE_DONE: 'engine/done',
     ENGINE_ERROR: 'engine/error',
   });
 
-  /** Discovery steps executed by the content script, in order. */
+  /**
+   * Discovery steps executed by the content script, in order. CLASSES (the
+   * account's class list on the home page) only runs for account exports.
+   */
   const STEP = Object.freeze({
+    CLASSES: 'classes',
     CLASSWORK: 'classwork',
     STREAM: 'stream',
     DETAILS: 'details',
+  });
+
+  /** What a job exports: the open class, or every active class of the account. */
+  const JOB_KIND = Object.freeze({
+    CLASS: 'class',
+    ACCOUNT: 'account',
+  });
+
+  /** Outcome of one class in an account export (also used in export-manifest.json). */
+  const CLASS_STATUS = Object.freeze({
+    PENDING: 'pending',
+    EXPORTED: 'exported',
+    PARTIAL: 'partial',
+    FAILED: 'failed',
   });
 
   /** Job phases persisted by the background service worker. */
@@ -106,6 +129,8 @@
     TARGET,
     MSG,
     STEP,
+    JOB_KIND,
+    CLASS_STATUS,
     PHASE,
     ACTIVE_PHASES,
     ITEM_TYPE,

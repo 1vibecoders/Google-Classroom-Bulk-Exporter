@@ -15,6 +15,7 @@ export const CONTENT_FILES = [
   'src/content/item-extractor.js',
   'src/content/class-info.js',
   'src/content/page-loader.js',
+  'src/content/class-list.js',
   'src/content/classwork-scanner.js',
   'src/content/stream-scanner.js',
   'src/content/detail-loader.js',

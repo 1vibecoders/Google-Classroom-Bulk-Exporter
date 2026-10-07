@@ -3,7 +3,9 @@
 A Chrome extension (Manifest V3) that exports an entire Google Classroom class
 into one organized ZIP archive: every assignment, material, question and
 (optionally) announcement, with its instructions, metadata and attached files,
-kept together in one folder per item.
+kept together in one folder per item. **Export all classes** does the same for
+every active (not archived) class of your Google account, into a single ZIP
+that is easy to hand to Claude's `/academic-schedule` skill.
 
 It runs entirely in your browser with your existing Google sign-in. Nothing is
 uploaded anywhere.
@@ -15,6 +17,7 @@ English 10 - Period 3/
 ├── class-description.txt
 ├── export-report.txt           ← what was downloaded, what failed and why
 ├── export-report.json
+├── export-manifest.json        ← machine-readable summary (see below)
 ├── Assignments/
 │   ├── Macbeth Act 1 Questions/
 │   │   ├── description.txt
@@ -34,6 +37,22 @@ English 10 - Period 3/
 ├── Questions/
 ├── Announcements/
 └── Other Coursework/                 (items whose type could not be determined)
+```
+
+**Export all classes** puts every class in its own folder with the same
+layout; only the manifest moves up, to the top-level folder:
+
+```text
+Google Classroom Export - 2026-10-07/
+├── export-manifest.json        ← every class: folder, status, counts
+├── index.html                  ← offline table of contents linking to each class
+├── export-report.txt           ← overall summary, then each class's report
+├── English 10 - Period 3/      ← the layout above
+│   ├── class-info.json
+│   ├── Assignments/ …
+│   └── …
+├── Biology - Period 1/
+└── Biology - Period 1 (2)/           (two classes with the same name and section)
 ```
 
 ## Install
@@ -93,7 +112,7 @@ No build step is needed.
    **Show Details** lists every failure with its reason; **Save report**
    saves the report as a text file; **Show in folder** opens the archive.
 
-Options (in the popup):
+Options (in the popup; they apply to both a single class and **Export all classes**):
 
 | Option | Default | Effect |
 | --- | --- | --- |
@@ -101,6 +120,32 @@ Options (in the popup):
 | Open each item's page for complete instructions | on | Reads each item's own page; finds attachments and full text the Classwork list may hide. Turn off for a faster, list-only export. |
 | Google Docs, Sheets and Slides as | Office files | Export Google files as .docx/.xlsx/.pptx (Drawings as .png) or as PDF. |
 | Ask where to save the ZIP file | off | Shows Chrome's *Save as* dialog. |
+
+### Export all classes
+
+1. Open any page of [classroom.google.com](https://classroom.google.com) with
+   the Google account you want to export: the class list (home page) or any
+   class. With several accounts signed in, the account is the one in the
+   address (`/u/0/`, `/u/1/`, …).
+2. Click the extension button, then **Export all classes**. The exporter opens
+   the Classroom home page and lists the classes on it (archived classes are
+   not on it, so they are not exported). The popup shows *N classes found*
+   with each class's name, section and teacher.
+3. Click **Export N classes**. The classes are exported one after the other,
+   in the same tab and with the same options as a single class; the popup
+   shows *Class k of N: name* and the progress of that class. Leave the
+   Classroom tab alone until the last class has been scanned (also while the
+   files of earlier classes download); it is then taken back to where you
+   started. **Cancel** stops the export at any point. If the list is more
+   than 15 minutes old, or the tab has moved to another account since, the
+   classes are listed again for you to confirm.
+4. A class that cannot be scanned (its page does not load, the tab is taken
+   elsewhere within Classroom, …) is marked as not exported, with the reason,
+   and the export goes on with the next class. The popup lists each class with
+   ✓ (exported), ! (partially exported, e.g. some files could not be
+   downloaded) or ✗ (not exported).
+5. The ZIP is saved as `Downloads/Classroom Exports/All classes - <date>.zip`
+   (an existing file is never overwritten).
 
 ### What is exported
 
@@ -126,6 +171,61 @@ Class-level files: `class-info.json` (class id, name, section, counts, topics,
 options, the list of items and their folders), `class-description.txt`,
 `export-report.txt/.json` and `index.html`.
 
+### export-manifest.json
+
+Every archive has an `export-manifest.json` in its top-level folder, so a
+program (or Claude) can read both kinds of export the same way:
+
+| Field | Meaning |
+| --- | --- |
+| `kind` | `"account"` (Export all classes) or `"class"` (one class). |
+| `formatVersion` | `1`. It changes only if the format changes incompatibly. |
+| `exportedAt` | Time of the export (ISO 8601, UTC). Classroom shows dates such as `Oct 10` without the year; this tells which year they belong to. |
+| `accountIndex` | The `N` of `/u/N/`: which signed-in Google account was exported. |
+| `options` | `includeAnnouncements`, `readItemPages`, `googleFilesExportedAs` (`office` or `pdf`). |
+| `classes` | One entry per class, in the order of the Classroom home page (see below). |
+| `totals` | `classes`, `exported`, `partial`, `failed`, `items`, `filesDownloaded`, `filesFailed`, `linksSaved`, `bytesDownloaded`. |
+| `extension` | `name` and `version` of the exporter. |
+
+Each entry of `classes` has `courseId`, `name`, `section`, `teacher` (as shown
+on the class card; `null` when the card shows none, e.g. for classes you
+teach), `url`, `folder`, `status`, `counts` and, when something went wrong,
+`error`:
+
+- `folder` is the class folder relative to the manifest: `"."` in a
+  single-class archive, the class's folder name in an account archive, and
+  `null` for a class that was not exported.
+- `status` is `exported` (complete), `partial` (the folder is there, but some
+  files could not be downloaded, which are listed in its `export-report.txt`;
+  or writing the folder stopped with an error, which `error` gives, and the
+  folder may be incomplete) or `failed` (not exported; `error` says why).
+- `counts` has `items`, `assignment`, `material`, `question`, `announcement`,
+  `other`, `filesDownloaded`, `filesFailed`, `linksSaved`, `bytesDownloaded`
+  and `warnings` (`null` for a class that was not exported).
+
+To find the classes without the manifest (for example in an archive made by an
+older version), look for every `class-info.json`: each one marks a class folder
+(a `partial` folder with an `error` may lack it; the manifest still lists it).
+
+### Using an export with Claude (`/academic-schedule`)
+
+**Export all classes** is the convenient way to give Claude everything at
+once, for example to build a study or homework schedule with the
+`/academic-schedule` skill. The skill lives in this repository in
+`skills/academic-schedule/`; its documentation is
+`academic-scheduler/SCHEDULE_SKILL.md`.
+
+1. Export all classes (above) and wait for *Export complete*.
+2. In Claude, attach `All classes - <date>.zip` (or the extracted folder) and
+   run `/academic-schedule`.
+
+Everything Claude needs is in the archive: `export-manifest.json` lists the
+classes and their folders; in each class folder, `class-info.json` lists the
+items and, per item, `metadata.json` has the type, topic, due date, points and
+posting date, and `description.txt` the full instructions. Attachments are
+there too. If a class shows as `failed`, export it again on its own and attach
+that ZIP as well.
+
 Dates are kept as Classroom displays them (e.g. `Oct 10, 11:59 PM`), because
 Classroom does not show years for the current year or time zones.
 
@@ -133,7 +233,7 @@ Classroom does not show years for the current year or time zones.
 
 | Permission | Why it is needed |
 | --- | --- |
-| `https://classroom.google.com/*` | Read the class you are viewing: inject the exporter into the Classroom tab when you open the popup, and open item pages with your session. |
+| `https://classroom.google.com/*` | Read the class you are viewing (and, for **Export all classes**, the class list of your Classroom home page): inject the exporter into the Classroom tab when you open the popup, and open item pages with your session. |
 | `https://drive.google.com/*`, `https://drive.usercontent.google.com/*` | Download Drive files (the same download endpoints the Drive *Download* button uses). |
 | `https://docs.google.com/*` | Export Google Docs, Sheets, Slides and Drawings (the *File → Download* endpoints). |
 | `https://*.googleusercontent.com/*` | Google serves some downloads and exports from these hosts after a redirect. |
@@ -144,7 +244,9 @@ Classroom does not show years for the current year or time zones.
 
 The extension does **not** request `tabs`, `cookies`, `webRequest`, `<all_urls>`
 or access to any non-Google site. External links are saved as shortcuts
-instead of being fetched, so no broad host permission is needed.
+instead of being fetched, so no broad host permission is needed. **Export all
+classes** needs no additional permission: it uses the same Classroom tab and
+the same hosts.
 
 ## Privacy
 
@@ -172,11 +274,11 @@ instead of being fetched, so no broad host permission is needed.
 
 | Component | Files | Responsibility |
 | --- | --- | --- |
-| Popup | `src/popup/` | Shows the detected class, counts, progress, results and details. Stateless: renders the job stored by the background, so it can be closed and reopened at any time. |
-| Background service worker | `src/background/` | Event-driven job state machine (`preparing → discovering → downloading → zipping → saving → complete/failed/cancelled`) persisted in `chrome.storage.session`, so the worker can be suspended between events. Injects content scripts on demand, navigates the tab between discovery steps, detects navigation away and tab closure, manages the offscreen document and saves the ZIP with `chrome.downloads`. |
-| Content scripts (discovery) | `src/content/` | All Classroom DOM knowledge: URL model, link classifier, item extractor, Classwork and Stream scanners, item-page reader, class detection. Produces a JSON *snapshot* of the class. |
-| Export engine | `src/engine/` | Download planning per resource type, authenticated downloads with retries, file naming and de-duplication, generated text/JSON files, report, and a streaming ZIP writer. Pure ES modules, unit-tested in Node. |
-| Offscreen document | `src/offscreen/` | Hosts the engine; holds downloaded files as Blobs and hands the finished archive to the background as an object URL. |
+| Popup | `src/popup/` | Shows the detected class (or the account's class list), counts, progress, results and details. Stateless: renders the job stored by the background, so it can be closed and reopened at any time. |
+| Background service worker | `src/background/` | Event-driven job state machine (`preparing → discovering → downloading → zipping → saving → complete/failed/cancelled`) persisted in `chrome.storage.session`, so the worker can be suspended between events. An account export keeps its class list and the index of the current class in the same job and runs the `discovering → downloading` steps once per class. Injects content scripts on demand, navigates the tab between discovery steps, detects navigation away and tab closure, manages the offscreen document and saves the ZIP with `chrome.downloads`. |
+| Content scripts (discovery) | `src/content/` | All Classroom DOM knowledge: URL model, link classifier, item extractor, class list of the home page, Classwork and Stream scanners, item-page reader, class detection. Produces a JSON *snapshot* of the class. |
+| Export engine | `src/engine/` | Download planning per resource type, authenticated downloads with retries, file naming and de-duplication, generated text/JSON files, report, manifest, and a streaming ZIP writer. Pure ES modules, unit-tested in Node. |
+| Offscreen document | `src/offscreen/` | Hosts the engine; holds downloaded files as Blobs and hands the finished archive to the background as an object URL. During an account export it keeps the archive being built while the next class is scanned. |
 | Protocol | `src/shared/protocol.js` | Message names, phases and defaults shared by every context. |
 
 ### Discovery strategy (and why)
@@ -202,8 +304,15 @@ and relies on, in order of trust:
    "Class comments", "Your work". Item pages are fetched with `hl=en` so these
    patterns apply regardless of your Classroom language.
 
-Steps:
+Steps (an account export first lists the classes, then runs steps 1–3 for
+each class in turn and adds it to the archive before scanning the next):
 
+0. **Class list** (account export, `/u/<n>/h`): the home page shows a card per
+   active class. A class is a link to its stream (`/c/<course>`) in the page
+   content (the navigation drawer is only a fallback); name and section are
+   the first two lines of that link and the teacher the first line next to
+   it. The list is scrolled until no more cards appear and de-duplicated by
+   course id, in page order.
 1. **Classwork list** (`/w/<course>/t/all`): wait until items render (or the
    page settles empty), scroll until no new items appear, map items to topics,
    then expand each collapsed row, wait for its content to settle, extract it
@@ -247,7 +356,22 @@ Steps:
   pages are recognised and reported as such.
 - **Navigation during the scan** (the user clicks elsewhere, reloads or closes
   the tab) stops the export with a clear message instead of exporting a partial
-  class silently. Once files are downloading the tab is no longer needed.
+  class silently. Once files are downloading the tab is no longer needed. In
+  an account export, a class whose page does not load or is left within
+  Classroom is recorded as not exported and the next class starts; until the
+  last class has been scanned (also while earlier classes download), leaving
+  the account's Classroom, signing out or closing the tab stops the whole
+  export, and the tab is not taken back.
+- **Late messages between classes**: an account export tags every scan with
+  the class it belongs to, so a result or error that arrives after the
+  exporter has moved on to the next class is ignored.
+- **Background suspended mid-export**: Chrome may stop the service worker
+  at any moment. A class's outcome and the move to the next class are saved
+  together, and while an account export runs the offscreen document wakes
+  the worker every 30 seconds; a job that has gone quiet for 90 seconds is
+  picked up where the tab or the archive builder is (a class whose scan was
+  lost is scanned again once, a class or the archive's own files are handed
+  to the builder again, a lost result is read back from it).
 
 ## Known limitations
 
@@ -280,14 +404,24 @@ Steps:
   automatically above 4 GB. Exports of many GB need matching free disk space.
 - Paths are kept short (≤ 50 characters for class/item folders, ≤ 90 for file
   names) so the archive extracts on Windows; longer names are shortened, and
-  the original name is kept in `metadata.json`.
-- Only one export runs at a time.
+  the original name is kept in `metadata.json`. An account export adds its
+  top-level folder (`Google Classroom Export - <date>`); on Windows, extract
+  it into a short path such as `C:\Exports` if Explorer reports names that
+  are too long.
+- Only one export runs at a time. **Export all classes** exports one Google
+  account (the one of the open Classroom tab); classes are scanned one after
+  another in that tab, so a large account takes a while.
+- **Export all classes** exports the classes shown on the Classroom home page.
+  Archived classes are not exported (export one on its own from its page in
+  *Archived classes* if you need it).
 
 ## Troubleshooting
 
 | Message | What to do |
 | --- | --- |
-| *No Google Classroom class detected* | Open a class on classroom.google.com (not the class list) and click the extension again. |
+| *No Google Classroom class detected* | Open a class on classroom.google.com (not the class list) and click the extension again. **Export all classes** works from the class list too. |
+| *No classes were found on the Classroom home page…* | The account has no active classes, or the home page had not finished loading. Open the home page of the right account (`/u/<n>/`), wait for the class cards and try again. |
+| A class is marked ✗ / `failed` in an account export | The reason is shown in the popup, in `export-report.txt` and in `export-manifest.json`. Open that class and export it on its own. |
 | *The page is still loading…* | Wait for Classroom to finish loading, then reopen the popup. |
 | *Export stopped because the Classroom tab navigated away…* | Keep the tab on the class until the popup leaves the *scanning class* stage, then export again. |
 | Many files fail with *Google asked to sign in* | You are signed in to several Google accounts: open the class from the account that has access (the `/u/<n>/` part of the URL) and export again. |
@@ -306,14 +440,17 @@ npm run check        # manifest references, syntax, no remote code / eval
 npm test             # unit tests (Node): URL model, link classifier, file names,
                      # ZIP writer (verified with Python zipfile + unzip -t),
                      # downloader error handling/retries, full export engine,
-                     # CRX packing (signatures checked with OpenSSL)
+                     # account archive (class folders, manifest, combined
+                     # report, a class that fails), CRX packing (signatures
+                     # checked with OpenSSL)
 npm run test:dom     # browser tests: discovery against the mock Classroom
                      # (lazy loading, accordions, frame fallback, navigation,
-                     # empty class), fixture page structures, and the CRX
-                     # compared with one packed by Chromium
+                     # empty class, the home page's class list), fixture page
+                     # structures, and the CRX compared with one packed by Chromium
 npm run test:e2e     # loads the real unpacked extension in Chromium, maps the
                      # Google hosts to a local HTTPS mock and drives the popup
-                     # through scan → export → saved ZIP (needs port 443)
+                     # through scan → export → saved ZIP, and Export all classes
+                     # (one class failing, cancel) (needs port 443)
 npm run package      # build dist/google-classroom-bulk-exporter-<version>.zip
 npm run pack:crx -- --key crx-key.pem
                      # build the signed dist/...-<version>.crx (see Releasing)
@@ -335,15 +472,19 @@ src/
     stream-scanner.js     Stream announcements and coursework notices
     detail-loader.js      item pages via fetch or hidden frame
     page-loader.js        waiting for dynamic lists, infinite scroll
+    class-list.js         the account's classes on the home page (Export all classes)
     class-info.js         class name/section detection
     discovery.js          steps + merge into the snapshot
     content-main.js       message handling
   engine/                 ES modules run in the offscreen document
+    archive-content.js    generated files of a class folder (descriptions, metadata, report, index)
+    account-content.js    export-manifest.json and the account archive's index and report
   offscreen/              offscreen document
   popup/                  popup UI
 tests/
   unit/  dom/  e2e/       test suites (node:test)
-  mock/classroom-mock.mjs simulated Classroom/Drive/Docs used by dom and e2e tests
+  mock/classroom-mock.mjs simulated Classroom/Drive/Docs (one class, or an account
+                          with several) used by unit, dom and e2e tests
   fixtures/classroom/     page-structure variants for extractor tests
 scripts/                  check, package, CRX packing, release notes, icon generation
 .github/workflows/release.yml  builds and publishes a release when a version tag is pushed
@@ -425,3 +566,7 @@ covers the mechanics. On a real Google Classroom account, check:
 - [ ] Exporting twice creates `... (1).zip` instead of overwriting.
 - [ ] The ZIP opens with Windows Explorer, macOS Finder/Archive Utility and `unzip` on Linux, including non-English file names.
 - [ ] Teacher account: drafts/scheduled items are exported and marked in `metadata.json`; student submissions are not downloaded.
+- [ ] **Export all classes** from the class list and from a class page: the popup lists exactly the classes on the home page (names, sections, teachers), not the archived ones.
+- [ ] Every class gets its own folder (two classes with the same name and section get ` (2)`), `export-manifest.json` lists them in home-page order and `index.html` links to each.
+- [ ] With two Google accounts signed in, Export all classes from `/u/1/` exports that account's classes.
+- [ ] Closing and reopening the popup during Export all classes shows *Class k of N*; **Cancel** stops it and takes the tab back.

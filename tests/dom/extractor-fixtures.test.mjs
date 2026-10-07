@@ -132,3 +132,44 @@ test('topics from plain headings, page title ignored, duplicate rows collapsed',
   assert.deepEqual(result.titles, ['No-topic item', 'Intro slides', 'Survey', 'Quiz 1']);
   await page.close();
 });
+
+test('home page in a non-English interface: class cards, not the drawer or another account', async () => {
+  const page = await open('home-spanish-ui.html', '/u/0/h');
+  const collect = () => page.evaluate(() => globalThis.GCX.classList.collect(document, { authuser: 0 }));
+  const classes = await collect();
+  assert.deepEqual(
+    classes.map((c) => [c.courseId, c.name, c.section, c.teacher]),
+    [
+      ['NjI3ODk0MjE0NjAx', 'Matemáticas', 'Grupo A', 'Prof. García'],
+      ['NjI3ODk0MjE0NjAy', 'Química', 'Grupo B', null],
+      ['NjI3ODk0MjE0NjAz', 'Historia del Arte', null, 'Sra. López'],
+    ],
+  );
+  assert.equal(classes[0].url, 'https://classroom.google.com/u/0/c/NjI3ODk0MjE0NjAx');
+  // Without cards, the navigation drawer is the fallback (in its own order).
+  await page.evaluate(() => document.querySelector('main').remove());
+  assert.deepEqual((await collect()).map((c) => c.name), ['Química', 'Matemáticas', 'Historia del Arte']);
+  await page.close();
+});
+
+test('home page: no teacher is taken from the upcoming work or from a count in another script', async () => {
+  const page = await open('home-spanish-ui.html', '/u/0/h');
+  const teachers = (edit) =>
+    page.evaluate((edit) => {
+      const [math, chem] = document.querySelectorAll('main [role="listitem"]');
+      const teacherLine = (card) => card.querySelector('h2').nextElementSibling;
+      if (edit === 'no-count') teacherLine(chem).remove();
+      if (edit === 'linked-teacher') teacherLine(math).innerHTML = '<a href="/u/0/profile/1">Prof. García</a>';
+      if (edit === 'korean-count') teacherLine(chem).textContent = '학생 32명';
+      if (edit === 'persian-count') teacherLine(chem).textContent = '۳۲ دانش‌آموز';
+      return globalThis.GCX.classList.collect(document, { authuser: 0 }).map((c) => c.teacher);
+    }, edit);
+  // Each edit is applied on top of the previous ones.
+  assert.deepEqual(await teachers('no-count'), ['Prof. García', null, 'Sra. López']);
+  assert.deepEqual(await teachers('linked-teacher'), [null, null, 'Sra. López']);
+  await page.reload();
+  await injectContentScripts(page);
+  assert.deepEqual(await teachers('korean-count'), ['Prof. García', null, 'Sra. López']);
+  assert.deepEqual(await teachers('persian-count'), ['Prof. García', null, 'Sra. López']);
+  await page.close();
+});

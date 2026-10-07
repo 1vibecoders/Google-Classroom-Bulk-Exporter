@@ -10,6 +10,12 @@
 // file names, an inaccessible file, Drive's virus-scan interstitial, a flaky
 // server, a "Your work" panel and class comments that must be ignored, and
 // item pages that are either server-rendered or rendered by scripts.
+//
+// An account scenario (accountScenario) serves several such classes behind a
+// home page of class cards, plus an archived class that only the archived
+// classes page lists and a class whose pages fail with HTTP 500.
+// `scenario.downloadDelayMs` (read on every request, so a test can change it)
+// slows down every Drive and Docs response.
 
 const ORIGIN = 'https://classroom.google.com';
 
@@ -183,6 +189,95 @@ export function defaultScenario(overrides = {}) {
   for (const item of [...scenario.items, ...scenario.streamOnlyItems]) item.id = b64(item.numericId);
   for (const post of scenario.announcements) post.id = b64(post.numericId);
   return scenario;
+}
+
+function course(numericId, name, section, teacher) {
+  return { numericId, id: b64(numericId), name, section, teacher };
+}
+
+/**
+ * One Google account (/u/1/) with several classes. Home page order: English 10
+ * (the default class), Biology, a second "Biology - Period 1" taught by the
+ * user (its card shows a student count instead of a teacher) and Chemistry,
+ * whose pages fail. World History is archived.
+ */
+export function accountScenario(overrides = {}) {
+  const authuser = 1;
+  const english = defaultScenario({ authuser, course: course('627894214549', 'English 10', 'Period 3', 'Ms. Smith') });
+  const biology = defaultScenario({
+    authuser,
+    course: course('627894214550', 'Biology', 'Period 1', 'Mr. Jones'),
+    topics: [{ id: b64('9101'), name: 'Cells' }],
+    items: [
+      {
+        numericId: '710000000001',
+        kind: 'a',
+        title: 'Cell diagram',
+        topic: 'Cells',
+        due: 'Due Oct 14',
+        points: '20 points',
+        posted: 'Oct 1',
+        description: 'Label the parts of the cell.',
+        attachments: [{ type: 'drive', id: 'BIOCELL0000000000001', name: 'cell.pdf', label: 'PDF' }],
+      },
+      {
+        numericId: '710000000002',
+        kind: 'm',
+        title: 'Lab safety',
+        topic: null,
+        posted: 'Sep 2',
+        description: 'Read before the first lab.',
+        attachments: [{ type: 'link', url: 'https://example.com/lab-safety', name: 'Lab safety rules', label: 'Link' }],
+      },
+    ],
+    streamOnlyItems: [],
+    announcements: [{ numericId: '810000000001', text: 'Lab coats on Thursday.', posted: 'Oct 2', attachments: [] }],
+  });
+  const biologyTaught = defaultScenario({
+    authuser,
+    course: course('627894214551', 'Biology', 'Period 1', '28 students'),
+    topics: [],
+    items: [
+      {
+        numericId: '720000000001',
+        kind: 'a',
+        title: 'Microscope worksheet',
+        topic: null,
+        due: 'Due Oct 20',
+        posted: 'Oct 5',
+        description: 'Complete the worksheet.',
+        attachments: [{ type: 'doc', id: 'BIODOC00000000000001', name: 'Microscope worksheet', label: 'Google Docs' }],
+      },
+    ],
+    streamOnlyItems: [],
+    announcements: [],
+  });
+  const chemistry = defaultScenario({
+    authuser,
+    course: course('627894214552', 'Chemistry', 'Period 5', 'Dr. Brown'),
+    failing: true,
+    topics: [],
+    items: [],
+    streamOnlyItems: [],
+    announcements: [],
+  });
+  const history = defaultScenario({
+    authuser,
+    course: course('627894214553', 'World History', 'Period 2', 'Mr. Gray'),
+    topics: [],
+    items: [{ numericId: '730000000001', kind: 'a', title: 'Old essay', topic: null, posted: 'May 1', description: 'From last year.', attachments: [] }],
+    streamOnlyItems: [],
+    announcements: [],
+  });
+  return {
+    authuser,
+    bootDelayMs: 300,
+    // Cards rendered at first; the rest load on scroll.
+    homeInitialBatch: 2,
+    classes: [english, biology, biologyTaught, chemistry],
+    archived: [history],
+    ...overrides,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -458,6 +553,66 @@ export function announcementPage(post, scenario) {
   return shell(scenario, { title: scenario.course.name, body: `<div class="feed">${postHtml(post, scenario)}</div>` });
 }
 
+// Home page of an account: a card per class. Like Classroom's, a card links
+// to the class from its picture and its title (name and section), shows the
+// teacher (or, for a class the user teaches, a student count), upcoming work
+// and icon links; the navigation drawer lists the classes too, in another order.
+function classCard(cls, account) {
+  const p = prefix(account).slice(1);
+  const c = cls.course;
+  const next = cls.items[0];
+  const due = next ? `<a href="./${p}/c/${c.id}/${next.kind}/${next.id}/details">${esc(next.due || 'Due soon')} – ${esc(next.title)}</a>` : '';
+  const picture = `<a class="pic" href="./${p}/c/${c.id}" tabindex="-1"><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></a>`;
+  const title = `<h2><a href="./${p}/c/${c.id}"><div class="cn">${esc(c.name)}</div>${c.section ? `<div class="cs">${esc(c.section)}</div>` : ''}</a></h2>`;
+  const icons = `<a href="./${p}/c/${c.id}/sp/all" aria-label="Open your work for ${esc(c.name)}"><i aria-hidden="true">assignment_ind</i></a><a href="https://drive.google.com/drive/folders/F${c.numericId}" aria-label="Open folder for ${esc(c.name)}"><i aria-hidden="true">folder_open</i></a><div role="button" aria-haspopup="true" aria-label="Options for ${esc(c.name)}">⋮</div>`;
+  return `<li class="crd">${picture}<div class="hd">${title}<div class="tc">${esc(c.teacher)}</div></div><div class="bd">${due}</div><div class="ft">${icons}</div></li>`;
+}
+
+function accountPage(account, { title, cards, script = '' }) {
+  const p = prefix(account).slice(1);
+  const drawer = [...account.classes]
+    .sort((a, b) => a.course.name.localeCompare(b.course.name) || b.course.numericId.localeCompare(a.course.numericId))
+    .map(({ course: c }) => `<a href="./${p}/c/${c.id}"><div>${esc(c.name)}</div><div>${esc(c.section)}</div></a>`)
+    .join('');
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><base href="${ORIGIN}/"><title>${esc(title)}</title>
+<style>body{font-family:sans-serif;margin:0}main{padding:16px}.crd{list-style:none;border:1px solid #ddd;margin:8px;padding:8px}.spacer{height:2200px}</style></head>
+<body>
+<header class="appbar"><a href="./${p}/h">Google Classroom</a></header>
+<div class="drawer" role="navigation"><a href="./${p}/h">Classes</a>${drawer}<a href="./${p}/archived">Archived classes</a></div>
+<main role="main"><ol id="cards">${cards}</ol><div id="bar" role="progressbar" hidden>Loading</div><div class="spacer"></div></main>
+${script}
+</body></html>`;
+}
+
+export function homePage(account) {
+  const data = { cards: account.classes.map((cls) => classCard(cls, account)), initialBatch: account.homeInitialBatch, bootDelayMs: account.bootDelayMs };
+  const script = `<script>
+(() => {
+  const data = ${JSON.stringify(data).replace(/</g, '\\u003c')};
+  let rendered = 0;
+  function renderBatch(n) {
+    const list = document.getElementById('cards');
+    const end = Math.min(data.cards.length, rendered + n);
+    for (; rendered < end; rendered++) list.insertAdjacentHTML('beforeend', data.cards[rendered]);
+  }
+  let loading = false;
+  window.addEventListener('scroll', () => {
+    if (loading || rendered >= data.cards.length) return;
+    if (window.innerHeight + window.scrollY < document.body.scrollHeight - 300) return;
+    loading = true;
+    document.getElementById('bar').hidden = false;
+    setTimeout(() => { renderBatch(1); document.getElementById('bar').hidden = true; loading = false; }, 400);
+  }, { passive: true });
+  setTimeout(() => renderBatch(data.initialBatch), data.bootDelayMs);
+})();
+</script>`;
+  return accountPage(account, { title: 'Classes', cards: '', script });
+}
+
+export function archivedPage(account) {
+  return accountPage(account, { title: 'Archived classes', cards: account.archived.map((cls) => classCard(cls, account)).join('') });
+}
+
 // ---------------------------------------------------------------------------
 // Request handler
 // ---------------------------------------------------------------------------
@@ -480,36 +635,57 @@ function fileResponse(file, filenameOverride) {
   };
 }
 
+const SERVER_ERROR = '<!doctype html><html lang="en"><head><title>Error 500 (Server Error)</title></head><body><p><b>500.</b> That’s an error.</p><p>There was an error. Please try again later.</p></body></html>';
+
+/** Pages of one class, or null if `path` is not one of them. */
+function classResponse(scenario, path) {
+  const p = prefix(scenario);
+  const id = scenario.course.id;
+  if (!new RegExp(`^${p}/[cw]/${id}(/|$)`).test(path)) return null;
+  if (scenario.failing) return html(SERVER_ERROR, 500);
+  if (path === `${p}/w/${id}/t/all`) return html(classworkPage(scenario));
+  if (path === `${p}/c/${id}`) return html(streamPage(scenario));
+  const m = new RegExp(`^${p}/c/${id}/(a|m|sa|mc)/([^/]+)/details$`).exec(path);
+  if (m) {
+    const item = [...scenario.items, ...scenario.streamOnlyItems].find((i) => i.id === m[2]);
+    if (!item || item.kind !== m[1]) return html(shell(scenario, { title: 'Not found', body: '<p>This item was not found.</p>' }), 404);
+    return html(detailPage(item, scenario));
+  }
+  const a = new RegExp(`^${p}/c/${id}/p/([^/]+)$`).exec(path);
+  if (a) {
+    const post = scenario.announcements.find((x) => x.id === a[1]);
+    if (post) return html(announcementPage(post, scenario));
+  }
+  return null;
+}
+
 /**
+ * Serves a class scenario (defaultScenario) or an account scenario (accountScenario).
  * @returns {(req:{method:string,url:string}) => Promise<{status:number,headers:object,body:(string|Buffer)}>}
  */
 export function createHandler(scenario, log = []) {
-  const files = fileCatalog(scenario);
+  const account = scenario.classes ? scenario : null;
+  const courses = account ? [...account.classes, ...account.archived] : [scenario];
+  const files = new Map(courses.flatMap((c) => [...fileCatalog(c)]));
   const flaky = new Map();
-  const allItems = [...scenario.items, ...scenario.streamOnlyItems];
+  const allItems = courses.flatMap((c) => [...c.items, ...c.streamOnlyItems]);
+  const notFound = () => (account ? html('<!doctype html><title>Not found</title><p>Not found</p>', 404) : html(shell(scenario, { title: 'Not found', body: '<p>Not found</p>' }), 404));
   return async ({ url }) => {
     const u = new URL(url);
     log.push(`${u.host}${u.pathname}${u.search}`);
     const p = prefix(scenario);
     if (u.host === 'classroom.google.com') {
       const path = u.pathname.replace(/\/$/, '');
-      if (path === `${p}/w/${scenario.course.id}/t/all`) return html(classworkPage(scenario));
-      if (path === `${p}/c/${scenario.course.id}`) return html(streamPage(scenario));
-      const m = new RegExp(`^${p}/c/${scenario.course.id}/(a|m|sa|mc)/([^/]+)/details$`).exec(path);
-      if (m) {
-        const item = allItems.find((i) => i.id === m[2]);
-        if (!item || item.kind !== m[1]) return html(shell(scenario, { title: 'Not found', body: '<p>This item was not found.</p>' }), 404);
-        return html(detailPage(item, scenario));
+      for (const c of courses) {
+        const res = classResponse(c, path);
+        if (res) return res;
       }
-      const a = new RegExp(`^${p}/c/${scenario.course.id}/p/([^/]+)$`).exec(path);
-      if (a) {
-        const post = scenario.announcements.find((x) => x.id === a[1]);
-        if (post) return html(announcementPage(post, scenario));
-      }
-      if (path === '' || path === p || path === `${p}/h`) return html(shell(scenario, { title: 'Classes', body: '<p>Your classes</p>' }));
-      return html(shell(scenario, { title: 'Not found', body: '<p>Not found</p>' }), 404);
+      if (path === '' || path === p || path === `${p}/h`) return html(account ? homePage(account) : shell(scenario, { title: 'Classes', body: '<p>Your classes</p>' }));
+      if (account && path === `${p}/archived`) return html(archivedPage(account));
+      return notFound();
     }
 
+    if (scenario.downloadDelayMs) await new Promise((r) => setTimeout(r, scenario.downloadDelayMs));
     if (u.host === 'drive.usercontent.google.com' || (u.host === 'drive.google.com' && u.pathname === '/uc')) {
       const id = u.searchParams.get('id');
       const file = files.get(id);

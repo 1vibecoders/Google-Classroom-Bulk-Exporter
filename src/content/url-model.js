@@ -6,6 +6,7 @@
  *
  * Known shapes (all optionally prefixed by /u/<n> for multi-account sessions
  * and, for some Workspace accounts, /a/<domain>):
+ *   /h                                     home page: the account's active classes
  *   /c/<courseId>                          class stream
  *   /c/<courseId>/<kind>/<itemId>/details  item details (a = assignment,
  *                                          m = material, sa/mc/q = question)
@@ -111,6 +112,11 @@
     return ctx.authuser ? `/u/${ctx.authuser}` : '/u/0';
   }
 
+  /** The account's home page (class list); `ctx.authuser` selects the account. */
+  function homeUrl(ctx) {
+    return `${CLASSROOM_ORIGIN}/u/${ctx.authuser || 0}/h`;
+  }
+
   function classworkUrl(ctx) {
     return `${CLASSROOM_ORIGIN}${prefixOf(ctx)}/w/${ctx.courseId}/t/all`;
   }
@@ -179,6 +185,7 @@
     CLASSROOM_ORIGIN,
     ITEM_KIND_TO_TYPE,
     parse,
+    homeUrl,
     classworkUrl,
     streamUrl,
     itemUrl,

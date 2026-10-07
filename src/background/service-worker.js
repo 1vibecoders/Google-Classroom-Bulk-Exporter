@@ -43,7 +43,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       swallow(jobs.onContentProgress(message));
       return false;
     case P.MSG.CS_STEP_RESULT:
-      swallow(jobs.onStepResult(message).catch((err) => jobs.failJob(message.jobId, err.message)));
+      swallow(jobs.onStepResult(message));
       return false;
     case P.MSG.CS_STEP_ERROR:
       swallow(jobs.onStepError(message));
@@ -54,6 +54,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return false;
     case P.MSG.ENGINE_PROGRESS:
       swallow(jobs.onEngineProgress(message));
+      return false;
+    case P.MSG.ENGINE_CLASS_DONE:
+      swallow(jobs.onEngineClassDone(message).catch((err) => jobs.failJob(message.jobId, err.message)));
+      return false;
+    case P.MSG.ENGINE_WATCHDOG:
+      swallow(jobs.checkActivity());
       return false;
     case P.MSG.ENGINE_DONE:
       swallow(jobs.onEngineDone(message).catch((err) => jobs.failJob(message.jobId, `Saving the archive failed: ${err.message}`)));
