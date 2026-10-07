@@ -360,11 +360,13 @@ tab.
 Releases are built by GitHub Actions (`.github/workflows/release.yml`):
 
 1. Bump `version` in both `manifest.json` and `package.json` (for example to `1.1.0`) and merge it.
-2. Push a matching tag: `git tag v1.1.0 && git push origin v1.1.0`.
+2. Either push a matching tag (`git tag v1.1.0 && git push origin v1.1.0`), or
+   open **Actions → Release → Run workflow** on `main` and enter `v1.1.0`
+   (the tag is created on that commit).
 3. The workflow checks that the tag matches the version, runs `npm run check`
    and the unit tests, builds the ZIP and the CRX, and publishes a release
    with both files, `SHA256SUMS.txt` and installation notes. Running the
-   workflow again from the Actions tab for an existing tag replaces its files.
+   workflow again for an existing tag rebuilds that tag and replaces its files.
 
 **CRX signing key.** The CRX is signed with an RSA private key, and that key
 determines the extension ID. Generate one once and keep it private (never
