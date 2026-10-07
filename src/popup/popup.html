@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Google Classroom Exporter</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="top">
+    <img src="../../icons/icon-32.png" alt="" width="20" height="20">
+    <h1>Google Classroom Exporter</h1>
+  </header>
+
+  <main>
+    <section class="card" id="class-card">
+      <div class="row-label">Class</div>
+      <div id="class-name" class="class-name">Detecting…</div>
+      <div id="class-hint" class="hint"></div>
+    </section>
+
+    <section class="card" id="counts" hidden>
+      <dl class="counts">
+        <div><dt>Assignments</dt><dd id="c-assignment">0</dd></div>
+        <div><dt>Materials</dt><dd id="c-material">0</dd></div>
+        <div id="row-question" hidden><dt>Questions</dt><dd id="c-question">0</dd></div>
+        <div id="row-announcement" hidden><dt>Announcements</dt><dd id="c-announcement">0</dd></div>
+        <div id="row-other" hidden><dt>Other coursework</dt><dd id="c-other">0</dd></div>
+        <div><dt>Attachments</dt><dd id="c-files">0</dd></div>
+        <div id="row-links" hidden><dt>Links (not files)</dt><dd id="c-links">0</dd></div>
+      </dl>
+    </section>
+
+    <section id="actions" class="actions">
+      <button id="export-btn" class="primary" type="button" disabled>Export Class</button>
+      <button id="scan-btn" class="secondary" type="button" disabled title="Count items and attachments without downloading">Scan only</button>
+    </section>
+
+    <details id="options" class="options">
+      <summary>Options</summary>
+      <label><input type="checkbox" id="opt-announcements"> Include announcements from the Stream</label>
+      <label><input type="checkbox" id="opt-details"> Open each item's page for complete instructions</label>
+      <label class="select">Google Docs, Sheets and Slides as
+        <select id="opt-format">
+          <option value="office">Office files (.docx, .xlsx, .pptx)</option>
+          <option value="pdf">PDF</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="opt-saveas"> Ask where to save the ZIP file</label>
+    </details>
+
+    <section class="card" id="progress" hidden aria-live="polite">
+      <div id="phase-title" class="phase">Exporting…</div>
+      <div id="progress-item" class="line"></div>
+      <div id="progress-file" class="line muted"></div>
+      <progress id="progress-bar" max="1"></progress>
+      <div id="progress-count" class="line"></div>
+      <div id="progress-tally" class="line muted"></div>
+      <div class="buttons"><button id="cancel-btn" class="secondary" type="button">Cancel</button></div>
+    </section>
+
+    <section class="card" id="result" hidden aria-live="polite">
+      <div id="result-title" class="phase"></div>
+      <ul id="result-lines" class="result-lines"></ul>
+      <div class="buttons">
+        <button id="details-btn" class="secondary" type="button">Show Details</button>
+        <button id="show-btn" class="secondary" type="button" hidden>Show in folder</button>
+        <button id="retry-save-btn" class="secondary" type="button" hidden>Save again</button>
+        <button id="report-btn" class="secondary" type="button" hidden>Save report</button>
+        <button id="done-btn" class="secondary" type="button">Done</button>
+      </div>
+      <div id="details" class="details" hidden></div>
+    </section>
+
+    <section id="error" class="error" role="alert" hidden></section>
+  </main>
+
+  <footer class="foot">Everything stays on your computer. Files are downloaded with your own Google account.</footer>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
