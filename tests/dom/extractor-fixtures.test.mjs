@@ -133,7 +133,7 @@ test('topics from plain headings, page title ignored, duplicate rows collapsed',
   await page.close();
 });
 
-test('home page in a non-English interface: class cards, not the drawer or another account', async () => {
+test('home page in a non-English interface: class cards first, then drawer-only classes, never another account', async () => {
   const page = await open('home-spanish-ui.html', '/u/0/h');
   const collect = () => page.evaluate(() => globalThis.GCX.classList.collect(document, { authuser: 0 }));
   const classes = await collect();
@@ -146,9 +146,24 @@ test('home page in a non-English interface: class cards, not the drawer or anoth
     ],
   );
   assert.equal(classes[0].url, 'https://classroom.google.com/u/0/c/NjI3ODk0MjE0NjAx');
-  // Without cards, the navigation drawer is the fallback (in its own order).
+  // A class of another role view (Teaching vs Enrolled) is only in the drawer:
+  // it comes after the cards, without a teacher taken from the menu.
+  await page.evaluate(() => {
+    const nav = document.querySelector('nav');
+    nav.insertAdjacentHTML('beforeend', '<div>Docencia</div><a href="/c/NjI3ODk0MjE0NjA0"><span>Física</span><span>Grupo C</span></a>');
+  });
+  assert.deepEqual(
+    (await collect()).map((c) => [c.name, c.section, c.teacher]),
+    [
+      ['Matemáticas', 'Grupo A', 'Prof. García'],
+      ['Química', 'Grupo B', null],
+      ['Historia del Arte', null, 'Sra. López'],
+      ['Física', 'Grupo C', null],
+    ],
+  );
+  // Without cards, the navigation drawer lists every class (in its own order).
   await page.evaluate(() => document.querySelector('main').remove());
-  assert.deepEqual((await collect()).map((c) => c.name), ['Química', 'Matemáticas', 'Historia del Arte']);
+  assert.deepEqual((await collect()).map((c) => c.name), ['Química', 'Matemáticas', 'Historia del Arte', 'Física']);
   await page.close();
 });
 

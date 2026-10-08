@@ -51,6 +51,27 @@ test('lists the active classes of the account in home-page order', async () => {
   assert.ok(reports.some((r) => r.message === '4 classes found.'));
 });
 
+test('lists the classes from a role view of the redesigned home page and the classes only the drawer shows', async () => {
+  const base = accountScenario();
+  // A class the user teaches is in the Teaching view, so the Enrolled view's cards leave it out.
+  const physics = { ...base.classes[1], course: { ...base.classes[1].course, numericId: '627894214560', id: 'NjI3ODk0MjE0NTYw', name: 'Physics', section: 'Period 6', teacher: '' } };
+  const account = { ...base, drawerOnly: [physics] };
+  for (const path of ['/u/1/h', '/u/1/h/st']) {
+    const { result } = await listClasses(account, { path });
+    assert.deepEqual(
+      result.classes.map((c) => [c.name, c.section, c.teacher]),
+      [
+        ['English 10', 'Period 3', 'Ms. Smith'],
+        ['Biology', 'Period 1', 'Mr. Jones'],
+        ['Biology', 'Period 1', null],
+        ['Chemistry', 'Period 5', 'Dr. Brown'],
+        ['Physics', 'Period 6', null],
+      ],
+      path,
+    );
+  }
+});
+
 test('fails with a helpful message when the account has no active classes', async () => {
   const account = accountScenario({ classes: [] });
   await assert.rejects(listClasses(account), /No classes were found on the Classroom home page/);

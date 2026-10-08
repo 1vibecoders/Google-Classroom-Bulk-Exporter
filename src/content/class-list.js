@@ -1,13 +1,15 @@
 /*
  * The account's class list, read from the Classroom home page (/u/<n>/h).
  *
- * The home page shows a card for every class the account teaches or is
- * enrolled in; archived classes are only listed on a separate page, so they
- * are left out by construction. As everywhere else, nothing depends on CSS
- * class names or on the UI language:
- *   - a class is a link to its stream (/c/<courseId>) in the page content;
- *     links in the app bar and navigation drawer are used only when the page
- *     shows no class cards at all,
+ * The home page shows a card for every class of its current role view
+ * (since July 2026 Classroom splits the home page into views such as
+ * Teaching and Enrolled); the navigation drawer lists the classes of every
+ * view. Archived classes are only listed on a separate page, so they are
+ * left out by construction. As everywhere else, nothing depends on CSS class
+ * names or on the UI language:
+ *   - a class is a link to its stream (/c/<courseId>): the cards in the page
+ *     content first, in page order, then the classes that only the app bar or
+ *     navigation drawer links to (another view's classes), in drawer order,
  *   - name and section are the first two text lines of that link (the same
  *     convention class-info.js relies on),
  *   - the card is the link's list item; the first line next to the link
@@ -88,7 +90,8 @@
       prefix: labelled.prefix,
       name,
       section,
-      teacher: teacherFor(labelled, cardFor(labelled, links), [name, section]),
+      // A drawer entry has no card; the lines around it are menu headings, not a teacher.
+      teacher: labelled.inChrome ? null : teacherFor(labelled, cardFor(labelled, links), [name, section]),
       url: GCX.url.streamUrl(ctx),
     };
   }
@@ -97,13 +100,17 @@
   function collect(doc, { authuser }) {
     const all = streamLinks(doc, authuser);
     const content = all.filter((l) => !l.inChrome);
-    const links = content.length ? content : all;
+    // Cards first (they carry the teacher), then classes only the drawer lists.
+    const ordered = [...content, ...all.filter((l) => l.inChrome)];
     const groups = new Map();
-    for (const link of links) {
+    for (const link of ordered) {
       if (!groups.has(link.key)) groups.set(link.key, []);
       groups.get(link.key).push(link);
     }
-    return Array.from(groups.values()).map((group) => describe(group, links, authuser));
+    return Array.from(groups.values()).map((group) => {
+      const cards = group.filter((l) => !l.inChrome);
+      return describe(cards.length ? cards : group, content, authuser);
+    });
   }
 
   async function scan(ctx, { signal, report, assertPage }) {

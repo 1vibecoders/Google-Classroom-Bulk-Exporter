@@ -33,6 +33,15 @@ test('handles Workspace domain prefixes and to-do pages', () => {
   assert.equal(todo.courseId, null);
   assert.equal(url.parse('https://classroom.google.com/').page, 'home');
   assert.equal(url.parse('https://classroom.google.com/u/1/h').page, 'home');
+  // The redesigned home page opens a role view (Enrolled, Teaching, …).
+  const view = url.parse('https://classroom.google.com/u/1/h/st');
+  assert.equal(view.page, 'home');
+  assert.equal(view.authuser, 1);
+  assert.equal(url.parse('https://classroom.google.com/u/0/h/te/').page, 'home');
+  assert.equal(url.parse('https://classroom.google.com/u/0/a/school.example.edu/h').page, 'home');
+  assert.equal(url.parse('https://classroom.google.com/u/0/a/not-turned-in/all').page, 'other');
+  assert.equal(url.parse('https://classroom.google.com/u/0/a/not-turned-in').page, 'other');
+  assert.equal(url.parse('https://classroom.google.com/u/0/calendar/this-week/course/all').page, 'other');
   assert.equal(url.parse('https://example.com/c/NjI3').isClassroom, false);
   assert.equal(url.parse('not a url').isClassroom, false);
 });

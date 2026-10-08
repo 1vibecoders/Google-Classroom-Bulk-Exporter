@@ -200,6 +200,11 @@ function course(numericId, name, section, teacher) {
  * (the default class), Biology, a second "Biology - Period 1" taught by the
  * user (its card shows a student count instead of a teacher) and Chemistry,
  * whose pages fail. World History is archived.
+ *
+ * Like Classroom's redesigned home page (July 2026), /u/1/h switches to the
+ * remembered role view (/u/1/h/st) once the app has booted. `drawerOnly`
+ * classes appear only in the navigation drawer, the way classes of another
+ * role view (Teaching vs Enrolled) do.
  */
 export function accountScenario(overrides = {}) {
   const authuser = 1;
@@ -274,7 +279,9 @@ export function accountScenario(overrides = {}) {
     bootDelayMs: 300,
     // Cards rendered at first; the rest load on scroll.
     homeInitialBatch: 2,
+    homeView: 'st',
     classes: [english, biology, biologyTaught, chemistry],
+    drawerOnly: [],
     archived: [history],
     ...overrides,
   };
@@ -506,7 +513,11 @@ export function streamPage(scenario) {
     document.getElementById('bar').hidden = false;
     setTimeout(() => { renderBatch(data.batchSize); document.getElementById('bar').hidden = true; loading = false; }, 400);
   }, { passive: true });
-  setTimeout(() => renderBatch(data.initialBatch), data.bootDelayMs);
+  setTimeout(() => {
+    // The app moves to its role view without reloading the page.
+    if (data.viewPath && location.pathname !== data.viewPath) history.replaceState(null, '', data.viewPath);
+    renderBatch(data.initialBatch);
+  }, data.bootDelayMs);
 })();
 </script>`;
   const c = scenario.course;
@@ -570,7 +581,7 @@ function classCard(cls, account) {
 
 function accountPage(account, { title, cards, script = '' }) {
   const p = prefix(account).slice(1);
-  const drawer = [...account.classes]
+  const drawer = [...account.classes, ...(account.drawerOnly || [])]
     .sort((a, b) => a.course.name.localeCompare(b.course.name) || b.course.numericId.localeCompare(a.course.numericId))
     .map(({ course: c }) => `<a href="./${p}/c/${c.id}"><div>${esc(c.name)}</div><div>${esc(c.section)}</div></a>`)
     .join('');
@@ -585,7 +596,12 @@ ${script}
 }
 
 export function homePage(account) {
-  const data = { cards: account.classes.map((cls) => classCard(cls, account)), initialBatch: account.homeInitialBatch, bootDelayMs: account.bootDelayMs };
+  const data = {
+    cards: account.classes.map((cls) => classCard(cls, account)),
+    initialBatch: account.homeInitialBatch,
+    bootDelayMs: account.bootDelayMs,
+    viewPath: account.homeView ? `${prefix(account)}/h/${account.homeView}` : null,
+  };
   const script = `<script>
 (() => {
   const data = ${JSON.stringify(data).replace(/</g, '\\u003c')};
@@ -665,7 +681,7 @@ function classResponse(scenario, path) {
  */
 export function createHandler(scenario, log = []) {
   const account = scenario.classes ? scenario : null;
-  const courses = account ? [...account.classes, ...account.archived] : [scenario];
+  const courses = account ? [...account.classes, ...(account.drawerOnly || []), ...account.archived] : [scenario];
   const files = new Map(courses.flatMap((c) => [...fileCatalog(c)]));
   const flaky = new Map();
   const allItems = courses.flatMap((c) => [...c.items, ...c.streamOnlyItems]);
@@ -680,7 +696,9 @@ export function createHandler(scenario, log = []) {
         const res = classResponse(c, path);
         if (res) return res;
       }
-      if (path === '' || path === p || path === `${p}/h`) return html(account ? homePage(account) : shell(scenario, { title: 'Classes', body: '<p>Your classes</p>' }));
+      if (path === '' || path === p || path === `${p}/h` || (account && path.startsWith(`${p}/h/`))) {
+        return html(account ? homePage(account) : shell(scenario, { title: 'Classes', body: '<p>Your classes</p>' }));
+      }
       if (account && path === `${p}/archived`) return html(archivedPage(account));
       return notFound();
     }

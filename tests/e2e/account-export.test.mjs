@@ -268,9 +268,27 @@ function editJob(popup, changes) {
     const job = (await chrome.storage.session.get('gcx.job'))['gcx.job'];
     if (changes.listedAgo != null) job.account.listedAt = Date.now() - changes.listedAgo;
     if (changes.silentFor != null) job.lastActivity = Date.now() - changes.silentFor;
+    if (changes.failed) Object.assign(job, { phase: 'failed', error: { message: changes.failed, code: 'error' }, nav: null });
     await chrome.storage.session.set({ 'gcx.job': job });
   }, changes);
 }
+
+test('lists the classes from a role view of the redesigned home page (/h/st)', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  const { page, popup } = await openClassroom('https://classroom.google.com/u/1/h/st');
+  await popup.waitForFunction(() => document.getElementById('class-name').textContent === 'No class open', null, { timeout: 20000 });
+  const listed = await listClasses(popup);
+  assert.deepEqual(
+    listed.account.classes.map((c) => c.name),
+    ['English 10', 'Biology', 'Biology', 'Chemistry'],
+  );
+  // After a failed account export the popup still says what the tab shows.
+  await editJob(popup, { failed: 'Something went wrong.' });
+  await popup.reload();
+  await popup.waitForFunction(() => document.getElementById('class-name').textContent === 'No class open', null, { timeout: 20000 });
+  await popup.close();
+  await page.close();
+});
 
 test('a class list that is out of date or of another account is not exported without a new confirmation', async (t) => {
   if (skipReason) return t.skip(skipReason);

@@ -100,7 +100,9 @@ function renderClass() {
   if (jobVisible && !isAccount(job) && job.className) name = job.className;
   else if (insp && insp.supported) name = [insp.className, insp.section].filter(Boolean).join(' · ') || null;
 
-  if (insp && !insp.supported && !jobVisible) {
+  // Without a class name from the job (an account export, or a class export
+  // without one yet), say what the tab shows rather than "Detecting…".
+  if (insp && !insp.supported && !name) {
     if (insp.reason === 'not-classroom') {
       name = 'No Google Classroom class detected';
       hint = 'Open a class on classroom.google.com, then click the extension again.';

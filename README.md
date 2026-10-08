@@ -129,8 +129,12 @@ Options (in the popup; they apply to both a single class and **Export all classe
    address (`/u/0/`, `/u/1/`, …).
 2. Click the extension button, then **Export all classes**. The exporter opens
    the Classroom home page and lists the classes on it (archived classes are
-   not on it, so they are not exported). The popup shows *N classes found*
-   with each class's name, section and teacher.
+   not on it, so they are not exported). The redesigned home page shows one
+   role view at a time (for example *Enrolled* at `/u/1/h/st`, or
+   *Teaching*), so the classes that only the navigation menu lists — those of
+   your other view — are added after the home page's cards. The popup shows
+   *N classes found* with each class's name, section and teacher (the
+   teacher is only known for classes with a card on the page).
 3. Click **Export N classes**. The classes are exported one after the other,
    in the same tab and with the same options as a single class; the popup
    shows *Class k of N: name* and the progress of that class. Leave the
