@@ -264,6 +264,8 @@ describe('limits and unplaced work', () => {
         { id: 'unknown', title: 'Unknown', due: '2026-10-20' },
         { id: 'exam', title: 'Exam', type: 'exam', estimatedMinutes: 30, assessmentDate: '2026-10-09' },
         { id: 'pres', title: 'Talk', type: 'presentation', estimatedMinutes: 30, assessmentDate: '2026-10-12' },
+        { id: 'today', title: 'Worksheet', estimatedMinutes: 30, due: '2026-10-12' },
+        { id: 'past', title: 'Lab', estimatedMinutes: 30, due: '2026-10-11' },
       ],
     });
     expect(plan(doc)).toEqual({
@@ -274,6 +276,14 @@ describe('limits and unplaced work', () => {
         { assignmentId: 'unknown', minutes: 0, reason: 'It has no time estimate. Add an estimated duration to plan it.' },
         { assignmentId: 'exam', minutes: 30, reason: 'The exam (Fri, Oct 9) has passed.' },
         { assignmentId: 'pres', minutes: 30, reason: 'The presentation is today (Mon, Oct 12); preparation is only planned on earlier days.' },
+        // A date-only due on the current day is "Due today" in the lists, not overdue.
+        {
+          assignmentId: 'today',
+          minutes: 30,
+          reason:
+            'It is due today (Mon, Oct 12). A due date without a time is planned as due at 12:00 AM on that day (Settings → Default due time), so no study time is left before it.',
+        },
+        { assignmentId: 'past', minutes: 30, reason: 'The due date (Sun, Oct 11) has passed.' },
       ],
     });
   });

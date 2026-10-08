@@ -1397,8 +1397,9 @@ from source" when importing (§ 16.2).
    is about, so that two runs (or two generators) give the same problem the
    same ID and a different problem a different one:
    - about an item: `<itemId>:<kind>:<field>:<value>`, where `<value>` is the
-     source value the issue is about (for a conflict: the value that was
-     **not** used). A date or date-time is written without `-` and `:`
+     source value the issue is about (for a conflict between values: the
+     value that was **not** used; for a recorded change, § 15.4 rule 2: the
+     new value). A date or date-time is written without `-` and `:`
      (`20261017`, `20261017T2359`), any other value as `slug(value)`
      (§ 14.1). Leave out `:<field>` or `:<value>` when there is none, e.g.
      `gc-NzAwMDAwMDAwMDAx:conflict:due:20261017T2359`,

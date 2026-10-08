@@ -35,6 +35,9 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: false,
     assetsInlineLimit: 100000,
+    // One script on purpose: the app also ships as a single offline file
+    // (scripts/build-single-file.mjs), so code splitting would not help.
+    chunkSizeWarningLimit: 1024,
   },
   test: {
     include: ['tests/unit/**/*.test.{ts,tsx}'],
