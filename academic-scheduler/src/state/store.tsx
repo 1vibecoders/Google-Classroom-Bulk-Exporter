@@ -30,6 +30,8 @@ export function StoreProvider({ children, initial }: { children: ReactNode; init
   const [storageProblem, setStorageProblem] = useState<string | null>(loaded.problem);
   const nextToast = useRef(1);
   const skipSave = useRef(true);
+  /** A change that is not saved yet (waiting for the debounce). */
+  const unsaved = useRef<AppState | null>(null);
 
   // Persist (debounced).
   useEffect(() => {
@@ -37,12 +39,37 @@ export function StoreProvider({ children, initial }: { children: ReactNode; init
       skipSave.current = false;
       return;
     }
+    unsaved.current = state;
     const timer = setTimeout(() => {
+      unsaved.current = null;
       const problem = saveState(state);
       setStorageProblem(problem);
     }, 250);
     return () => clearTimeout(timer);
   }, [state]);
+
+  // Save a pending change right away when the page is hidden, reloaded or
+  // closed, so a change made just before leaving is never lost.
+  useEffect(() => {
+    const flush = () => {
+      const pending = unsaved.current;
+      if (!pending) return;
+      unsaved.current = null;
+      setStorageProblem(saveState(pending));
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    window.addEventListener('pagehide', flush);
+    window.addEventListener('beforeunload', flush);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      window.removeEventListener('beforeunload', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
+      flush();
+    };
+  }, []);
 
   // Another tab changed the schedule: load it.
   useEffect(() => {
@@ -51,6 +78,7 @@ export function StoreProvider({ children, initial }: { children: ReactNode; init
       const result = loadState();
       if (!result.problem) {
         skipSave.current = true;
+        unsaved.current = null;
         dispatch({ type: 'loadState', state: result.state });
       }
     };

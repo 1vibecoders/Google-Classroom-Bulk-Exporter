@@ -1,0 +1,572 @@
+/* Editor dialogs (src/editors). Uses the tokens from app.css (light + dark). */
+
+.ed-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ed-intro {
+  margin: 0;
+}
+
+/* ---------- Problems summary ---------- */
+
+.ed-problems {
+  margin-bottom: 0;
+}
+.ed-problems:focus {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
+}
+.ed-problems ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.ed-problems li + li {
+  margin-top: 2px;
+}
+
+/* ---------- Sections ---------- */
+
+.ed-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.ed-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ed-section-head h3 {
+  flex: 1;
+  font-size: 14px;
+}
+.ed-section-desc {
+  margin: -6px 0 0;
+}
+
+.ed-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 14px;
+}
+@media (max-width: 820px) {
+  .ed-grid-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ed-fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.ed-fieldset > legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+
+.ed-datetime {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+.ed-datetime .btn.icon.small {
+  width: 28px;
+}
+
+.ed-endtime,
+.ed-minutes,
+.ed-datelist-add,
+.ed-task-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ed-endtime {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+.ed-endtime .input {
+  /* Room for "11:30 PM" and the picker icon; the Midnight box wraps below when narrow. */
+  flex: 1 1 128px;
+  min-width: 0;
+}
+.ed-minutes .input {
+  flex: 1;
+  min-width: 0;
+}
+.ed-datelist-add .input {
+  max-width: 200px;
+}
+.ed-task-add .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.ed-time-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 12px;
+}
+.form-grid.ed-when {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+}
+@media (max-width: 640px) {
+  .form-grid.ed-when {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ed-inline-btn {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.ed-note {
+  margin: 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.ed-warnings {
+  margin-bottom: 0;
+}
+
+.ed-readonly {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  color: var(--text-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Segmented control (radio group) ---------- */
+
+.ed-segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+  align-self: flex-start;
+  background: var(--surface);
+}
+.ed-segmented label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  min-height: 32px;
+  cursor: pointer;
+  color: var(--text-2);
+  font-weight: 500;
+  border-right: 1px solid var(--border-strong);
+  position: relative;
+}
+.ed-segmented label:last-child {
+  border-right: none;
+}
+.ed-segmented label:hover {
+  background: var(--surface-2);
+}
+.ed-segmented label.selected {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ed-segmented input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+.ed-segmented label:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ---------- Item panel (origin, pinning, overrides, issues) ---------- */
+
+.ed-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--surface-2);
+}
+.ed-panel-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ed-panel-spacer {
+  flex: 1;
+}
+.ed-panel-text {
+  margin: 0;
+}
+.ed-panel-overrides {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+.ed-panel-overrides p {
+  margin: 0;
+  flex: 1 1 260px;
+}
+.ed-panel-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ed-source-list {
+  margin: 0;
+  padding-left: 18px;
+  overflow-wrap: anywhere;
+}
+
+.ed-issues {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ed-issue {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--warning);
+}
+.ed-issue.closed {
+  color: var(--text-3);
+}
+.ed-issue > svg {
+  flex: none;
+  margin-top: 2px;
+}
+.ed-issue-text {
+  flex: 1;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.ed-issue.closed .ed-issue-text {
+  color: var(--text-3);
+}
+.ed-issue-text .badge {
+  margin-left: 6px;
+}
+.ed-issue-actions {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+.ed-issues.compact .ed-issue {
+  font-size: 12px;
+}
+
+/* ---------- Chips (prerequisites, dependencies, skipped dates) ---------- */
+
+.ed-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ed-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 4px 2px 10px;
+  border-radius: 14px;
+  background: var(--surface-3);
+  color: var(--text);
+  font-size: 13px;
+}
+.ed-chip > span {
+  overflow-wrap: anywhere;
+}
+.ed-chip.missing {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.ed-chip button {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.ed-chip button:hover {
+  background: var(--border);
+}
+.ed-add-select {
+  max-width: 420px;
+}
+
+.ed-preview {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.ed-preview > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--accent);
+}
+.ed-preview.warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.ed-preview.warning > svg {
+  color: var(--warning);
+}
+
+.ed-recurrence {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ed-nudge {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---------- References ---------- */
+
+.ed-refs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ed-ref {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+}
+.ed-ref-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.6fr) minmax(0, 0.8fr) auto;
+  gap: 8px 10px;
+  align-items: start;
+}
+.ed-ref-side {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-top: 22px;
+}
+.ed-path {
+  margin-top: 6px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 760px) {
+  .ed-ref-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .ed-ref-grid > :nth-child(1),
+  .ed-ref-grid > :nth-child(2) {
+    grid-column: span 2;
+  }
+  .ed-ref-side {
+    padding-top: 18px;
+    justify-content: space-between;
+  }
+}
+
+/* ---------- Subtasks ---------- */
+
+.ed-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ed-task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ed-task {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  padding: 8px 10px;
+}
+.ed-task.done {
+  background: var(--surface-2);
+}
+.ed-task.cancelled .ed-task-title .input {
+  text-decoration: line-through;
+  color: var(--text-3);
+}
+.ed-task-head {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 150px 130px auto;
+  gap: 8px;
+  align-items: start;
+}
+.ed-task-num {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-top: 26px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+.ed-task.done .ed-task-num {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.ed-task-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-top: 21px;
+}
+.ed-flip {
+  display: inline-flex;
+  transform: rotate(180deg);
+}
+.ed-has-error {
+  color: var(--danger);
+}
+.ed-task-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 6px 0 0 32px;
+}
+.ed-task-summary:empty {
+  display: none;
+}
+.ed-error-text {
+  color: var(--danger);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.ed-task-body {
+  margin: 10px 0 2px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ed-task-meta {
+  margin: 0;
+}
+.ed-range,
+.ed-estimate-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.ed-estimate-info {
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+}
+.ed-undo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+}
+@media (max-width: 760px) {
+  .ed-task-head {
+    grid-template-columns: 24px minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .ed-task-title {
+    grid-column: 2 / span 2;
+  }
+  .ed-task-status {
+    grid-column: 2;
+  }
+  .ed-task-estimate {
+    grid-column: 3;
+  }
+  .ed-task-actions {
+    grid-column: 2 / span 2;
+    padding-top: 0;
+    justify-content: flex-end;
+  }
+  .ed-task-summary,
+  .ed-task-body {
+    margin-left: 0;
+  }
+}
+
+/* ---------- Choice dialog ---------- */
+
+.ed-choice-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  width: 100%;
+}
+.ed-choice-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ---------- Narrow screens ---------- */
+
+@media (max-width: 480px) {
+  .ed-datetime {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  }
+  .ed-time-pair {
+    grid-template-columns: 1fr;
+  }
+}

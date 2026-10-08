@@ -1,0 +1,666 @@
+/* Import wizard (src/views/ImportView.tsx, src/views/import/**).
+   Uses the shared tokens from app.css (light and dark). */
+
+.imp-page {
+  max-width: 940px;
+  margin: 0 auto;
+}
+
+.imp-h1:focus,
+.imp-step-title:focus,
+.imp-done-title:focus,
+.imp-preview > h2:focus {
+  outline: none;
+}
+.imp-h1:focus-visible,
+.imp-step-title:focus-visible,
+.imp-done-title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-s);
+}
+
+/* ---------- Step indicator ---------- */
+
+.imp-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.imp-steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.imp-step-num {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--surface);
+}
+.imp-steps li.current {
+  color: var(--text);
+  font-weight: 600;
+}
+.imp-steps li.current .imp-step-num {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+.imp-steps li.past .imp-step-num {
+  background: var(--success-soft);
+  border-color: var(--success);
+  color: var(--success);
+}
+
+/* ---------- Step 1: drop zone, paste box, help ---------- */
+
+.imp-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 36px 20px 30px;
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.imp-drop.is-dragging {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.imp-drop.is-busy {
+  opacity: 0.8;
+}
+.imp-drop-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.imp-drop-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.imp-drop-sub {
+  margin: 0 0 8px;
+  max-width: 520px;
+  font-size: 13px;
+}
+.imp-drop-button {
+  font-size: 15px;
+  padding: 10px 18px;
+}
+
+.imp-status {
+  min-height: 0;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.imp-status:empty {
+  display: none;
+}
+.imp-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: imp-spin 0.8s linear infinite;
+}
+@keyframes imp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .imp-spinner {
+    animation: none;
+  }
+  .imp-drop {
+    transition: none;
+  }
+}
+
+.imp-paste > summary,
+.imp-file > summary,
+.imp-warnings > summary,
+.imp-section > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 12px 16px;
+  border-radius: var(--radius-l);
+}
+.imp-paste > summary::-webkit-details-marker,
+.imp-file > summary::-webkit-details-marker,
+.imp-warnings > summary::-webkit-details-marker,
+.imp-section > summary::-webkit-details-marker {
+  display: none;
+}
+.imp-paste > summary::before,
+.imp-file > summary::before,
+.imp-warnings > summary::before,
+.imp-section > summary::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--text-3);
+  border-bottom: 2px solid var(--text-3);
+  transform: rotate(-45deg);
+  margin-right: 2px;
+  transition: transform 0.15s;
+  flex: none;
+}
+details[open].imp-paste > summary::before,
+details[open].imp-file > summary::before,
+details[open].imp-warnings > summary::before,
+details[open].imp-section > summary::before {
+  transform: rotate(45deg);
+}
+details[open].imp-paste > summary,
+details[open].imp-file > summary,
+details[open].imp-warnings > summary,
+details[open].imp-section > summary {
+  border-bottom: 1px solid var(--border);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.imp-paste > summary:hover,
+.imp-file > summary:hover,
+.imp-warnings > summary:hover,
+.imp-section > summary:hover {
+  background: var(--surface-2);
+}
+.imp-paste-title {
+  font-weight: 600;
+}
+.imp-paste-text {
+  min-height: 140px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.imp-help-title {
+  font-size: 14px;
+  margin: 0;
+}
+.imp-help-list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-2);
+  font-size: 13px;
+  display: grid;
+  gap: 4px;
+}
+
+/* ---------- Problems (step 1 errors, plan errors) ---------- */
+
+.imp-problem {
+  border-color: var(--danger);
+  border-left-width: 4px;
+}
+.imp-problem-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 16px;
+  color: var(--danger);
+}
+.imp-errors {
+  display: grid;
+  gap: 12px;
+}
+.imp-error-group-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.imp-error-list,
+.imp-row-problems,
+.imp-note-list,
+.imp-sources {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.imp-error-list li,
+.imp-row-problems li,
+.imp-note-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.imp-error-list li > svg,
+.imp-row-problems li > svg,
+.imp-note-list li > svg {
+  flex: none;
+  margin-top: 3px;
+}
+.imp-errors.error .imp-error-list li > svg {
+  color: var(--danger);
+}
+.imp-errors.warning .imp-error-list li > svg {
+  color: var(--warning);
+}
+.imp-path {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Step 2: summary ("Schedule Import") ---------- */
+
+.imp-summary .card-header h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.imp-file-name {
+  margin-left: auto;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+.imp-lines {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.imp-line {
+  display: grid;
+  grid-template-columns: minmax(110px, max-content) 1fr;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+.imp-line dt {
+  font-weight: 600;
+}
+.imp-line dd {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+.imp-line-link {
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+}
+.imp-line-link:hover {
+  text-decoration-color: currentColor;
+}
+.imp-part {
+  font-variant-numeric: tabular-nums;
+}
+.imp-line.tone-add .imp-part {
+  color: var(--success);
+}
+.imp-line.tone-change .imp-part {
+  color: var(--accent);
+}
+.imp-line.tone-remove .imp-part {
+  color: var(--danger);
+}
+.imp-line.tone-same,
+.imp-line.tone-same .imp-part {
+  color: var(--text-3);
+}
+@media (max-width: 480px) {
+  .imp-line {
+    grid-template-columns: 1fr;
+  }
+}
+
+.imp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.imp-bottom .imp-actions {
+  padding-top: 0;
+  border-top: 0;
+}
+.imp-actions-status {
+  flex: 1 1 260px;
+  color: var(--text-2);
+  display: grid;
+  gap: 6px;
+}
+.imp-actions-status.error {
+  color: var(--danger);
+}
+.imp-actions-buttons {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.imp-actions-buttons .btn.primary {
+  min-width: 110px;
+  justify-content: center;
+}
+
+.imp-subtitle {
+  margin: 0;
+  font-size: 15px;
+}
+.imp-mini-title {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.imp-file-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.imp-sources li {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.imp-warnings > summary {
+  color: var(--warning);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+/* ---------- Step 2: sections and rows ---------- */
+
+.imp-section > summary {
+  font-weight: 600;
+}
+.imp-section-title {
+  font-size: 14px;
+}
+.imp-section-chosen {
+  font-weight: 400;
+}
+.imp-section.cat-unchanged .imp-section-title,
+.imp-section.cat-protected .imp-section-title {
+  color: var(--text-2);
+}
+
+.imp-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+}
+.imp-row {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 4px 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+}
+.imp-row:first-child {
+  border-top: 0;
+}
+.imp-row.toggleable:hover {
+  background: var(--surface-2);
+}
+.imp-row.removing .imp-label {
+  text-decoration: line-through;
+  text-decoration-color: var(--danger);
+}
+.imp-row.has-problem {
+  background: var(--danger-soft);
+}
+.imp-row-control {
+  padding-top: 1px;
+}
+.imp-row-control input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.imp-sign {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+.imp-sign.cat-new {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.imp-sign.cat-updated,
+.imp-sign.cat-removedFromSource {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.imp-row-body {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.imp-row-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  font-size: 14px;
+}
+label.imp-row-title {
+  cursor: pointer;
+}
+.imp-label {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.imp-kind {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+}
+.imp-action {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.imp-action.remove {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+.imp-row-desc {
+  display: grid;
+  gap: 4px;
+}
+.imp-detail,
+.imp-reason,
+.imp-includes {
+  overflow-wrap: anywhere;
+}
+.imp-reason {
+  color: var(--text-2);
+}
+.imp-includes-label {
+  font-weight: 600;
+  color: var(--text-2);
+}
+.imp-fields {
+  list-style: none;
+  margin: 0;
+  padding: 6px 8px;
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+  background: var(--surface-2);
+  border-radius: var(--radius-s);
+}
+.imp-fields li {
+  overflow-wrap: anywhere;
+}
+.imp-field-label {
+  color: var(--text-2);
+}
+.imp-before {
+  color: var(--text-3);
+  text-decoration: line-through;
+  text-decoration-color: var(--border-strong);
+}
+.imp-after {
+  font-weight: 600;
+}
+.imp-arrow {
+  color: var(--text-3);
+}
+.imp-blocked {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--warning);
+}
+.imp-blocked svg {
+  flex: none;
+  margin-top: 2px;
+}
+.imp-passed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 6px 10px;
+  border-radius: var(--radius-s);
+  background: var(--warning-soft);
+  font-size: 13px;
+}
+.imp-passed > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.imp-row-problems {
+  color: var(--danger);
+}
+
+/* ---------- Step 3: done ---------- */
+
+.imp-done {
+  border-left: 4px solid var(--success);
+}
+.imp-done.undone {
+  border-left-color: var(--border-strong);
+}
+.imp-done-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 20px;
+}
+.imp-done-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--success-soft);
+  color: var(--success);
+}
+.imp-undo-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.imp-undo-row .small {
+  flex: 1 1 220px;
+}
+
+@media (max-width: 560px) {
+  .imp-drop {
+    padding: 24px 14px 20px;
+  }
+  .imp-actions-buttons {
+    width: 100%;
+  }
+  .imp-actions-buttons .btn {
+    flex: 1;
+    justify-content: center;
+  }
+  .imp-row {
+    padding: 10px 8px;
+  }
+  .imp-file-name {
+    margin-left: 0;
+    text-align: left;
+    width: 100%;
+  }
+  .imp-summary .card-header {
+    flex-wrap: wrap;
+  }
+}
+
+/* Buttons whose text can be long (file names, counts) wrap instead of overflowing on phones. */
+.imp-select-all .btn,
+.imp-done-actions .btn,
+.imp-undo-row .btn {
+  white-space: normal;
+  height: auto;
+  min-height: 28px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+.imp-done-actions .btn,
+.imp-undo-row .btn {
+  min-height: 34px;
+}

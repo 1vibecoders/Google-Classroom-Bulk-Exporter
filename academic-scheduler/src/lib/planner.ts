@@ -174,8 +174,20 @@ interface Deadline {
 function assignmentDeadlines(a: Assignment, dueTime: string): Deadline[] {
   const out: Deadline[] = [];
   if (a.due && isValidDateOrDateTime(a.due)) {
-    const text = `the due ${timeOf(a.due) ? 'time' : 'date'} (${describeMoment(a.due)})`;
-    out.push({ at: ldtToMinutes(dueMoment(a.due, dueTime)), text, passedText: () => `${capitalize(text)} has passed.` });
+    const due = a.due;
+    const dateOnly = timeOf(due) === null;
+    const text = `the due ${dateOnly ? 'date' : 'time'} (${describeMoment(due)})`;
+    out.push({
+      at: ldtToMinutes(dueMoment(due, dueTime)),
+      text,
+      // A date-only due is planned at the default due time (§ 8), but the
+      // assignment lists call it overdue only once its whole day is over, so
+      // on the due day say why nothing can be planned instead of "has passed".
+      passedText: (now) =>
+        dateOnly && now < (dayNumber(due) + 1) * MINUTES_PER_DAY
+          ? `It is due today (${describeMoment(due)}). A due date without a time is planned as due at ${formatTime12(dueTime)} on that day (Settings → Default due time), so no study time is left before it.`
+          : `${capitalize(text)} has passed.`,
+    });
   }
   if (a.assessmentDate && isValidDateOrDateTime(a.assessmentDate)) {
     const value = a.assessmentDate;
