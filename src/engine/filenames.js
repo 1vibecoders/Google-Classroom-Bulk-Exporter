@@ -141,6 +141,8 @@ export function chooseFileName({ headerName, displayName, fallbackExt = '', cont
 /**
  * Allocates unique names per folder. Comparison is case-insensitive because
  * Windows and macOS file systems are; collisions get " (2)", " (3)", ...
+ * before a file's extension, or at the end of a folder name (`folder: true`,
+ * so "Algebra 1.2" becomes "Algebra 1.2 (2)").
  * Allocation is deterministic for a given call order.
  */
 export class NameAllocator {
@@ -158,13 +160,13 @@ export class NameAllocator {
     this.setFor(dir).add(name.toLowerCase());
   }
 
-  allocate(dir, name) {
+  allocate(dir, name, { folder = false } = {}) {
     const used = this.setFor(dir);
     if (!used.has(name.toLowerCase())) {
       used.add(name.toLowerCase());
       return name;
     }
-    const [base, ext] = splitExtension(name);
+    const [base, ext] = folder ? [name, ''] : splitExtension(name);
     for (let n = 2; ; n++) {
       const candidate = `${base} (${n})${ext}`;
       if (!used.has(candidate.toLowerCase())) {

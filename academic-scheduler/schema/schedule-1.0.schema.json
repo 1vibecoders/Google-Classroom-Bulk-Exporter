@@ -1,0 +1,459 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/1vibecoders/Google-Classroom-Bulk-Exporter/academic-scheduler/schema/schedule-1.0.schema.json",
+  "title": "Academic Scheduler schedule file, version 1.0",
+  "description": "Structural rules of the schedule format (the rules marked [S] in SCHEDULE_FORMAT.md section 13). Semantic rules marked [V] (unique IDs, tombstones, issue ids, references, dependency cycles, date ordering, block end on the start date or at the next midnight, real calendar dates, non-blank required text, estimate ranges, settings after defaults) are described in section 13 and enforced by the website and validate_schedule.py. Every pattern must match the whole value: Python validators must use full-match semantics, because Python's '$' also matches before a trailing newline. 'default' annotations repeat the defaults of SCHEDULE_FORMAT.md; they are informative and never change validity.",
+  "type": "object",
+  "required": ["schemaVersion", "classes", "assignments", "events", "availability", "scheduleBlocks"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "meta": { "$ref": "#/$defs/meta" },
+    "settings": { "$ref": "#/$defs/settings" },
+    "classes": { "type": "array", "items": { "$ref": "#/$defs/class" } },
+    "assignments": { "type": "array", "items": { "$ref": "#/$defs/assignment" } },
+    "events": { "type": "array", "items": { "$ref": "#/$defs/event" } },
+    "availability": { "type": "array", "items": { "$ref": "#/$defs/availability" } },
+    "scheduleBlocks": { "type": "array", "items": { "$ref": "#/$defs/scheduleBlock" } },
+    "issues": { "type": "array", "items": { "$ref": "#/$defs/rootIssue" } },
+    "deleted": { "type": "array", "maxItems": 5000, "items": { "$ref": "#/$defs/tombstone" } }
+  },
+  "patternProperties": { "^x-": true },
+  "additionalProperties": false,
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$" },
+    "date": { "type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$" },
+    "time": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
+    "endTime": { "description": "A Time, or 24:00 (midnight at the end of the day).", "type": "string", "pattern": "^(([01][0-9]|2[0-3]):[0-5][0-9]|24:00)$" },
+    "localDateTime": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9](:00)?$"
+    },
+    "dateOrDateTime": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])(T([01][0-9]|2[0-3]):[0-5][0-9](:00)?)?$"
+    },
+    "weekday": { "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] },
+    "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+    "minutes": { "type": "integer", "minimum": 0, "maximum": 10000 },
+    "url": { "type": "string", "maxLength": 2000, "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://[^\\s]+$" },
+    "origin": { "description": "Origin of every item type except schedule blocks.", "enum": ["user", "generated"], "default": "generated" },
+    "blockOrigin": { "description": "Only schedule blocks may have origin 'planner'.", "enum": ["user", "generated", "planner"], "default": "generated" },
+    "status": { "enum": ["not_started", "in_progress", "done", "cancelled"], "default": "not_started" },
+    "extensionName": { "type": "string", "pattern": "^x-" },
+    "issueKind": { "enum": ["ambiguity", "conflict", "missing_information", "workload", "other"] },
+    "issueStatus": { "enum": ["open", "resolved", "dismissed"], "default": "open" },
+    "issue": {
+      "description": "An issue stored on an item. It has no itemId (that field exists only on root issues).",
+      "type": "object",
+      "required": ["kind", "message"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "$ref": "#/$defs/issueKind" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "field": { "type": "string", "maxLength": 100 },
+        "status": { "$ref": "#/$defs/issueStatus" },
+        "date": { "$ref": "#/$defs/date" }
+      },
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false
+    },
+    "rootIssue": {
+      "description": "An issue in the root 'issues' array; may name the item it concerns with itemId.",
+      "type": "object",
+      "required": ["kind", "message"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "$ref": "#/$defs/issueKind" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "field": { "type": "string", "maxLength": 100 },
+        "status": { "$ref": "#/$defs/issueStatus" },
+        "date": { "$ref": "#/$defs/date" },
+        "itemId": { "$ref": "#/$defs/id" }
+      },
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false
+    },
+    "issues": { "type": "array", "items": { "$ref": "#/$defs/issue" }, "default": [] },
+    "source": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["google_classroom", "syllabus", "calendar", "document", "image", "user", "schedule", "other"] },
+        "id": { "type": "string", "maxLength": 200 },
+        "url": { "$ref": "#/$defs/url" },
+        "path": { "type": "string", "maxLength": 500 },
+        "label": { "type": "string", "maxLength": 200 },
+        "retrievedAt": { "$ref": "#/$defs/localDateTime" }
+      },
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false
+    },
+    "sources": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/source" }, "default": [] },
+    "estimateRange": {
+      "type": "object",
+      "required": ["min", "max"],
+      "properties": { "min": { "$ref": "#/$defs/minutes" }, "max": { "$ref": "#/$defs/minutes" } },
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false
+    },
+    "recurrence": {
+      "type": "object",
+      "required": ["frequency", "daysOfWeek", "startDate"],
+      "properties": {
+        "frequency": { "const": "weekly" },
+        "daysOfWeek": { "type": "array", "minItems": 1, "maxItems": 7, "uniqueItems": true, "items": { "$ref": "#/$defs/weekday" } },
+        "interval": { "type": "integer", "minimum": 1, "maximum": 52, "default": 1 },
+        "startDate": { "$ref": "#/$defs/date" },
+        "endDate": { "$ref": "#/$defs/date" },
+        "exceptDates": { "type": "array", "items": { "$ref": "#/$defs/date" }, "default": [] }
+      },
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false
+    },
+    "requestedChange": {
+      "type": "object",
+      "required": ["id", "reason", "requestedByPerson"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "requestedByPerson": { "type": "boolean" }
+      },
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false
+    },
+    "tombstone": {
+      "type": "object",
+      "required": ["id", "collection", "deletedAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "collection": { "enum": ["classes", "assignments", "tasks", "events", "availability", "scheduleBlocks"] },
+        "deletedAt": { "$ref": "#/$defs/localDateTime" },
+        "sourceId": { "type": "string", "maxLength": 200 },
+        "title": { "type": "string", "maxLength": 300 }
+      },
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false
+    },
+    "meta": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 200 },
+        "generatedAt": { "$ref": "#/$defs/localDateTime" },
+        "generator": {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+            "version": { "type": "string", "maxLength": 50 }
+          },
+          "patternProperties": { "^x-": true },
+          "additionalProperties": false
+        },
+        "timezone": { "type": "string", "maxLength": 100 },
+        "exportId": { "description": "Written by the website on every export; generators never write it.", "$ref": "#/$defs/id" },
+        "basedOn": { "description": "Written by generators: the exportId of the input schedule.", "$ref": "#/$defs/id" },
+        "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
+        "requestedChanges": { "type": "array", "items": { "$ref": "#/$defs/requestedChange" } }
+      },
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false
+    },
+    "settings": {
+      "type": "object",
+      "properties": {
+        "weekStartsOn": { "enum": ["monday", "sunday"], "default": "monday" },
+        "dayStartTime": { "$ref": "#/$defs/time", "default": "07:00" },
+        "dayEndTime": { "$ref": "#/$defs/endTime", "default": "22:00" },
+        "defaultDueTime": { "$ref": "#/$defs/time", "default": "00:00" },
+        "minSessionMinutes": { "type": "integer", "minimum": 5, "maximum": 240, "default": 20 },
+        "maxSessionMinutes": { "type": "integer", "minimum": 10, "maximum": 480, "default": 60 },
+        "breakMinutes": { "type": "integer", "minimum": 0, "maximum": 120, "default": 10 },
+        "maxDailyStudyMinutes": { "type": "integer", "minimum": 0, "maximum": 1440 }
+      },
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false
+    },
+    "classOverrides": {
+      "type": "array",
+      "uniqueItems": true,
+      "default": [],
+      "items": {
+        "anyOf": [
+          { "enum": ["name", "teacher", "section", "room", "color", "description", "archived", "topics", "references"] },
+          { "$ref": "#/$defs/extensionName" }
+        ]
+      }
+    },
+    "assignmentOverrides": {
+      "type": "array",
+      "uniqueItems": true,
+      "default": [],
+      "items": {
+        "anyOf": [
+          {
+            "enum": [
+              "title", "classId", "type", "topic", "description", "due", "assessmentDate", "recommendedCompletionDate",
+              "estimatedMinutes", "estimateRange", "estimateConfidence", "estimateBasis", "priority", "points", "required",
+              "sourceState", "tasks", "references", "dependsOn"
+            ]
+          },
+          { "$ref": "#/$defs/extensionName" }
+        ]
+      }
+    },
+    "taskOverrides": {
+      "type": "array",
+      "uniqueItems": true,
+      "default": [],
+      "items": {
+        "anyOf": [
+          {
+            "enum": [
+              "title", "description", "due", "required", "estimatedMinutes", "estimateRange", "dependsOn",
+              "recommendedStartDate", "recommendedCompletionDate"
+            ]
+          },
+          { "$ref": "#/$defs/extensionName" }
+        ]
+      }
+    },
+    "eventOverrides": {
+      "type": "array",
+      "uniqueItems": true,
+      "default": [],
+      "items": {
+        "anyOf": [
+          {
+            "enum": [
+              "title", "category", "classId", "assignmentId", "date", "endDate", "recurrence", "allDay", "startTime", "endTime",
+              "busy", "location"
+            ]
+          },
+          { "$ref": "#/$defs/extensionName" }
+        ]
+      }
+    },
+    "availabilityOverrides": {
+      "type": "array",
+      "uniqueItems": true,
+      "default": [],
+      "items": {
+        "anyOf": [
+          { "enum": ["label", "date", "recurrence", "startTime", "endTime"] },
+          { "$ref": "#/$defs/extensionName" }
+        ]
+      }
+    },
+    "blockOverrides": {
+      "type": "array",
+      "uniqueItems": true,
+      "default": [],
+      "items": {
+        "anyOf": [
+          { "enum": ["start", "end", "assignmentId", "taskId", "title", "kind", "description"] },
+          { "$ref": "#/$defs/extensionName" }
+        ]
+      }
+    },
+    "class": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "origin": { "$ref": "#/$defs/origin" },
+        "locked": { "type": "boolean", "default": false },
+        "overrides": { "$ref": "#/$defs/classOverrides" },
+        "source": { "$ref": "#/$defs/source" },
+        "sources": { "$ref": "#/$defs/sources" },
+        "issues": { "$ref": "#/$defs/issues" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "teacher": { "type": "string", "maxLength": 200 },
+        "section": { "type": "string", "maxLength": 200 },
+        "room": { "type": "string", "maxLength": 100 },
+        "color": { "$ref": "#/$defs/color" },
+        "description": { "type": "string", "maxLength": 5000 },
+        "archived": { "type": "boolean", "default": false },
+        "topics": { "type": "array", "maxItems": 200, "items": { "type": "string", "maxLength": 200 } },
+        "references": { "type": "array", "maxItems": 200, "items": { "$ref": "#/$defs/reference" } }
+      },
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false
+    },
+    "reference": {
+      "type": "object",
+      "required": ["title"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "url": { "$ref": "#/$defs/url" },
+        "path": { "type": "string", "maxLength": 500 },
+        "kind": { "enum": ["attachment", "link", "reading", "rubric", "template", "other"], "default": "attachment" },
+        "required": { "type": "boolean", "default": false }
+      },
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false
+    },
+    "task": {
+      "type": "object",
+      "required": ["id", "title"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "origin": { "$ref": "#/$defs/origin" },
+        "locked": { "type": "boolean", "default": false },
+        "overrides": { "$ref": "#/$defs/taskOverrides" },
+        "issues": { "$ref": "#/$defs/issues" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 5000 },
+        "notes": { "type": "string", "maxLength": 10000 },
+        "estimatedMinutes": { "$ref": "#/$defs/minutes" },
+        "estimateRange": { "$ref": "#/$defs/estimateRange" },
+        "status": { "$ref": "#/$defs/status" },
+        "completedAt": { "$ref": "#/$defs/localDateTime" },
+        "dependsOn": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" }, "default": [] },
+        "recommendedStartDate": { "$ref": "#/$defs/date" },
+        "recommendedCompletionDate": { "$ref": "#/$defs/dateOrDateTime" },
+        "due": { "$ref": "#/$defs/dateOrDateTime" },
+        "required": { "type": "boolean", "default": true }
+      },
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "dependentRequired": { "estimateRange": ["estimatedMinutes"] },
+      "if": { "required": ["completedAt"] },
+      "then": { "required": ["status"], "properties": { "status": { "const": "done" } } }
+    },
+    "assignment": {
+      "type": "object",
+      "required": ["id", "title"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "origin": { "$ref": "#/$defs/origin" },
+        "locked": { "type": "boolean", "default": false },
+        "overrides": { "$ref": "#/$defs/assignmentOverrides" },
+        "source": { "$ref": "#/$defs/source" },
+        "sources": { "$ref": "#/$defs/sources" },
+        "issues": { "$ref": "#/$defs/issues" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "classId": { "$ref": "#/$defs/id" },
+        "type": { "enum": ["homework", "reading", "writing", "problem_set", "lab", "project", "presentation", "quiz", "test", "exam", "study", "other"], "default": "homework" },
+        "topic": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 20000 },
+        "notes": { "type": "string", "maxLength": 10000 },
+        "due": { "$ref": "#/$defs/dateOrDateTime" },
+        "assessmentDate": { "$ref": "#/$defs/dateOrDateTime" },
+        "recommendedCompletionDate": { "$ref": "#/$defs/dateOrDateTime" },
+        "estimatedMinutes": { "$ref": "#/$defs/minutes" },
+        "estimateRange": { "$ref": "#/$defs/estimateRange" },
+        "estimateConfidence": { "enum": ["low", "medium", "high"] },
+        "estimateBasis": { "type": "string", "maxLength": 2000 },
+        "priority": { "enum": ["low", "medium", "high", "urgent"], "default": "medium" },
+        "status": { "$ref": "#/$defs/status" },
+        "completedAt": { "$ref": "#/$defs/localDateTime" },
+        "points": { "type": "string", "maxLength": 100 },
+        "required": { "type": "boolean", "default": true },
+        "sourceState": { "enum": ["present", "missing", "withdrawn"], "default": "present" },
+        "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" }, "default": [] },
+        "references": { "type": "array", "items": { "$ref": "#/$defs/reference" }, "default": [] },
+        "dependsOn": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" }, "default": [] }
+      },
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "dependentRequired": { "estimateRange": ["estimatedMinutes"] },
+      "if": { "required": ["completedAt"] },
+      "then": { "required": ["status"], "properties": { "status": { "const": "done" } } }
+    },
+    "event": {
+      "type": "object",
+      "required": ["id", "title"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "origin": { "$ref": "#/$defs/origin" },
+        "locked": { "type": "boolean", "default": false },
+        "overrides": { "$ref": "#/$defs/eventOverrides" },
+        "source": { "$ref": "#/$defs/source" },
+        "sources": { "$ref": "#/$defs/sources" },
+        "issues": { "$ref": "#/$defs/issues" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "category": { "enum": ["school", "class", "activity", "appointment", "work", "personal", "other"], "default": "other" },
+        "classId": { "$ref": "#/$defs/id" },
+        "assignmentId": { "$ref": "#/$defs/id" },
+        "date": { "$ref": "#/$defs/date" },
+        "endDate": { "$ref": "#/$defs/date" },
+        "recurrence": { "$ref": "#/$defs/recurrence" },
+        "allDay": { "type": "boolean", "default": false },
+        "startTime": { "$ref": "#/$defs/time" },
+        "endTime": { "$ref": "#/$defs/endTime" },
+        "busy": { "type": "boolean", "default": true },
+        "location": { "type": "string", "maxLength": 200 },
+        "notes": { "type": "string", "maxLength": 10000 }
+      },
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "allOf": [
+        { "oneOf": [ { "required": ["date"], "not": { "required": ["recurrence"] } }, { "required": ["recurrence"], "not": { "required": ["date"] } } ] },
+        {
+          "if": { "required": ["allDay"], "properties": { "allDay": { "const": true } } },
+          "then": { "not": { "anyOf": [ { "required": ["startTime"] }, { "required": ["endTime"] } ] } },
+          "else": { "required": ["startTime", "endTime"], "not": { "required": ["endDate"] } }
+        },
+        { "if": { "required": ["endDate"] }, "then": { "required": ["date"] } }
+      ]
+    },
+    "availability": {
+      "type": "object",
+      "required": ["id", "startTime", "endTime"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "origin": { "$ref": "#/$defs/origin" },
+        "locked": { "type": "boolean", "default": false },
+        "overrides": { "$ref": "#/$defs/availabilityOverrides" },
+        "source": { "$ref": "#/$defs/source" },
+        "sources": { "$ref": "#/$defs/sources" },
+        "issues": { "$ref": "#/$defs/issues" },
+        "label": { "type": "string", "maxLength": 200 },
+        "date": { "$ref": "#/$defs/date" },
+        "recurrence": { "$ref": "#/$defs/recurrence" },
+        "startTime": { "$ref": "#/$defs/time" },
+        "endTime": { "$ref": "#/$defs/endTime" }
+      },
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "oneOf": [ { "required": ["date"], "not": { "required": ["recurrence"] } }, { "required": ["recurrence"], "not": { "required": ["date"] } } ]
+    },
+    "scheduleBlock": {
+      "type": "object",
+      "required": ["id", "start", "end"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "origin": { "$ref": "#/$defs/blockOrigin" },
+        "locked": { "type": "boolean", "default": false },
+        "overrides": { "$ref": "#/$defs/blockOverrides" },
+        "source": { "$ref": "#/$defs/source" },
+        "sources": { "$ref": "#/$defs/sources" },
+        "issues": { "$ref": "#/$defs/issues" },
+        "start": { "$ref": "#/$defs/localDateTime" },
+        "end": { "$ref": "#/$defs/localDateTime" },
+        "assignmentId": { "$ref": "#/$defs/id" },
+        "taskId": { "$ref": "#/$defs/id" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "kind": { "enum": ["work", "break"], "default": "work" },
+        "status": { "enum": ["planned", "done", "skipped"], "default": "planned" },
+        "completedAt": { "$ref": "#/$defs/localDateTime" },
+        "description": { "type": "string", "maxLength": 5000 },
+        "notes": { "type": "string", "maxLength": 10000 }
+      },
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "allOf": [
+        { "anyOf": [ { "required": ["assignmentId"] }, { "required": ["title"] } ] },
+        { "if": { "required": ["taskId"] }, "then": { "required": ["assignmentId"] } },
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "break" } } },
+          "then": { "required": ["title"], "not": { "required": ["assignmentId"] } }
+        },
+        {
+          "if": { "required": ["completedAt"] },
+          "then": { "required": ["status"], "properties": { "status": { "const": "done" } } }
+        }
+      ]
+    }
+  }
+}

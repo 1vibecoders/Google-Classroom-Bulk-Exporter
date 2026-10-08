@@ -1,0 +1,176 @@
+{
+  "schemaVersion": "1.0",
+  "x-fixture": {
+    "kind": "valid",
+    "description": "User, locked and planner items, done/skipped blocks, tombstones, requested changes and root issues about tasks."
+  },
+  "meta": {
+    "title": "Fixture schedule",
+    "generatedAt": "2026-10-07T18:00:00",
+    "generator": {
+      "name": "fixture-builder",
+      "version": "1.0"
+    },
+    "timezone": "America/New_York",
+    "requestedChanges": [
+      {
+        "id": "u-asg-k3j9x2p1",
+        "reason": "A teacher email moved the recital.",
+        "requestedByPerson": false
+      }
+    ]
+  },
+  "classes": [
+    {
+      "id": "cls-biology",
+      "name": "Biology",
+      "teacher": "Mr. Chen",
+      "color": "#16A34A",
+      "origin": "generated"
+    },
+    {
+      "id": "u-cls-a8d2k4m1",
+      "name": "Piano",
+      "origin": "user"
+    }
+  ],
+  "assignments": [
+    {
+      "id": "biology-lab-report-2026-10-16",
+      "classId": "cls-biology",
+      "title": "Lab report: osmosis",
+      "type": "lab",
+      "due": "2026-10-16T23:59:00",
+      "estimatedMinutes": 90,
+      "priority": "high",
+      "tasks": [
+        {
+          "id": "biology-lab-report-2026-10-16-t1",
+          "title": "Analyse the data",
+          "estimatedMinutes": 30
+        },
+        {
+          "id": "biology-lab-report-2026-10-16-t2",
+          "title": "Write the report",
+          "estimatedMinutes": 60,
+          "dependsOn": [
+            "biology-lab-report-2026-10-16-t1"
+          ]
+        }
+      ],
+      "origin": "generated",
+      "source": {
+        "kind": "syllabus",
+        "label": "Biology syllabus.pdf"
+      }
+    },
+    {
+      "id": "u-asg-k3j9x2p1",
+      "title": "Practice scales",
+      "classId": "u-cls-a8d2k4m1",
+      "estimatedMinutes": 30,
+      "locked": true,
+      "origin": "user",
+      "tasks": [
+        {
+          "id": "u-tsk-q1w2e3r4",
+          "title": "C major",
+          "origin": "user"
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "id": "evt-soccer",
+      "title": "Soccer practice",
+      "category": "activity",
+      "startTime": "16:00",
+      "endTime": "17:30",
+      "recurrence": {
+        "frequency": "weekly",
+        "daysOfWeek": [
+          "tue",
+          "thu"
+        ],
+        "startDate": "2026-10-05"
+      },
+      "origin": "generated",
+      "source": {
+        "kind": "user",
+        "label": "Told /academic-schedule on 2026-10-07"
+      }
+    }
+  ],
+  "availability": [
+    {
+      "id": "avail-evenings-1800-2100",
+      "label": "Evenings",
+      "startTime": "18:00",
+      "endTime": "21:00",
+      "recurrence": {
+        "frequency": "weekly",
+        "daysOfWeek": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri"
+        ],
+        "startDate": "2026-10-05"
+      },
+      "origin": "generated"
+    }
+  ],
+  "scheduleBlocks": [
+    {
+      "id": "blk-biology-lab-report-2026-10-16-202610071800-1",
+      "assignmentId": "biology-lab-report-2026-10-16",
+      "taskId": "biology-lab-report-2026-10-16-t1",
+      "start": "2026-10-08T18:00:00",
+      "end": "2026-10-08T18:30:00",
+      "description": "Graph the mass changes and compute the averages.",
+      "origin": "generated"
+    },
+    {
+      "id": "u-blk-a1b2c3d4",
+      "assignmentId": "u-asg-k3j9x2p1",
+      "taskId": "u-tsk-q1w2e3r4",
+      "start": "2026-10-06T19:00:00",
+      "end": "2026-10-06T19:30:00",
+      "status": "skipped",
+      "origin": "user"
+    },
+    {
+      "id": "u-blk-e5f6g7h8",
+      "assignmentId": "biology-lab-report-2026-10-16",
+      "taskId": "biology-lab-report-2026-10-16-t2",
+      "start": "2026-10-09T18:00:00",
+      "end": "2026-10-09T19:00:00",
+      "origin": "planner",
+      "locked": true
+    }
+  ],
+  "issues": [
+    {
+      "id": "u-iss-z9y8x7w6",
+      "kind": "conflict",
+      "message": "Your practice overlaps soccer.",
+      "itemId": "u-tsk-q1w2e3r4",
+      "status": "dismissed"
+    }
+  ],
+  "deleted": [
+    {
+      "id": "biology-lab-report-2026-10-16-t3",
+      "collection": "tasks",
+      "deletedAt": "2026-10-07T12:00:00",
+      "title": "Peer review"
+    },
+    {
+      "id": "evt-band",
+      "collection": "events",
+      "deletedAt": "2026-10-07T12:01:00"
+    }
+  ]
+}

@@ -11,7 +11,9 @@
     "test:e2e": "node --test --test-concurrency=1 \"tests/e2e/*.test.mjs\"",
     "test:all": "npm run check && npm test && npm run test:dom && npm run test:e2e",
     "package": "node scripts/package.mjs",
-    "icons": "python3 scripts/make-icons.py"
+    "icons": "python3 scripts/make-icons.py",
+    "pack:crx": "node scripts/pack-crx.mjs",
+    "release:notes": "node scripts/release-notes.mjs"
   },
   "devDependencies": {
     "playwright-core": "1.56.1"

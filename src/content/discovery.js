@@ -4,7 +4,8 @@
  *
  * Steps run on different pages (the tab is navigated between them), so the
  * background passes earlier step results into the final "details" step,
- * which reads item pages and builds the snapshot.
+ * which reads item pages and builds the snapshot. Account exports first run
+ * the "classes" step on the home page, then these steps once per class.
  */
 (function (root) {
   'use strict';
@@ -200,6 +201,20 @@
   // Steps
   // ---------------------------------------------------------------------------
 
+  /** Account export: the account's classes, from the home page. */
+  async function runClasses(payload, env) {
+    const parsed = GCX.url.parse(location.href);
+    const ctx = { authuser: payload.account ? payload.account.authuser : parsed.authuser };
+    const assertPage = () => {
+      const p = GCX.url.parse(location.href);
+      if (!p.isClassroom || p.page !== 'home' || p.authuser !== ctx.authuser) {
+        throw new GCX.errors.NavigatedAwayError('The Classroom tab navigated away while the class list was being read.');
+      }
+    };
+    assertPage();
+    return GCX.classList.scan(ctx, { signal: env.signal, report: env.report, assertPage });
+  }
+
   async function runClasswork(payload, env) {
     const ctx = contextFromLocation();
     if (!ctx.courseId) throw new GCX.errors.PageStructureError('No Google Classroom class is open in this tab.');
@@ -264,6 +279,7 @@
   }
 
   const STEPS = {
+    [P.STEP.CLASSES]: runClasses,
     [P.STEP.CLASSWORK]: runClasswork,
     [P.STEP.STREAM]: runStream,
     [P.STEP.DETAILS]: runDetails,

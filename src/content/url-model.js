@@ -6,6 +6,10 @@
  *
  * Known shapes (all optionally prefixed by /u/<n> for multi-account sessions
  * and, for some Workspace accounts, /a/<domain>):
+ *   /h, /h/<view>                          home page: the account's active classes
+ *                                          (since July 2026 Classroom opens a role
+ *                                          view such as /h/st; the app may switch
+ *                                          /h to it without reloading)
  *   /c/<courseId>                          class stream
  *   /c/<courseId>/<kind>/<itemId>/details  item details (a = assignment,
  *                                          m = material, sa/mc/q = question)
@@ -22,6 +26,10 @@
 
   const CLASSROOM_ORIGIN = 'https://classroom.google.com';
   const PATH_RE = /^((?:\/u\/\d+)?(?:\/a\/[^/]+)?)\/(c|w|r)\/([A-Za-z0-9_-]+)(\/.*)?$/;
+  // The home page with or without a role view (/h/st, /h/te, …); a Workspace
+  // domain prefix (/a/<domain>) only together with /h, since /a/... is also
+  // the To-do area (/a/not-turned-in/all).
+  const HOME_RE = /^(?:\/u\/\d+)?(?:(?:\/a\/[^/]+)?\/h(?:\/[^/]+)*)?$/;
   const ITEM_KIND_TO_TYPE = {
     a: 'assignment',
     m: 'material',
@@ -69,7 +77,7 @@
 
     const m = PATH_RE.exec(path);
     if (!m) {
-      result.page = /^(\/u\/\d+)?(\/h)?$/.test(path) || path === '/' ? 'home' : 'other';
+      result.page = HOME_RE.test(path) || path === '/' ? 'home' : 'other';
       if (userMatch) result.prefix = `/u/${userMatch[1]}`;
       return result;
     }
@@ -109,6 +117,11 @@
   function prefixOf(ctx) {
     if (ctx.prefix) return ctx.prefix;
     return ctx.authuser ? `/u/${ctx.authuser}` : '/u/0';
+  }
+
+  /** The account's home page (class list); `ctx.authuser` selects the account. */
+  function homeUrl(ctx) {
+    return `${CLASSROOM_ORIGIN}/u/${ctx.authuser || 0}/h`;
   }
 
   function classworkUrl(ctx) {
@@ -179,6 +192,7 @@
     CLASSROOM_ORIGIN,
     ITEM_KIND_TO_TYPE,
     parse,
+    homeUrl,
     classworkUrl,
     streamUrl,
     itemUrl,

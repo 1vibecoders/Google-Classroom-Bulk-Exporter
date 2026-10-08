@@ -1,0 +1,120 @@
+{
+  "schemaVersion": "1.0",
+  "x-fixture": {
+    "kind": "semantic",
+    "rule": "§ 13.1 rule 12",
+    "description": "reason must contain a non-whitespace character.",
+    "expectedErrorPaths": [
+      "meta.requestedChanges[0].reason"
+    ]
+  },
+  "meta": {
+    "title": "Fixture schedule",
+    "generatedAt": "2026-10-07T18:00:00",
+    "generator": {
+      "name": "fixture-builder",
+      "version": "1.0"
+    },
+    "timezone": "America/New_York",
+    "requestedChanges": [
+      {
+        "id": "evt-soccer",
+        "reason": " \t ",
+        "requestedByPerson": false
+      }
+    ]
+  },
+  "classes": [
+    {
+      "id": "cls-biology",
+      "name": "Biology",
+      "teacher": "Mr. Chen",
+      "color": "#16A34A",
+      "origin": "generated"
+    }
+  ],
+  "assignments": [
+    {
+      "id": "biology-lab-report-2026-10-16",
+      "classId": "cls-biology",
+      "title": "Lab report: osmosis",
+      "type": "lab",
+      "due": "2026-10-16T23:59:00",
+      "estimatedMinutes": 90,
+      "priority": "high",
+      "tasks": [
+        {
+          "id": "biology-lab-report-2026-10-16-t1",
+          "title": "Analyse the data",
+          "estimatedMinutes": 30
+        },
+        {
+          "id": "biology-lab-report-2026-10-16-t2",
+          "title": "Write the report",
+          "estimatedMinutes": 60,
+          "dependsOn": [
+            "biology-lab-report-2026-10-16-t1"
+          ]
+        }
+      ],
+      "origin": "generated",
+      "source": {
+        "kind": "syllabus",
+        "label": "Biology syllabus.pdf"
+      }
+    }
+  ],
+  "events": [
+    {
+      "id": "evt-soccer",
+      "title": "Soccer practice",
+      "category": "activity",
+      "startTime": "16:00",
+      "endTime": "17:30",
+      "recurrence": {
+        "frequency": "weekly",
+        "daysOfWeek": [
+          "tue",
+          "thu"
+        ],
+        "startDate": "2026-10-05"
+      },
+      "origin": "generated",
+      "source": {
+        "kind": "user",
+        "label": "Told /academic-schedule on 2026-10-07"
+      }
+    }
+  ],
+  "availability": [
+    {
+      "id": "avail-evenings-1800-2100",
+      "label": "Evenings",
+      "startTime": "18:00",
+      "endTime": "21:00",
+      "recurrence": {
+        "frequency": "weekly",
+        "daysOfWeek": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri"
+        ],
+        "startDate": "2026-10-05"
+      },
+      "origin": "generated"
+    }
+  ],
+  "scheduleBlocks": [
+    {
+      "id": "blk-biology-lab-report-2026-10-16-202610071800-1",
+      "assignmentId": "biology-lab-report-2026-10-16",
+      "taskId": "biology-lab-report-2026-10-16-t1",
+      "start": "2026-10-08T18:00:00",
+      "end": "2026-10-08T18:30:00",
+      "description": "Graph the mass changes and compute the averages.",
+      "origin": "generated"
+    }
+  ]
+}

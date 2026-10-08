@@ -116,4 +116,7 @@ test('allocates unique names case-insensitively and deterministically', () => {
   assert.equal(a.allocate('other', 'notes.pdf'), 'notes.pdf');
   a.reserve('dir', 'description.txt');
   assert.equal(a.allocate('dir', 'Description.txt'), 'Description (2).txt');
+  // Folder names have no extension.
+  assert.equal(a.allocate('dir', 'Algebra 1.2', { folder: true }), 'Algebra 1.2');
+  assert.equal(a.allocate('dir', 'Algebra 1.2', { folder: true }), 'Algebra 1.2 (2)');
 });

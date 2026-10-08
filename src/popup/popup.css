@@ -116,8 +116,10 @@ button.primary {
   font-weight: 600;
 }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button.wide { flex: 1; }
 
 .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.buttons[hidden] { display: none; }
 
 .options summary { cursor: pointer; color: var(--muted); }
 .options label { display: block; margin: 6px 0 0; }
@@ -126,6 +128,23 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .phase { font-weight: 600; margin-bottom: 4px; }
 .line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .line:empty { display: none; }
+
+.classes-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.classes-list li { display: flex; gap: 6px; padding: 2px 0; overflow-wrap: anywhere; }
+.classes-list .mark { flex: 0 0 1em; text-align: center; color: var(--muted); }
+.classes-list .exported .mark { color: var(--accent); }
+.classes-list .partial .mark { color: var(--warn); }
+.classes-list .failed .mark { color: var(--danger); }
+.classes-list .current { font-weight: 600; }
+.classes-list .sub, .classes-list .reason { color: var(--muted); }
+.classes-list .reason { display: block; font-size: 12px; }
 
 progress {
   width: 100%;

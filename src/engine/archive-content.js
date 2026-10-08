@@ -23,19 +23,27 @@ export const TYPE_LABELS = {
 
 export const ROOT_FILES = ['class-info.json', 'class-description.txt', 'export-report.txt', 'export-report.json', 'index.html'];
 
+export const EXPORTER_NAME = 'Google Classroom Bulk Exporter';
+
 // Short components keep full paths under Windows' 260-character limit when
 // the archive is extracted into a typical Downloads folder.
 const ROOT_MAX = 50;
 const ITEM_MAX = 50;
 
+/** Folder name of a class: "<name> - <section>", shortened and made safe. */
+export function classFolderName(info) {
+  const { name, section } = info || {};
+  return sanitizeComponent(section ? `${name} - ${section}` : name, { maxLength: ROOT_MAX, fallback: 'Classroom export' });
+}
+
 /**
  * Decide the archive folders for every item (deterministic for a snapshot).
+ * `root` is the class folder's path in the archive: the class folder name for
+ * a single-class archive, "<export folder>/<class folder>" in an account archive.
  * @returns {{rootName:string, items:{item:object, typeFolder:string, folder:string, relFolder:string}[]}}
  */
-export function planLayout(snapshot) {
-  const info = snapshot.classInfo || {};
-  const title = info.section ? `${info.name} - ${info.section}` : info.name;
-  const rootName = sanitizeComponent(title, { maxLength: ROOT_MAX, fallback: 'Classroom export' });
+export function planLayout(snapshot, { root = classFolderName(snapshot.classInfo) } = {}) {
+  const rootName = root;
   const allocator = new NameAllocator();
   for (const name of [...ROOT_FILES, ...Object.values(TYPE_FOLDERS)]) allocator.reserve(rootName, name);
   const items = (snapshot.items || []).map((item) => {
@@ -47,7 +55,7 @@ export function planLayout(snapshot) {
   return { rootName, items };
 }
 
-function underline(text, char = '=') {
+export function underline(text, char = '=') {
   return `${text}\n${char.repeat(Math.min(Math.max(text.length, 3), 80))}`;
 }
 
@@ -159,12 +167,21 @@ function countByType(items) {
   return counts;
 }
 
+/** The export options as recorded in class-info.json and export-manifest.json. */
+export function exportOptions(options) {
+  return {
+    includeAnnouncements: !!options.includeAnnouncements,
+    readItemPages: !!options.readDetailPages,
+    googleFilesExportedAs: options.googleFormat === 'pdf' ? 'pdf' : 'office',
+  };
+}
+
 /** class-info.json */
 export function classInfoJson(snapshot, layout, summary, { exportedAt, version, options }) {
   const info = snapshot.classInfo || {};
   return {
     schemaVersion: 1,
-    exporter: { name: 'Google Classroom Bulk Exporter', version },
+    exporter: { name: EXPORTER_NAME, version },
     exportedAt,
     class: {
       id: info.courseId || null,
@@ -175,11 +192,7 @@ export function classInfoJson(snapshot, layout, summary, { exportedAt, version, 
     },
     counts: { ...countByType(snapshot.items || []), items: (snapshot.items || []).length, ...summary },
     topics: (snapshot.topics || []).map((t) => t.name),
-    options: {
-      includeAnnouncements: !!options.includeAnnouncements,
-      readItemPages: !!options.readDetailPages,
-      googleFilesExportedAs: options.googleFormat === 'pdf' ? 'pdf' : 'office',
-    },
+    options: exportOptions(options),
     discovery: {
       itemPageStrategy: (snapshot.stats && snapshot.stats.detailStrategy) || null,
       warnings: snapshot.warnings || [],
@@ -261,7 +274,7 @@ export function buildReport(snapshot, layout, results, { exportedAt, version, op
   };
 }
 
-function formatBytes(n) {
+export function formatBytes(n) {
   if (!n) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB'];
   let i = 0;
@@ -273,20 +286,25 @@ function formatBytes(n) {
   return `${v.toFixed(i ? 1 : 0)} ${units[i]}`;
 }
 
-function count(n, one, many = `${one}s`) {
+export function plural(n, one, many = `${one}s`) {
   return `${n} ${n === 1 ? one : many}`;
 }
 
 /** export-report.txt */
 export function reportText(report) {
+  return `${[underline('Export Report'), '', ...reportLines(report)].join('\n')}\n`;
+}
+
+/** The body of export-report.txt (also one class's section of an account report). */
+export function reportLines(report) {
   const s = report.summary;
-  const lines = [underline('Export Report'), ''];
+  const lines = [];
   lines.push(`Class: ${report.class.name || '(unknown)'}${report.class.section ? ` (${report.class.section})` : ''}`);
   lines.push(`Exported: ${report.exportedAt}`);
   const t = s.byType;
-  lines.push(`Items processed: ${s.items} (${count(t.assignment, 'assignment')}, ${count(t.material, 'material')}, ${count(t.question, 'question')}, ${count(t.announcement, 'announcement')}, ${t.other} other)`);
-  lines.push('', 'Successful:', `  ${count(s.filesDownloaded, 'file')} (${formatBytes(s.bytesDownloaded)})`);
-  lines.push('', 'Failed:', `  ${count(s.filesFailed, 'file')}`);
+  lines.push(`Items processed: ${s.items} (${plural(t.assignment, 'assignment')}, ${plural(t.material, 'material')}, ${plural(t.question, 'question')}, ${plural(t.announcement, 'announcement')}, ${t.other} other)`);
+  lines.push('', 'Successful:', `  ${plural(s.filesDownloaded, 'file')} (${formatBytes(s.bytesDownloaded)})`);
+  lines.push('', 'Failed:', `  ${plural(s.filesFailed, 'file')}`);
   for (const f of report.failures) {
     lines.push('', `  - ${f.itemType}: ${f.itemTitle}`, `    File: ${f.file}`, `    Reason: ${f.reason}`, `    URL: ${f.url}`);
   }
@@ -298,10 +316,10 @@ export function reportText(report) {
     lines.push('', 'Warnings:');
     for (const w of report.warnings) lines.push(`  - ${w.itemTitle ? `${w.itemType || 'Item'} "${w.itemTitle}": ` : ''}${w.message}`);
   }
-  return `${lines.join('\n')}\n`;
+  return lines;
 }
 
-function escapeHtml(text) {
+export function escapeHtml(text) {
   return String(text ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -309,9 +327,12 @@ function escapeHtml(text) {
     .replace(/"/g, '&quot;');
 }
 
-function encodePath(path) {
+export function encodePath(path) {
   return path.split('/').map(encodeURIComponent).join('/');
 }
+
+/** Stylesheet of the offline index pages. */
+export const INDEX_STYLE = 'body{font:15px/1.5 system-ui,sans-serif;max-width:860px;margin:0 auto;padding:16px;color:#202124;background:#fff}h1{margin-bottom:0}h2{border-bottom:1px solid #dadce0;padding-bottom:4px;margin-top:32px}h3{margin:16px 0 0;font-size:16px}.meta{color:#5f6368;margin:2px 0}ul{margin:4px 0}.failed{color:#b3261e}small{color:#5f6368}@media (prefers-color-scheme:dark){body{background:#202124;color:#e8eaed}a{color:#8ab4f8}.meta,small{color:#9aa0a6}.failed{color:#f2b8b5}h2{border-color:#3c4043}}';
 
 /** index.html: an offline table of contents with relative links. */
 export function indexHtml(snapshot, results, report) {
@@ -341,7 +362,7 @@ export function indexHtml(snapshot, results, report) {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(info.name || 'Classroom export')}</title>
-<style>body{font:15px/1.5 system-ui,sans-serif;max-width:860px;margin:0 auto;padding:16px;color:#202124;background:#fff}h1{margin-bottom:0}h2{border-bottom:1px solid #dadce0;padding-bottom:4px;margin-top:32px}h3{margin:16px 0 0;font-size:16px}.meta{color:#5f6368;margin:2px 0}ul{margin:4px 0}li.failed{color:#b3261e}small{color:#5f6368}@media (prefers-color-scheme:dark){body{background:#202124;color:#e8eaed}a{color:#8ab4f8}.meta,small{color:#9aa0a6}li.failed{color:#f2b8b5}h2{border-color:#3c4043}}</style>
+<style>${INDEX_STYLE}</style>
 </head><body>
 <h1>${escapeHtml(info.name || 'Classroom export')}</h1>
 <p class="meta">${escapeHtml([info.section, `Exported ${report.exportedAt}`].filter(Boolean).join(' · '))} · <a href="export-report.txt">Export report</a> · <a href="class-description.txt">Class details</a></p>
