@@ -95,7 +95,7 @@ function ItemActions({ label, onEdit, onDelete }: { label: string; onEdit: () =>
   );
 }
 
-function EventRow({ event, today, year }: { event: ScheduleEvent; today: string; year: number }) {
+export function EventRow({ event, today, year }: { event: ScheduleEvent; today: string; year: number }) {
   const { state } = useStore();
   const doc = state.doc;
   const editors = useEditors();
@@ -166,7 +166,7 @@ function EventRow({ event, today, year }: { event: ScheduleEvent; today: string;
   );
 }
 
-function WindowRow({ window: w, today, year }: { window: AvailabilityWindow; today: string; year: number }) {
+export function WindowRow({ window: w, today, year }: { window: AvailabilityWindow; today: string; year: number }) {
   const { state } = useStore();
   const editors = useEditors();
   const remove = useDeleteItem();

@@ -1,4 +1,4 @@
-# Schedule File Format — version 1.0
+# Schedule File Format — version 1.1
 
 This document is the complete, normative description of the JSON file that the
 **Academic Scheduler** website imports and exports, and that the Claude
@@ -8,7 +8,7 @@ this format.
 It is written so that a developer or an AI can produce valid files without
 guessing. A machine-readable JSON Schema (draft 2020-12) for the structural
 rules is shipped next to this file:
-[`schema/schedule-1.0.schema.json`](schema/schedule-1.0.schema.json).
+[`schema/schedule-1.1.schema.json`](schema/schedule-1.1.schema.json).
 The JSON Schema cannot express every rule; the **semantic rules** in
 [§ 13](#13-validation-rules) also apply, and the website and the skill's
 validator (`skills/academic-schedule/scripts/validate_schedule.py`) enforce all of them.
@@ -77,8 +77,9 @@ are used as in RFC 2119.
 ## 2. Versioning
 
 Every file MUST start with a `schemaVersion` string of the form
-`"MAJOR.MINOR"`. This document defines **`"1.0"`**, the initial version of
-the format.
+`"MAJOR.MINOR"`. This document defines **`"1.1"`**. Version 1.1 adds one
+optional field, `settings.commitmentsDescription`; every 1.0 file is also a
+valid 1.1 file.
 
 | Change | Version change | Example |
 | --- | --- | --- |
@@ -90,11 +91,13 @@ Rules:
 - A reader that implements version `M.n` MUST accept files whose major version
   is `M` and whose minor version is `≤ n`, and MUST **reject** any other
   version with a clear message (for example: *"This file uses schema version
-  1.3, but this version of the Academic Scheduler supports up to 1.0. Update
-  the website or generate a 1.0 file."*). The current website supports
-  exactly `1.0`.
+  1.3, but this version of the Academic Scheduler supports up to 1.1. Update
+  the website or generate a 1.1 file."*). The current website supports
+  `1.0` and `1.1`.
 - A writer MUST write the lowest version that contains every feature it uses.
-  Today that is always `"1.0"`.
+  Today that is `"1.1"` when `settings.commitmentsDescription` is present and
+  `"1.0"` otherwise. A file that says `"1.0"` but uses a 1.1 field is invalid
+  (the error names the field).
 - `schemaVersion` is a **string**. `1.0` (a number) is invalid.
 
 ## 3. Data types
@@ -172,7 +175,7 @@ zone that is. The website never converts times between zones.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `schemaVersion` | string | **yes** | `"1.0"` for this version. |
+| `schemaVersion` | string | **yes** | `"1.0"` or `"1.1"` (§ 2). |
 | `classes` | array of [Class](#7-classes) | **yes** (may be empty) | Courses. |
 | `assignments` | array of [Assignment](#8-assignments) | **yes** (may be empty) | Homework, projects, readings, quizzes, tests, … |
 | `events` | array of [Event](#10-events-recurring-and-one-time) | **yes** (may be empty) | Fixed commitments: school, activities, appointments. |
@@ -225,6 +228,7 @@ a file's settings (§ 16.6).
 | `maxSessionMinutes` | Minutes (10–480) | `60` | Longest single work session; must be ≥ `minSessionMinutes`. |
 | `breakMinutes` | Minutes (0–120) | `10` | Gap to leave between consecutive work sessions. |
 | `maxDailyStudyMinutes` | Minutes (0–1440) | no limit | Upper limit of scheduled work per day. |
+| `commitmentsDescription` | Text ≤ 2000 (1.1) | none | The person’s own short description of their commitments (practice, job, family duties, …), written during onboarding. Free text for people and generators to read; the website does not schedule from it. Needs `"schemaVersion": "1.1"`. |
 
 The four session settings (`minSessionMinutes`, `maxSessionMinutes`,
 `breakMinutes`, `maxDailyStudyMinutes`) guide the plans made by generators
@@ -864,7 +868,7 @@ rejects an invalid file as a whole and lists every problem with its location
 
 ### 13.1 Structure
 
-1. **[S]** The root is an object; `schemaVersion` is the string `"1.0"`;
+1. **[S]** The root is an object; `schemaVersion` is the string `"1.0"` or `"1.1"`, and is `"1.1"` when a 1.1 field is used;
    `classes`, `assignments`, `events`, `availability` and `scheduleBlocks`
    are present and are arrays.
 2. **[S]** Every field has the type, format, length, numeric range, array size,
@@ -1637,7 +1641,9 @@ listed.
 - **Settings** are person-owned: each differing setting is a row under
   "Settings", not taken unless the person ticks it. The preview marks the
   settings that the current schedule has never set (it uses the defaults)
-  and offers to take those all at once.
+  and offers to take those all at once. Exception: `commitmentsDescription`
+  is pre-ticked when the current schedule has none, because the website
+  requires one (onboarding).
 - **Root issues** are taken from the file, except that an issue whose `id`
   matches a current issue with status `resolved` or `dismissed` keeps that
   status. Issues with a `date` are shown in that day's view.
@@ -1651,7 +1657,8 @@ listed.
 
 ## 17. How the website exports a file
 
-- The export is a complete, valid 1.0 file of the current schedule.
+- The export is a complete, valid file of the current schedule, written as
+  the lowest version that holds it (§ 2).
 - `meta.generator` is `{"name": "Academic Scheduler", "version": "<app version>"}`,
   `meta.generatedAt` is the export time (a LocalDateTime) and `meta.timezone`
   is the browser's IANA time zone; both MUST be written. Every export writes
@@ -1741,7 +1748,7 @@ Saturday, Oct 24, 9 to 11 AM; I want to do two past papers"). It shows:
 
 ```json
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "1.1",
   "meta": {
     "title": "Fall 2026 — Week of Oct 12",
     "generatedAt": "2026-10-11T19:30:00",
@@ -1766,7 +1773,8 @@ Saturday, Oct 24, 9 to 11 AM; I want to do two past papers"). It shows:
     "minSessionMinutes": 20,
     "maxSessionMinutes": 60,
     "breakMinutes": 10,
-    "maxDailyStudyMinutes": 180
+    "maxDailyStudyMinutes": 180,
+    "commitmentsDescription": "School 8 AM–3 PM on weekdays. Fencing Monday 4–6 PM. Piano lesson Wednesday 5–6 PM."
   },
   "classes": [
     {
@@ -2144,3 +2152,4 @@ Saturday, Oct 24, 9 to 11 AM; I want to do two past papers"). It shows:
 | Version | Date | Changes |
 | --- | --- | --- |
 | 1.0 | 2026-10-07 | Initial version. |
+| 1.1 | 2026-10-12 | Optional `settings.commitmentsDescription` (onboarding). |

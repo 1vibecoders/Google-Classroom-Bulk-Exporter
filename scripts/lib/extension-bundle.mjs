@@ -1,10 +1,11 @@
 // The files that make up the extension and the ZIP built from them. Shared by
 // the packaging, CRX and release scripts so every artifact has the same content.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ZipWriter } from '../../src/engine/zip-writer.js';
 
-export const ROOT = new URL('../..', import.meta.url).pathname;
+export const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 export const DIST = join(ROOT, 'dist');
 export const PACKAGE_NAME = 'google-classroom-bulk-exporter';
 
@@ -23,7 +24,8 @@ function walk(dir) {
 
 /** Paths (relative to the repository root) included in the extension. */
 export function extensionFiles() {
-  return ['manifest.json', ...walk(join(ROOT, 'icons')), ...walk(join(ROOT, 'src'))].map((p) => (p.startsWith('/') ? relative(ROOT, p) : p));
+  const walked = [...walk(join(ROOT, 'icons')), ...walk(join(ROOT, 'src'))];
+  return ['manifest.json', ...walked.map((p) => relative(ROOT, p).split(sep).join('/'))];
 }
 
 /**

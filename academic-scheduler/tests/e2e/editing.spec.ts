@@ -2,7 +2,9 @@
 // drag the block, mark it done and export; the exported file is a valid
 // schedule that imports again without changes.
 import { readFileSync } from 'node:fs';
-import { createNew, dayTimeline, dragBy, expect, navTo, openDialog, test, toast } from './fixtures';
+import { createNew, dayTimeline, dragBy, expect, navTo, openDialog, test, toast, skipOnboarding } from './fixtures';
+
+test.beforeEach(async ({ page }) => skipOnboarding(page));
 import { validateDocument } from '../../src/lib/validate';
 
 test('create items by hand, drag a block, mark it done and export', async ({ page }) => {
@@ -92,7 +94,7 @@ test('create items by hand, drag a block, mark it done and export', async ({ pag
 
   const result = validateDocument(exported, { today: '2026-10-07' });
   expect(result.errors).toEqual([]);
-  expect(exported.schemaVersion).toBe('1.0');
+  expect(exported.schemaVersion).toBe('1.1'); // it carries the commitments description from onboarding
   expect(exported.meta.exportId).toMatch(/^u-exp-/);
   expect(exported.classes.map((c: { name: string }) => c.name)).toEqual(['Chemistry']);
   expect(exported.assignments).toHaveLength(1);
@@ -100,7 +102,8 @@ test('create items by hand, drag a block, mark it done and export', async ({ pag
   expect(exported.scheduleBlocks).toHaveLength(1);
   expect(exported.scheduleBlocks[0]).toMatchObject({ start: '2026-10-08T18:30:00', end: '2026-10-08T19:30:00', status: 'done' });
   expect(exported.events.map((e: { title: string }) => e.title)).toEqual(['Soccer practice']);
-  expect(exported.availability).toHaveLength(1);
+  // The hand-made window plus the past one-day window skipOnboarding seeds.
+  expect(exported.availability.filter((w: { id: string }) => w.id !== 'e2e-setup')).toHaveLength(1);
 
   // Importing the exported file changes nothing.
   await page.goto('/#/import');

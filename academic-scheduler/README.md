@@ -34,6 +34,7 @@ Live site: see [Deployment](#deployment) (the project is deployed on Vercel).
 - [Using it with the /academic-schedule skill](#using-it-with-the-academic-schedule-skill)
 - [How planning works (no AI)](#how-planning-works-no-ai)
 - [Where your data lives](#where-your-data-lives)
+- [Google Classroom sync](#google-classroom-sync)
 - [Installation and deployment](#installation-and-deployment)
 - [Development](#development)
 - [Project layout](#project-layout)
@@ -144,12 +145,49 @@ minus the time of sessions marked done.
 
 ## Where your data lives
 
-- In this browser's local storage, on this device only. There is no account, no
-  server, no analytics, and the page's Content-Security-Policy forbids network
-  connections (`connect-src 'none'`).
+- Your schedule: in this browser's local storage, on this device only. No
+  analytics; the page's Content-Security-Policy only allows connections to its
+  own origin (`connect-src 'self'`), i.e. the optional sync backend.
+- Only if you sign in with Google for [Classroom sync](#google-classroom-sync):
+  the server keeps your Google account id and email, an AES-256-GCM encrypted
+  Google refresh token, a log of your syncs (counts only) and what it read from
+  Classroom (course and coursework titles, descriptions, due dates, links).
+  Settings → Google Classroom sync → *Download server data* / *Delete server
+  data* (deletion also revokes the website's Google access).
 - Clearing the browser's site data deletes it. **Export regularly** to keep a
   copy, and to move your schedule to another device.
 - Several open tabs stay in sync.
+
+## Google Classroom sync
+
+Optional, on a deployment with the sync backend ([`api/`](api), [`server/`](server)):
+Settings (or the setup's "Classes and data" step) → **Sign in with Google** →
+**Sync now**. The result opens in the import preview, so nothing changes until
+you import, the usual rules protect your own edits, and **Undo import** works.
+
+- **Read-only scopes:** `classroom.courses.readonly` and
+  `classroom.coursework.me.readonly` (plus `openid email`). Announcements,
+  materials' files and Drive documents are not read yet.
+- **What is synced:** active courses and their published coursework: title,
+  description, due date (converted from UTC to your time zone), points, the
+  Classroom link and attached links. IDs follow SCHEDULE_FORMAT.md § 14.1, so an
+  item already imported via the extension and the skill is matched, not
+  duplicated. Estimates, tasks, priorities, notes and planned work are never
+  changed by a sync; a missing due date never clears one you have; items you
+  deleted are not brought back; a teacher's "withdrawn" stays.
+- **Changes only:** the Classroom API cannot list "what changed since", so each
+  sync lists everything and compares stable ids and content fingerprints with
+  what the server stored last time. Coursework no longer listed in a course that
+  was read completely is reported as *Removed from source*; a course the server
+  cannot read, or that is no longer listed, leaves its items untouched.
+- **3 syncs per rolling 24 hours,** enforced on the server. A sync **counts**
+  once Google has answered the course listing. Not counted: refused because
+  none are left or one is already running, sign-in expired or Classroom access
+  not granted, Google unreachable before answering. Settings shows how many are
+  left and when the next one is available.
+- **School restrictions:** if your school blocks third-party access to
+  Classroom, the sync says so; the browser extension and the /academic-schedule
+  skill still work.
 
 ## Installation and deployment
 
@@ -164,7 +202,19 @@ The site is deployed on **Vercel** from this repository (root directory
 
 1. Import the repository in Vercel and set **Root Directory** to
    `academic-scheduler` (framework preset: Vite).
-2. Deploy. No environment variables or API keys are needed — there are none.
+2. Deploy. The website itself needs no environment variables.
+3. Optional, for Google Classroom sync:
+   - Add a Postgres database (Vercel → Storage → Neon); it provides
+     `DATABASE_URL`. Tables are created on first use.
+   - In Google Cloud: enable the **Google Classroom API**, configure the OAuth
+     consent screen (scopes above; while unverified, add your test users), and
+     create an **OAuth client ID** of type *Web application* with the redirect
+     URI `https://<your-domain>/api/auth/callback`.
+   - Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `TOKEN_ENCRYPTION_KEY`
+     (`openssl rand -base64 32`) in the Vercel project's environment variables.
+     Never commit them; they are only read by the server functions.
+   - Without these variables the site works as before and the sync card says
+     sync is not set up. For local testing of the API use `vercel dev`.
 
 Other hosts: run `npm run build` and upload the `dist/` folder (GitHub Pages,
 Netlify, any web server). Asset paths are relative, so it works under any path.

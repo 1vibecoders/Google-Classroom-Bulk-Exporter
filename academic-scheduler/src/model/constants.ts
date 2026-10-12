@@ -10,6 +10,7 @@ import type {
   Priority,
   ReferenceKind,
   ResolvedSettings,
+  SchemaVersion,
   Settings,
   SourceKind,
   SourceState,
@@ -17,9 +18,14 @@ import type {
   WorkStatus,
 } from './types';
 
-export const SCHEMA_VERSION = '1.0' as const;
+export const SCHEMA_VERSION = '1.1' as const;
 export const SUPPORTED_MAJOR = 1;
-export const SUPPORTED_MINOR = 0;
+export const SUPPORTED_MINOR = 1;
+
+/** The lowest version that has every feature `doc` uses (§ 2: writers write this). */
+export function schemaVersionFor(doc: { settings?: Settings }): SchemaVersion {
+  return doc.settings?.commitmentsDescription !== undefined ? '1.1' : '1.0';
+}
 export const APP_NAME = 'Academic Scheduler';
 export const APP_VERSION = '1.0.0';
 export const MAX_IMPORT_BYTES = 10 * 1024 * 1024;

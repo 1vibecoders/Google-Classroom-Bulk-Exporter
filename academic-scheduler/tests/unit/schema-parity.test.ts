@@ -1,4 +1,4 @@
-// The JSON Schema (schema/schedule-1.0.schema.json) and the website's
+// The JSON Schema (schema/schedule-1.1.schema.json) and the website's
 // validator must agree on every fixture:
 // - valid fixtures and the shipped examples: both accept;
 // - structural-* fixtures: both reject (and the validator reports the
@@ -15,7 +15,7 @@ const ROOT = join(__dirname, '..', '..');
 const FIXTURES = join(ROOT, 'tests', 'fixtures');
 const TODAY = '2026-10-07';
 
-const schema = JSON.parse(readFileSync(join(ROOT, 'schema', 'schedule-1.0.schema.json'), 'utf8'));
+const schema = JSON.parse(readFileSync(join(ROOT, 'schema', 'schedule-1.1.schema.json'), 'utf8'));
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 const schemaValidate = ajv.compile(schema);
 

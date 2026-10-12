@@ -195,7 +195,7 @@ class AccountZip(unittest.TestCase):
         cls.syllabus = os.path.join(cls.tmp, "Biology syllabus.docx")
         make_docx(cls.syllabus, ["Biology syllabus", "Midterm - October 21"])
         cls.calendar = os.path.join(cls.tmp, "school.ics")
-        with open(cls.calendar, "w") as handle:
+        with open(cls.calendar, "w", newline="") as handle:
             handle.write("BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nSUMMARY:No school - Indigenous Peoples'\r\n  Day\r\n"
                          "DTSTART;VALUE=DATE:20261012\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
         cls.photo = os.path.join(cls.tmp, "whiteboard.jpg")

@@ -58,6 +58,12 @@ async function settle(ms = 20) {
   });
 }
 
+// The file is checked after a timer; on a slow machine one short settle is not always enough.
+async function settleCheck() {
+  await settle();
+  for (let i = 0; i < 100 && /Checking .+…/.test(text()); i++) await settle();
+}
+
 function text(): string {
   return container.textContent ?? '';
 }
@@ -87,7 +93,7 @@ async function chooseFile(name: string, content: string) {
   await act(async () => {
     input.dispatchEvent(new Event('change', { bubbles: true }));
   });
-  await settle();
+  await settleCheck();
 }
 
 async function paste(content: string) {
@@ -98,7 +104,7 @@ async function paste(content: string) {
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
   });
   click(button(/Check pasted text/));
-  await settle();
+  await settleCheck();
 }
 
 function importButtons(): HTMLButtonElement[] {
@@ -106,6 +112,8 @@ function importButtons(): HTMLButtonElement[] {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(2026, 9, 7, 12, 0, 0)); // Wed, Oct 7 2026, noon: before the example schedule
   setPendingImport(null);
   localStorage.clear();
   container = document.createElement('div');
@@ -117,6 +125,7 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   setPendingImport(null);
+  vi.useRealTimers();
 });
 
 describe('step 1: choose a file', () => {

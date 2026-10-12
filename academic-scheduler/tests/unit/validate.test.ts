@@ -134,7 +134,7 @@ describe('§ 2 schemaVersion', () => {
     });
     onlyError(result, 'schemaVersion', 'version-unsupported');
     expect(result.errors[0].message).toBe(
-      'This file uses schema version 1.3, but this version of the Academic Scheduler supports up to 1.0. Update the website or generate a 1.0 file.',
+      'This file uses schema version 1.3, but this version of the Academic Scheduler supports up to 1.1. Update the website or generate a 1.1 file.',
     );
   });
 
@@ -155,6 +155,42 @@ describe('§ 2 schemaVersion', () => {
     });
     errorAt(result, 'schemaVersion', 'version-type');
     errorAt(result, 'assignments[0].priority', 'enum');
+  });
+
+  it('accepts 1.1 with settings.commitmentsDescription and keeps 1.1', () => {
+    const result = run((d) => {
+      d.schemaVersion = '1.1';
+      d.settings = { commitmentsDescription: 'Swim practice Mon/Wed 4–6 PM.\nJob on Saturdays.' };
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.doc?.schemaVersion).toBe('1.1');
+    expect(result.doc?.settings?.commitmentsDescription).toBe('Swim practice Mon/Wed 4–6 PM.\nJob on Saturdays.');
+  });
+
+  it('stores the lowest version a 1.1 file needs (1.0 when it uses no 1.1 feature)', () => {
+    const result = run((d) => {
+      d.schemaVersion = '1.1';
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.doc?.schemaVersion).toBe('1.0');
+  });
+
+  it('rejects commitmentsDescription in a file that says 1.0', () => {
+    onlyError(
+      run((d) => {
+        d.settings = { commitmentsDescription: 'Band on Tuesdays' };
+      }),
+      'settings.commitmentsDescription',
+      'version-feature',
+    );
+  });
+
+  it('limits commitmentsDescription to 2000 characters', () => {
+    const result = run((d) => {
+      d.schemaVersion = '1.1';
+      d.settings = { commitmentsDescription: 'x'.repeat(2001) };
+    });
+    errorAt(result, 'settings.commitmentsDescription');
   });
 
   it.each(['1', '1.00', 'v1.0', '01.0', '1.0 ', 'latest'])('rejects the malformed version %j', (version) => {

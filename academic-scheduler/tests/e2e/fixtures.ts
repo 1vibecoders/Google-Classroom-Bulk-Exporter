@@ -20,6 +20,8 @@ export const test = base.extend<{ consoleProblems: string[] }>({
       });
       page.on('pageerror', (error) => problems.push(`page error: ${error.message}`));
       await page.clock.install({ time: NOW });
+      // `vite preview` has no sync backend; answer as a backend with nobody signed in (tests may route /api/* themselves).
+      await page.route('**/api/me', (route) => route.fulfill({ json: { signedIn: false } }));
       await use(problems);
       expect(problems, 'console errors, warnings and page errors').toEqual([]);
     },
@@ -28,6 +30,28 @@ export const test = base.extend<{ consoleProblems: string[] }>({
 });
 
 export { expect };
+
+/**
+ * Start from a schedule whose onboarding is already complete (the app shows
+ * the setup wizard until there is study time and a commitments description).
+ * The only study time is one past day, so it does not affect what the tests plan.
+ * Call before the first page.goto; storage is only seeded when it is empty.
+ */
+export async function skipOnboarding(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    if (window.localStorage.getItem('academic-scheduler.v1')) return;
+    const doc = {
+      schemaVersion: '1.1',
+      settings: { commitmentsDescription: 'None' },
+      classes: [],
+      assignments: [],
+      events: [],
+      availability: [{ id: 'e2e-setup', label: 'Setup', date: '2026-01-05', startTime: '09:00', endTime: '09:30', origin: 'user' }],
+      scheduleBlocks: [],
+    };
+    window.localStorage.setItem('academic-scheduler.v1', JSON.stringify({ doc, snapshots: [] }));
+  });
+}
 
 /** The dialog that is open (native <dialog open>). */
 export function openDialog(page: Page): Locator {

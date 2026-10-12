@@ -14,10 +14,12 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@neondatabase/serverless": "1.2.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.9",
     "@playwright/test": "1.56.1",
     "@types/node": "^22.0.0",
     "@types/react": "19.3.0",

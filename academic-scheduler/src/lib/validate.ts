@@ -33,6 +33,7 @@ import {
   WEEKDAYS,
   WORK_STATUSES,
   resolveSettings,
+  schemaVersionFor,
 } from '../model/constants';
 import type { DateStr, ScheduleDocument, Settings, Weekday } from '../model/types';
 import {
@@ -124,9 +125,18 @@ export function validateDocument(input: unknown, options: ValidateOptions = {}):
 
   const normalized = walkObject(input, ROOT_SPEC, '', ctx, 'schemaVersion');
   const doc = (normalized === INVALID ? {} : normalized) as Record<string, unknown>;
-  doc.schemaVersion = '1.0';
+  // The stored version is the lowest one that has every feature the file uses (§ 2).
+  const needed = schemaVersionFor(doc as { settings?: Settings });
+  if (needed === '1.1' && version.version === '1.0') {
+    ctx.errors.push({
+      path: 'settings.commitmentsDescription',
+      code: 'version-feature',
+      message: '"commitmentsDescription" is new in schema version 1.1, but this file says "schemaVersion": "1.0". Write "1.1" or leave the field out.',
+    });
+  }
+  doc.schemaVersion = needed;
   // Keep the root key order of a canonical file: schemaVersion first.
-  const ordered: Record<string, unknown> = { schemaVersion: '1.0' };
+  const ordered: Record<string, unknown> = { schemaVersion: needed };
   for (const key of Object.keys(doc)) if (key !== 'schemaVersion') ordered[key] = doc[key];
 
   const partial = ordered as unknown as PartialDoc;
@@ -401,6 +411,7 @@ const SETTINGS_SPEC = spec(
     ['maxSessionMinutes', int(10, 480)],
     ['breakMinutes', int(0, 120)],
     ['maxDailyStudyMinutes', int(0, 1440)],
+    ['commitmentsDescription', text(2000)],
   ],
   [],
 );
@@ -1172,12 +1183,15 @@ function checkVersion(root: Record<string, unknown>): { version?: string; error?
   }
   const value = root.schemaVersion;
   if (typeof value !== 'string') {
-    if (typeof value === 'number' && value === SUPPORTED_MAJOR + SUPPORTED_MINOR / 10) {
+    for (let minor = 0; minor <= SUPPORTED_MINOR; minor++) {
+      if (typeof value !== 'number' || value !== SUPPORTED_MAJOR + minor / 10) continue;
+      const asText = `${SUPPORTED_MAJOR}.${minor}`;
       return {
+        version: asText,
         error: {
           path: 'schemaVersion',
           code: 'version-type',
-          message: `"schemaVersion" must be the string "${supported}" (in quotes), not the number ${supported}.`,
+          message: `"schemaVersion" must be the string "${asText}" (in quotes), not the number ${asText}.`,
         },
       };
     }

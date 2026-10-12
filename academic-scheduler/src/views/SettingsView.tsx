@@ -14,6 +14,8 @@ import { createExport, rememberExportId } from '../lib/exportSchedule';
 import { downloadText } from '../lib/download';
 import { validateDocument } from '../lib/validate';
 import { formatDateLong, formatDuration, isValidLocalDateTime, nowLocal } from '../lib/time';
+import { ClassroomSyncCard } from './ClassroomSyncCard';
+import { CommitmentsDescriptionForm } from './CommitmentsDescriptionForm';
 import { DeleteAllDialog } from './lists/DeleteAllDialog';
 import { SourceLine } from './lists/Provenance';
 import { formatClockTime, formatLdt, plural, snapshotId } from './lists/format';
@@ -47,7 +49,7 @@ function storageSize(value: unknown): string {
 // Preferences
 // ---------------------------------------------------------------------------
 
-function SettingsForm() {
+export function SettingsForm() {
   const { state, dispatch, notify } = useStore();
   const doc = state.doc;
   const saved = useMemo(() => draftFrom(resolveSettings(doc.settings)), [doc.settings]);
@@ -497,15 +499,16 @@ function About() {
         <div className="ls-about-point">
           <Icon name="lock" />
           <div>
-            <strong>Private and offline.</strong> No account, no tracking, no network requests: your schedule stays in this browser. The website works offline
-            once it has loaded.
+            <strong>Private by default.</strong> No tracking: your schedule stays in this browser and the website works offline once it has loaded. Only
+            if you sign in with Google for Classroom sync does this website’s server keep what it read from Classroom and an encrypted Google access
+            token; you can download or delete that data here.
           </div>
         </div>
         <div className="ls-about-point">
           <Icon name="file" />
           <div>
             <strong>Schedule format {SCHEMA_VERSION}.</strong> Imports and exports use the documented schedule file format (
-            <span className="mono">"schemaVersion": "{SCHEMA_VERSION}"</span>
+            <span className="mono">"schemaVersion": "1.0"</span> or <span className="mono">"{SCHEMA_VERSION}"</span>
             ). Read the{' '}
             <a href={FORMAT_SPEC_URL} target="_blank" rel="noopener noreferrer">
               format specification (SCHEDULE_FORMAT.md)
@@ -532,8 +535,19 @@ export function SettingsView() {
         </div>
       </div>
       <div className="ls-settings-grid">
-        <SettingsForm />
         <div className="stack">
+          <SettingsForm />
+          <section className="card" aria-labelledby="commitments-head">
+            <div className="card-header">
+              <h2 id="commitments-head">Your commitments</h2>
+            </div>
+            <div className="card-body">
+              <CommitmentsDescriptionForm />
+            </div>
+          </section>
+        </div>
+        <div className="stack">
+          <ClassroomSyncCard />
           <DataPanel />
           <ScheduleInfo />
           <About />

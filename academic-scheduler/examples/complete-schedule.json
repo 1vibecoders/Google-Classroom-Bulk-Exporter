@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "1.1",
   "meta": {
     "title": "Fall 2026 — Week of Oct 12",
     "generatedAt": "2026-10-11T19:30:00",
@@ -24,7 +24,8 @@
     "minSessionMinutes": 20,
     "maxSessionMinutes": 60,
     "breakMinutes": 10,
-    "maxDailyStudyMinutes": 180
+    "maxDailyStudyMinutes": 180,
+    "commitmentsDescription": "School 8 AM–3 PM on weekdays. Fencing Monday 4–6 PM. Piano lesson Wednesday 5–6 PM."
   },
   "classes": [
     {

@@ -3,11 +3,12 @@
 // are injected into them.
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { createHandler, MOCK_HOSTS } from '../mock/classroom-mock.mjs';
 import { CONTENT_FILES } from './content.mjs';
 
-export const ROOT = new URL('../..', import.meta.url).pathname;
+export const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
 export function chromiumPath() {
   const candidates = [

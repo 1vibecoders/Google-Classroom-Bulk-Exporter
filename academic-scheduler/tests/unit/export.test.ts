@@ -21,7 +21,7 @@ const OPTIONS = { exportId: 'u-exp-test0001', timezone: 'America/New_York' };
 
 type Json = Record<string, any>;
 
-const schema = JSON.parse(readFileSync(join(ROOT, 'schema', 'schedule-1.0.schema.json'), 'utf8'));
+const schema = JSON.parse(readFileSync(join(ROOT, 'schema', 'schedule-1.1.schema.json'), 'utf8'));
 const schemaValidate = new Ajv2020({ allErrors: true, strict: false }).compile(schema);
 
 function loadDoc(path: string): ScheduleDocument {
@@ -344,7 +344,7 @@ describe('exportJson, exportFileName, createExport', () => {
   it('exportJson pretty-prints with 2 spaces and a trailing newline', () => {
     const json = exportJson(complete, NOW, OPTIONS);
     expect(json.endsWith('}\n')).toBe(true);
-    expect(json.startsWith('{\n  "schemaVersion": "1.0",\n  "meta": {')).toBe(true);
+    expect(json.startsWith('{\n  "schemaVersion": "1.1",\n  "meta": {')).toBe(true);
     expect(JSON.parse(json)).toEqual(exportDocument(complete, NOW, OPTIONS));
   });
 

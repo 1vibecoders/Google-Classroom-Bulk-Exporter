@@ -49,7 +49,7 @@ export function planLayout(snapshot, { root = classFolderName(snapshot.classInfo
   const items = (snapshot.items || []).map((item) => {
     const typeFolder = TYPE_FOLDERS[item.type] || TYPE_FOLDERS.other;
     const dir = `${rootName}/${typeFolder}`;
-    const name = allocator.allocate(dir, sanitizeComponent(item.title, { maxLength: ITEM_MAX, fallback: 'Untitled' }));
+    const name = allocator.allocate(dir, sanitizeComponent(item.title, { maxLength: ITEM_MAX, fallback: 'Untitled' }), { folder: true });
     return { item, typeFolder, folder: `${dir}/${name}`, relFolder: `${typeFolder}/${name}` };
   });
   return { rootName, items };

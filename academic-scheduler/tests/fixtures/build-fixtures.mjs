@@ -16,7 +16,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const README_INTRO = `# Schedule-format test fixtures
 
 Small schedule files that pin down what is valid and what is not under
-[SCHEDULE_FORMAT.md](../../SCHEDULE_FORMAT.md) version 1.0. They are shared by
+[SCHEDULE_FORMAT.md](../../SCHEDULE_FORMAT.md) versions 1.0 and 1.1. They are shared by
 the website's tests (\`tests/unit/schema-parity.test.ts\`) and by the
 \`/academic-schedule\` skill's Python validator
 (\`skills/academic-schedule/scripts/validate_schedule.py\`), so both sides
@@ -36,7 +36,7 @@ This also rewrites this README (the tables below come from the fixtures).
 
 - \`valid/*.json\` — must be accepted: no errors (warnings are allowed).
 - \`invalid/structural-*.json\` — break a rule marked **[S]** in § 13: the
-  JSON Schema (\`schema/schedule-1.0.schema.json\`, draft 2020-12) rejects
+  JSON Schema (\`schema/schedule-1.1.schema.json\`, draft 2020-12) rejects
   them, and so must every validator.
 - \`invalid/semantic-*.json\` — break only a rule marked **[V]** in § 13: the
   JSON Schema accepts them, every full validator must reject them.
@@ -367,6 +367,11 @@ valid('settings-extremes', 'Settings at the edges of their ranges: minSessionMin
   d.settings = { dayStartTime: '00:00', dayEndTime: '24:00', minSessionMinutes: 60, maxSessionMinutes: 60, breakMinutes: 0, maxDailyStudyMinutes: 0, defaultDueTime: '00:00', weekStartsOn: 'monday' };
 });
 
+valid('version-1-1-commitments-description', 'A 1.1 file using its one new field, settings.commitmentsDescription (multi-line text).', (d) => {
+  d.schemaVersion = '1.1';
+  d.settings = { ...d.settings, commitmentsDescription: 'Swim practice Mon and Wed 4–6 PM.\nWork at the library Saturday mornings.' };
+});
+
 valid('empty-optional-arrays', 'Empty optional arrays are allowed (they mean the same as absent).', (d) => {
   Object.assign(asg(d), { references: [], dependsOn: [], issues: [], overrides: [], sources: [] });
   Object.assign(task(d, 0), { dependsOn: [], issues: [], overrides: [] });
@@ -444,8 +449,11 @@ structural('schema-version-number', '§ 2, § 13.1 rule 1', 'schemaVersion must 
 structural('schema-version-unsupported-major', '§ 2', 'Major version 2 is not supported (single clear error).', ['schemaVersion'], (d) => {
   d.schemaVersion = '2.0';
 });
-structural('schema-version-newer-minor', '§ 2', 'Minor version 1.3 is newer than 1.0.', ['schemaVersion'], (d) => {
+structural('schema-version-newer-minor', '§ 2', 'Minor version 1.3 is newer than 1.1.', ['schemaVersion'], (d) => {
   d.schemaVersion = '1.3';
+});
+structural('schema-version-too-low-for-feature', '§ 2', 'settings.commitmentsDescription needs "schemaVersion": "1.1".', ['settings.commitmentsDescription'], (d) => {
+  d.settings = { ...d.settings, commitmentsDescription: 'Band on Tuesdays' };
 });
 structural('schema-version-missing', '§ 2', 'schemaVersion is required.', ['schemaVersion'], (d) => {
   delete d.schemaVersion;

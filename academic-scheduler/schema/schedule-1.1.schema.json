@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/1vibecoders/Google-Classroom-Bulk-Exporter/academic-scheduler/schema/schedule-1.0.schema.json",
-  "title": "Academic Scheduler schedule file, version 1.0",
+  "$id": "https://github.com/1vibecoders/Google-Classroom-Bulk-Exporter/academic-scheduler/schema/schedule-1.1.schema.json",
+  "title": "Academic Scheduler schedule file, versions 1.0 and 1.1",
   "description": "Structural rules of the schedule format (the rules marked [S] in SCHEDULE_FORMAT.md section 13). Semantic rules marked [V] (unique IDs, tombstones, issue ids, references, dependency cycles, date ordering, block end on the start date or at the next midnight, real calendar dates, non-blank required text, estimate ranges, settings after defaults) are described in section 13 and enforced by the website and validate_schedule.py. Every pattern must match the whole value: Python validators must use full-match semantics, because Python's '$' also matches before a trailing newline. 'default' annotations repeat the defaults of SCHEDULE_FORMAT.md; they are informative and never change validity.",
   "type": "object",
   "required": ["schemaVersion", "classes", "assignments", "events", "availability", "scheduleBlocks"],
   "properties": {
-    "schemaVersion": { "const": "1.0" },
+    "schemaVersion": { "enum": ["1.0", "1.1"] },
     "meta": { "$ref": "#/$defs/meta" },
     "settings": { "$ref": "#/$defs/settings" },
     "classes": { "type": "array", "items": { "$ref": "#/$defs/class" } },
@@ -17,6 +17,8 @@
     "issues": { "type": "array", "items": { "$ref": "#/$defs/rootIssue" } },
     "deleted": { "type": "array", "maxItems": 5000, "items": { "$ref": "#/$defs/tombstone" } }
   },
+  "if": { "required": ["settings"], "properties": { "settings": { "required": ["commitmentsDescription"] } } },
+  "then": { "properties": { "schemaVersion": { "const": "1.1" } } },
   "patternProperties": { "^x-": true },
   "additionalProperties": false,
   "$defs": {
@@ -168,7 +170,8 @@
         "minSessionMinutes": { "type": "integer", "minimum": 5, "maximum": 240, "default": 20 },
         "maxSessionMinutes": { "type": "integer", "minimum": 10, "maximum": 480, "default": 60 },
         "breakMinutes": { "type": "integer", "minimum": 0, "maximum": 120, "default": 10 },
-        "maxDailyStudyMinutes": { "type": "integer", "minimum": 0, "maximum": 1440 }
+        "maxDailyStudyMinutes": { "type": "integer", "minimum": 0, "maximum": 1440 },
+        "commitmentsDescription": { "type": "string", "maxLength": 2000 }
       },
       "patternProperties": { "^x-": true },
       "additionalProperties": false

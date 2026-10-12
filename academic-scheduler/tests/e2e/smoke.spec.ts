@@ -9,14 +9,14 @@ test('the app loads without network requests to other origins', async ({ page })
   await page.goto('/');
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
   await expect(page.getByRole('banner').getByRole('link', { name: 'Import', exact: true })).toBeVisible();
-  // An empty schedule opens on today's Day view with the setup guide.
-  await expect(page.getByRole('heading', { level: 1, name: 'Wednesday, October 7' })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Welcome — let’s set up your schedule' })).toBeVisible();
+  // A new schedule opens on the setup wizard (study time and commitments are required).
+  await expect(page.getByRole('heading', { level: 1, name: 'Set up your schedule' })).toBeVisible();
+  await expect(page).toHaveURL(/#\/welcome$/);
   expect(external).toEqual([]);
 });
 
-test('the production page forbids network connections (CSP connect-src none)', async ({ page }) => {
+test('the production page may only connect to its own origin (CSP connect-src self)', async ({ page }) => {
   await page.goto('/');
   const csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
-  expect(csp).toContain("connect-src 'none'");
+  expect(csp).toContain("connect-src 'self'");
 });

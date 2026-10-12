@@ -1046,7 +1046,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 if __name__ == "__main__":
     try:
-        sys.stdout.reconfigure(errors="backslashreplace")  # type: ignore[attr-defined]
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")  # type: ignore[attr-defined]
     except (AttributeError, ValueError):
         pass
     sys.exit(main())

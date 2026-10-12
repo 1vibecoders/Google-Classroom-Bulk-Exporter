@@ -1,12 +1,14 @@
 // App shell: header with navigation, the prominent Import button, Export and
 // "+ New"; the routed page; dialogs and notifications.
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { StoreProvider, useDoc, useStore } from './state/store';
 import { ConfirmProvider, Toasts } from './ui/common';
 import { EditorProvider, useEditors } from './editors/EditorHost';
 import { Icon } from './ui/Icon';
 import { Menu } from './ui/Menu';
-import { routeToHash, useRoute, type Route } from './router';
+import { navigate, routeToHash, useRoute, type Route } from './router';
+import { onboardingNeeds } from './lib/onboarding';
+import { OnboardingView } from './views/OnboardingView';
 import { createExport, rememberExportId } from './lib/exportSchedule';
 import { downloadText } from './lib/download';
 import { nowLocal, todayLocal } from './lib/time';
@@ -39,9 +41,17 @@ const NAV: Array<{ label: string; icon: Parameters<typeof Icon>[0]['name']; rout
   { label: 'Commitments', icon: 'clock', route: () => ({ name: 'commitments' }), match: ['commitments'] },
 ];
 
+// Pages that stay open while onboarding is incomplete: Import and Settings can fill in the required answers.
+const SETUP_ROUTES: Route['name'][] = ['welcome', 'import', 'settings'];
+
 function Shell() {
-  const route = useRoute();
+  const requested = useRoute();
   const doc = useDoc();
+  const needsSetup = onboardingNeeds(doc).length > 0;
+  const route: Route = needsSetup && !SETUP_ROUTES.includes(requested.name) ? { name: 'welcome' } : requested;
+  useEffect(() => {
+    if (route.name !== requested.name) navigate(route);
+  }, [route, requested.name]);
   const { notify, storageProblem } = useStore();
   const editors = useEditors();
 
@@ -137,5 +147,7 @@ function Page({ route }: { route: Route }) {
       return <ImportView />;
     case 'settings':
       return <SettingsView />;
+    case 'welcome':
+      return <OnboardingView />;
   }
 }

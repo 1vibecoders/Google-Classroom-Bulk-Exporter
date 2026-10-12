@@ -1,6 +1,8 @@
 // The planner (a fixed rule, not AI) places unscheduled work into study time;
 // the week view moves a block to another day by dragging.
-import { createNew, expect, loadExample, navTo, openDialog, test, toast, dragBy } from './fixtures';
+import { createNew, expect, loadExample, navTo, openDialog, test, toast, dragBy, skipOnboarding } from './fixtures';
+
+test.beforeEach(async ({ page }) => skipOnboarding(page));
 
 test('Plan unscheduled work adds sessions into study time', async ({ page }) => {
   await page.goto('/#/day/2026-10-07');

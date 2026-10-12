@@ -22,7 +22,7 @@ def read(path):
 
 def run(script, *args):
     return subprocess.run([sys.executable, "-I", os.path.join(SKILL_DIR, script)] + list(args),
-                          capture_output=True, text=True, timeout=120)
+                          capture_output=True, text=True, encoding="utf-8", timeout=120)
 
 
 class SkillFile(unittest.TestCase):

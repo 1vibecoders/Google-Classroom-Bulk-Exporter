@@ -31,7 +31,7 @@ def load_script(name: str) -> Any:
 def run_script(name: str, *args: str, cwd: Optional[str] = None) -> subprocess.CompletedProcess:
     """Run a script the way the skill does: python3 -I <script> ..."""
     return subprocess.run([sys.executable, "-I", os.path.join(SCRIPTS, name + ".py")] + list(args),
-                          capture_output=True, text=True, cwd=cwd, timeout=300)
+                          capture_output=True, text=True, encoding="utf-8", cwd=cwd, timeout=300)
 
 
 def url_id(decimal: str) -> str:

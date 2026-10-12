@@ -15,7 +15,7 @@ when to do it) is decided here, by you, from evidence.
 **Output contract**
 
 1. A file (default `schedule.json`, or the name/location the person asks for) that conforms exactly
-   to [references/SCHEDULE_FORMAT.md](references/SCHEDULE_FORMAT.md), version `"1.0"`. Data only: no
+   to [references/SCHEDULE_FORMAT.md](references/SCHEDULE_FORMAT.md) (version `"1.1"` only if `settings.commitmentsDescription` is present, else `"1.0"`). Data only: no
    comments, no prose outside the fields made for text (`description`, `estimateBasis`,
    `issues[].message`, `requestedChanges[].reason`, labels). Always write the file; JSON pasted in
    the chat is only ever an extra copy of it.
@@ -189,6 +189,7 @@ when the person can study (availability windows), and limits (e.g. at most 2 hou
 
 - Take them from the existing schedule, the person's statements and calendar documents. **Never
   invent a commitment or study time.**
+- `settings.commitmentsDescription` is the person's own summary of their commitments (website onboarding): a statement from the person. Turn what it states clearly into events, ask about anything vague, and copy it unchanged like every setting; never write or rewrite it.
 - If availability is empty and the person has not stated it, **ask before planning blocks**, for
   example: *"When can you usually study? (e.g. weekdays 4–9 PM, weekends 10 AM–1 PM). Any regular
   commitments (sports, lessons, work) or days you can't study? How much study time per day is

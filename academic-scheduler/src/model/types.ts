@@ -18,6 +18,7 @@ export type DateOrDateTimeStr = string;
 /** `#RRGGBB` */
 export type ColorStr = string;
 
+export type SchemaVersion = '1.0' | '1.1';
 export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 /** `planner` = placed by the website's deterministic planner (schedule blocks only). */
 export type Origin = 'user' | 'generated' | 'planner';
@@ -212,6 +213,8 @@ export interface Settings {
   maxSessionMinutes?: number;
   breakMinutes?: number;
   maxDailyStudyMinutes?: number;
+  /** Format 1.1: the person's own short description of their commitments (onboarding). */
+  commitmentsDescription?: string;
 }
 
 export interface Meta {
@@ -248,7 +251,7 @@ export interface Tombstone {
 
 /** The whole schedule file / the whole application state. */
 export interface ScheduleDocument {
-  schemaVersion: '1.0';
+  schemaVersion: SchemaVersion;
   meta?: Meta;
   settings?: Settings;
   classes: SchoolClass[];
@@ -264,4 +267,4 @@ export interface ScheduleDocument {
 export type CollectionName = 'classes' | 'assignments' | 'events' | 'availability' | 'scheduleBlocks';
 
 /** Settings with every default applied. */
-export type ResolvedSettings = Required<Omit<Settings, 'maxDailyStudyMinutes'>> & { maxDailyStudyMinutes: number | null };
+export type ResolvedSettings = Required<Omit<Settings, 'maxDailyStudyMinutes' | 'commitmentsDescription'>> & { maxDailyStudyMinutes: number | null };

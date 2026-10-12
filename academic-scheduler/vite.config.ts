@@ -1,16 +1,16 @@
 import { defineConfig, type Plugin } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
-// The production page may not contact any server: connect-src 'none' makes
-// it impossible for the app to send data anywhere (no analytics, no AI, no
-// API). Added only to builds because the dev server needs a websocket.
+// The production page may only contact its own origin (connect-src 'self'):
+// the optional sync backend in api/, never a third party (no analytics, no
+// trackers). Added only to builds because the dev server needs a websocket.
 const CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self' data:",
-  "connect-src 'none'",
+  "connect-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",

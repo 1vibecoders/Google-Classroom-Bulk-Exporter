@@ -166,3 +166,9 @@ test('google files can be exported as PDF', async () => {
     restore();
   }
 });
+
+test('duplicate item titles with dots number the folder, not a fake extension', () => {
+  const items = ['Unit 2.5', 'Unit 2.5'].map((title) => ({ type: 'material', title }));
+  const folders = planLayout({ classInfo: { name: 'Math' }, items }).items.map((i) => i.relFolder);
+  assert.deepEqual(folders, ['Materials/Unit 2.5', 'Materials/Unit 2.5 (2)']);
+});

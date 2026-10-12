@@ -57,6 +57,10 @@ export async function launchWithExtension() {
   });
   let [worker] = context.serviceWorkers();
   if (!worker) worker = await context.waitForEvent('serviceworker', { timeout: 15000 });
+  // The worker can be reported before the extension APIs are bound to it.
+  for (let i = 0; i < 150 && !(await worker.evaluate(() => typeof chrome.tabs === 'object')); i++) {
+    await new Promise((r) => setTimeout(r, 100));
+  }
   const extensionId = new URL(worker.url()).host;
   return { context, worker, extensionId, userDataDir };
 }

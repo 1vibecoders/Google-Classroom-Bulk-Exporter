@@ -26,7 +26,7 @@ import type {
   TombstoneCollection,
   WorkStatus,
 } from '../model/types';
-import { MAX_TOMBSTONES, NON_OVERRIDABLE_FIELDS, SCHEMA_VERSION } from '../model/constants';
+import { MAX_TOMBSTONES, NON_OVERRIDABLE_FIELDS, schemaVersionFor } from '../model/constants';
 
 export interface Snapshot {
   id: string;
@@ -44,7 +44,7 @@ export interface AppState {
 export const MAX_SNAPSHOTS = 5;
 
 export function emptyDocument(): ScheduleDocument {
-  return { schemaVersion: SCHEMA_VERSION, classes: [], assignments: [], events: [], availability: [], scheduleBlocks: [] };
+  return { schemaVersion: '1.0', classes: [], assignments: [], events: [], availability: [], scheduleBlocks: [] };
 }
 
 export function initialState(doc: ScheduleDocument = emptyDocument()): AppState {
@@ -433,7 +433,8 @@ export function reducer(state: AppState, action: Action): AppState {
       for (const key of Object.keys(settings) as Array<keyof Settings>) {
         if (settings[key] === undefined) delete settings[key];
       }
-      return withDoc(state, { ...doc, settings });
+      // Keep the version in step with the features used, or the saved data would not validate on reload.
+      return withDoc(state, { ...doc, settings, schemaVersion: schemaVersionFor({ settings }) });
     }
 
     default:

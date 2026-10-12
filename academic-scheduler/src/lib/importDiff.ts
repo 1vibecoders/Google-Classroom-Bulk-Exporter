@@ -50,6 +50,7 @@ import {
   WEEKDAYS,
   WEEKDAY_SHORT,
   WORK_STATUS_LABELS,
+  schemaVersionFor,
 } from '../model/constants';
 import {
   dateOf,
@@ -484,6 +485,7 @@ const SETTING_NAMES: Array<keyof Settings> = [
   'maxSessionMinutes',
   'breakMinutes',
   'maxDailyStudyMinutes',
+  'commitmentsDescription',
 ];
 
 interface RowSpec {
@@ -954,7 +956,9 @@ function analyze(
   for (const name of SETTING_NAMES) {
     if (settingValue(current.settings, name) !== settingValue(incoming.settings, name)) {
       an.settingNames.push(name);
-      an.specs.set(`settings:${name}`, { selectable: true, defaultOn: false });
+      // A commitments description is pre-ticked when this schedule has none (§ 16.6): onboarding needs it.
+      const fillsMissing = name === 'commitmentsDescription' && !current.settings?.commitmentsDescription?.trim();
+      an.specs.set(`settings:${name}`, { selectable: true, defaultOn: fillsMissing });
     }
   }
 
@@ -1532,7 +1536,7 @@ function blockerText(e: Entry, blockers: Blocker[]): string {
 function settingValue(settings: Settings | undefined, name: keyof Settings): unknown {
   const v = settings?.[name];
   if (v !== undefined) return v;
-  return name === 'maxDailyStudyMinutes' ? null : DEFAULT_SETTINGS[name];
+  return name === 'maxDailyStudyMinutes' || name === 'commitmentsDescription' ? null : DEFAULT_SETTINGS[name];
 }
 
 // ===========================================================================
@@ -1852,6 +1856,7 @@ function assemble(an: Analysis, fate: Map<string, Fate>, vs: Versions, sel: Sel)
   if (meta) out.meta = meta;
   const settings = mergeSettings(an, sel);
   if (settings) out.settings = settings;
+  out.schemaVersion = schemaVersionFor(out as { settings?: Settings });
 
   const lists = {} as Record<CollectionName, Obj[]>;
   for (const c of COLLECTION_ORDER) {
@@ -2332,10 +2337,12 @@ const SETTING_LABELS: Record<keyof Settings, string> = {
   maxSessionMinutes: 'Longest work session',
   breakMinutes: 'Break between sessions',
   maxDailyStudyMinutes: 'Daily study limit',
+  commitmentsDescription: 'Your commitments',
 };
 
 function formatSetting(name: keyof Settings, value: unknown): string {
-  if (value === null || value === undefined) return 'No limit';
+  if (value === null || value === undefined) return name === 'commitmentsDescription' ? 'Not described' : 'No limit';
+  if (name === 'commitmentsDescription') return String(value);
   if (name === 'weekStartsOn') return value === 'sunday' ? 'Sunday' : 'Monday';
   if (typeof value === 'string') return value === '24:00' ? 'Midnight' : /^\d{2}:\d{2}$/.test(value) ? formatTime12(value) : value;
   if (typeof value === 'number') return formatDuration(value);

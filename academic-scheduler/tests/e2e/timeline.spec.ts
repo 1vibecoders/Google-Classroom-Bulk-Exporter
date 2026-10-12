@@ -1,6 +1,8 @@
 // Day view: click empty time to add work there, then change its length by
 // dragging its bottom edge.
-import { dayTimeline, expect, openDialog, test, toast } from './fixtures';
+import { dayTimeline, expect, openDialog, test, toast, skipOnboarding } from './fixtures';
+
+test.beforeEach(async ({ page }) => skipOnboarding(page));
 
 test('click empty time to add work, then resize it from the bottom edge', async ({ page }) => {
   await page.goto('/#/day/2026-10-08');

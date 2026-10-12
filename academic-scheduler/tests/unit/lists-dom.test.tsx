@@ -402,6 +402,6 @@ describe('SettingsView', () => {
     expect(link.getAttribute('href')).toBe('https://github.com/1vibecoders/Google-Classroom-Bulk-Exporter/blob/main/academic-scheduler/SCHEDULE_FORMAT.md');
     expect(link.getAttribute('rel')).toContain('noopener');
     expect(container.textContent).toContain('No AI in this website.');
-    expect(container.textContent).toContain('Schedule format 1.0');
+    expect(container.textContent).toContain('Schedule format 1.1');
   });
 });

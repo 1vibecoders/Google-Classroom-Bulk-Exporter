@@ -67,7 +67,24 @@ class SharedFixtures(unittest.TestCase):
                     meta = json.load(handle).get("x-fixture", {})
                 warning_paths = [w["path"] for w in result.warnings]
                 for expected in meta.get("expectedWarningPaths", []):
+                    if expected == "meta.timezone" and V.is_known_time_zone("UTC") is None:
+                        continue  # no time-zone database (e.g. Windows without tzdata): the check is skipped by design
                     self.assertIn(expected, warning_paths)
+
+    def test_stored_version_is_the_lowest_the_document_needs(self):
+        base = os.path.join(FIXTURES, "valid", "minimal.json")
+        with open(base, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data["schemaVersion"] = "1.1"
+        self.assertEqual(V.validate_document(copy.deepcopy(data), today=TODAY).doc["schemaVersion"], "1.0")
+        data["settings"] = {"commitmentsDescription": "Swim Mon/Wed 4-6 PM"}
+        result = V.validate_document(copy.deepcopy(data), today=TODAY)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(result.doc["schemaVersion"], "1.1")
+        data["schemaVersion"] = "1.0"
+        result = V.validate_document(data, today=TODAY)
+        self.assertEqual([(e["path"], e["code"]) for e in result.errors],
+                         [("settings.commitmentsDescription", "version-feature")])
 
     def test_invalid_fixtures_are_rejected_at_the_expected_paths(self):
         for path in self.fixture_files("invalid"):

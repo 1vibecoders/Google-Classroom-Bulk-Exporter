@@ -34,7 +34,7 @@ import sys
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 SUPPORTED_MAJOR = 1
-SUPPORTED_MINOR = 0
+SUPPORTED_MINOR = 1
 SUPPORTED = "%d.%d" % (SUPPORTED_MAJOR, SUPPORTED_MINOR)
 MAX_FILE_BYTES = 10 * 1024 * 1024  # the website's import limit
 MAX_EXTENSION_DEPTH = 200  # the website cannot store deeper x- values
@@ -497,6 +497,7 @@ SETTINGS_SPEC = Spec("settings", [
     ("maxSessionMinutes", INT(10, 480)),
     ("breakMinutes", INT(0, 120)),
     ("maxDailyStudyMinutes", INT(0, 1440)),
+    ("commitmentsDescription", TEXT(2000)),
 ], [])
 
 
@@ -612,7 +613,7 @@ BLOCK_SPEC = _item_spec("a schedule block", "block", [
 ], ["start", "end"], with_source=True, planner=True, check=_check_block_shape)
 
 ROOT_SPEC = Spec("the schedule", [
-    ("schemaVersion", ENUM([SUPPORTED])),
+    ("schemaVersion", ENUM(["1.0", "1.1"])),
     ("meta", OBJECT(META_SPEC)),
     ("settings", OBJECT(SETTINGS_SPEC)),
     ("classes", ARRAY(OBJECT(CLASS_SPEC))),
@@ -982,6 +983,12 @@ def _walk_ldt(value: Any, path: str, ctx: Ctx, or_date: bool) -> Any:
     return "%sT%s:00" % (m.group(1), m.group(2))
 
 
+def schema_version_for(doc: dict) -> str:
+    """The lowest version that has every feature `doc` uses (section 2: writers write this)."""
+    settings = doc.get("settings")
+    return "1.1" if isinstance(settings, dict) and "commitmentsDescription" in settings else "1.0"
+
+
 def _check_version(root: dict) -> Tuple[Optional[str], Optional[dict], Optional[dict]]:
     """(version, error that does not stop validation, error that stops it)."""
     if "schemaVersion" not in root:
@@ -990,10 +997,12 @@ def _check_version(root: dict) -> Tuple[Optional[str], Optional[dict], Optional[
                                        'incomplete). A schedule file starts with "schemaVersion": "%s".' % SUPPORTED}
     value = root["schemaVersion"]
     if not isinstance(value, str):
-        if isinstance(value, (int, float)) and not isinstance(value, bool) and value == SUPPORTED_MAJOR + SUPPORTED_MINOR / 10.0:
-            return None, {"path": "schemaVersion", "code": "version-type",
-                          "message": '"schemaVersion" must be the string "%s" (in quotes), not the number %s.' % (
-                              SUPPORTED, SUPPORTED)}, None
+        for minor in range(SUPPORTED_MINOR + 1):
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and value == SUPPORTED_MAJOR + minor / 10.0:
+                as_text = "%d.%d" % (SUPPORTED_MAJOR, minor)
+                return as_text, {"path": "schemaVersion", "code": "version-type",
+                                 "message": '"schemaVersion" must be the string "%s" (in quotes), not the number %s.' % (
+                                     as_text, as_text)}, None
         return None, None, {"path": "schemaVersion", "code": "version-type",
                             "message": '"schemaVersion" must be a string such as "%s", but this file has %s.' % (
                                 SUPPORTED, describe(value))}
@@ -1729,9 +1738,16 @@ def validate_document(data: Any, today: Optional[str] = None, generator: bool = 
     if version_error:
         ctx.errors.append(version_error)
     normalized = walk_object(data, ROOT_SPEC, "", ctx, skip="schemaVersion")
-    doc = {"schemaVersion": SUPPORTED}
+    doc = {"schemaVersion": "1.0"}
     if normalized is not INVALID:
         doc.update(normalized)
+    # The stored version is the lowest one that has every feature the file uses (section 2).
+    needed = schema_version_for(doc)
+    if needed == "1.1" and version == "1.0":
+        ctx.errors.append({"path": "settings.commitmentsDescription", "code": "version-feature",
+                           "message": '"commitmentsDescription" is new in schema version 1.1, but this file says '
+                                      '"schemaVersion": "1.0". Write "1.1" or leave the field out.'})
+    doc["schemaVersion"] = needed
     _check_semantics(doc, data, ctx)
     _collect_warnings(doc, ctx, today if today and is_valid_date(today) else _today_local())
     if generator:
@@ -1846,7 +1862,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 if __name__ == "__main__":
     try:
-        sys.stdout.reconfigure(errors="backslashreplace")  # type: ignore[attr-defined]
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")  # type: ignore[attr-defined]
     except (AttributeError, ValueError):
         pass
     sys.exit(main())

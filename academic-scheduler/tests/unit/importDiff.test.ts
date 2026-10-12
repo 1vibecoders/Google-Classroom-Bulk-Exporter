@@ -1637,7 +1637,8 @@ describe('round trip and a large realistic scenario', () => {
     const example = loadExample();
     const { plan, doc } = run(emptyDocument(), example);
     expect(plan.summary.new).toEqual({ classes: 2, assignments: 6, events: 5, availability: 2, scheduleBlocks: 12 });
-    expect(plan.summary.setting).toEqual({ settings: 1 });
+    expect(plan.summary.setting).toEqual({ settings: 2 });
+    expect(doc.settings?.commitmentsDescription).toBe(example.settings!.commitmentsDescription);
     expect(doc.meta).toEqual({ title: example.meta!.title, sources: example.meta!.sources });
     expect(doc.deleted).toEqual(example.deleted);
     expect(doc.issues).toEqual(example.issues);
