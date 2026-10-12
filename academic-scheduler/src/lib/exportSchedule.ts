@@ -6,7 +6,7 @@
 // optional arrays omitted, `x-…` properties copied unchanged. Only the fields
 // the format defines are written, so the result is always well-formed.
 import { APP_NAME, APP_VERSION, MAX_TOMBSTONES, schemaVersionFor } from '../model/constants';
-import type { LocalDateTimeStr, ScheduleDocument, Settings } from '../model/types';
+import type { LocalDateTimeStr, ScheduleDocument } from '../model/types';
 import { newId } from './ids';
 import { isDateOnly, isValidLocalDateTime, normalizeLocalDateTime, nowLocal } from './time';
 import { FORMAT_SPECS, cloneJsonValue, validateDocument, type Kind, type ObjSpec, type ValidationIssue } from './validate';
@@ -46,9 +46,9 @@ export function exportDocument(doc: ScheduleDocument, now: LocalDateTimeStr, opt
 
   const settings = canonObject(get(source, 'settings'), FORMAT_SPECS.settings);
   if (isPlainObject(settings) && Object.keys(settings).length > 0) out.settings = settings;
-  out.schemaVersion = schemaVersionFor(out as { settings?: Settings });
 
   out.classes = sortBy(canonList(get(source, 'classes'), FORMAT_SPECS.class), classKey);
+  out.schemaVersion = schemaVersionFor(out);
   out.assignments = sortBy(canonList(get(source, 'assignments'), FORMAT_SPECS.assignment), assignmentKey);
   out.events = sortBy(canonList(get(source, 'events'), FORMAT_SPECS.event), timedKey);
   out.availability = sortBy(canonList(get(source, 'availability'), FORMAT_SPECS.availability), timedKey);

@@ -1,4 +1,4 @@
-# Schedule File Format — version 1.1
+# Schedule File Format — version 1.2
 
 This document is the complete, normative description of the JSON file that the
 **Academic Scheduler** website imports and exports, and that the Claude
@@ -8,7 +8,7 @@ this format.
 It is written so that a developer or an AI can produce valid files without
 guessing. A machine-readable JSON Schema (draft 2020-12) for the structural
 rules is shipped next to this file:
-[`schema/schedule-1.1.schema.json`](schema/schedule-1.1.schema.json).
+[`schema/schedule-1.2.schema.json`](schema/schedule-1.2.schema.json).
 The JSON Schema cannot express every rule; the **semantic rules** in
 [§ 13](#13-validation-rules) also apply, and the website and the skill's
 validator (`skills/academic-schedule/scripts/validate_schedule.py`) enforce all of them.
@@ -77,9 +77,9 @@ are used as in RFC 2119.
 ## 2. Versioning
 
 Every file MUST start with a `schemaVersion` string of the form
-`"MAJOR.MINOR"`. This document defines **`"1.1"`**. Version 1.1 adds one
-optional field, `settings.commitmentsDescription`; every 1.0 file is also a
-valid 1.1 file.
+`"MAJOR.MINOR"`. This document defines **`"1.2"`**. Version 1.1 adds one
+optional field, `settings.commitmentsDescription`; version 1.2 adds class
+`announcements` (§ 7.1). Every 1.0 and 1.1 file is also a valid 1.2 file.
 
 | Change | Version change | Example |
 | --- | --- | --- |
@@ -91,13 +91,14 @@ Rules:
 - A reader that implements version `M.n` MUST accept files whose major version
   is `M` and whose minor version is `≤ n`, and MUST **reject** any other
   version with a clear message (for example: *"This file uses schema version
-  1.3, but this version of the Academic Scheduler supports up to 1.1. Update
-  the website or generate a 1.1 file."*). The current website supports
-  `1.0` and `1.1`.
+  1.3, but this version of the Academic Scheduler supports up to 1.2. Update
+  the website or generate a 1.2 file."*). The current website supports
+  `1.0`, `1.1` and `1.2`.
 - A writer MUST write the lowest version that contains every feature it uses.
-  Today that is `"1.1"` when `settings.commitmentsDescription` is present and
-  `"1.0"` otherwise. A file that says `"1.0"` but uses a 1.1 field is invalid
-  (the error names the field).
+  Today that is `"1.2"` when any class has `announcements`, otherwise `"1.1"`
+  when `settings.commitmentsDescription` is present, otherwise `"1.0"`. A file
+  that says a lower version than a field it uses is invalid (the error names
+  the field).
 - `schemaVersion` is a **string**. `1.0` (a number) is invalid.
 
 ## 3. Data types
@@ -175,7 +176,7 @@ zone that is. The website never converts times between zones.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `schemaVersion` | string | **yes** | `"1.0"` or `"1.1"` (§ 2). |
+| `schemaVersion` | string | **yes** | `"1.0"`, `"1.1"` or `"1.2"` (§ 2). |
 | `classes` | array of [Class](#7-classes) | **yes** (may be empty) | Courses. |
 | `assignments` | array of [Assignment](#8-assignments) | **yes** (may be empty) | Homework, projects, readings, quizzes, tests, … |
 | `events` | array of [Event](#10-events-recurring-and-one-time) | **yes** (may be empty) | Fixed commitments: school, activities, appointments. |
@@ -437,10 +438,25 @@ later runs keep `"high"`:
 | `archived` | boolean | no (default `false`) | Hidden from pickers and filters; its items still display. |
 | `topics` | array of Text ≤ 200, ≤ 200 entries | no | The class's topics or units (e.g. the Classroom topics), in source order. |
 | `references` | array of [Reference](#82-reference), ≤ 200 entries | no | Class materials that are not work: Classroom materials, the syllabus, unit notes, slides. |
+| `announcements` | array of [Announcement](#71-announcement), ≤ 100 entries | no | 1.2. The class's announcements as the source last listed them, newest first. |
 
-A Google Classroom **material**, and an announcement that asks for no work,
-are not assignments: they become `references` of the class or of the
-assignments they support (§ 15.5).
+A Google Classroom **material** is not an assignment: it becomes a
+`reference` of the class or of the assignments it supports (§ 15.5). An
+announcement is kept in `announcements`; one that asks for work also becomes
+an assignment.
+
+### 7.1 Announcement
+
+Version 1.2. A teacher's post to the whole class. Announcements have no `id`:
+the list is owned by its source and replaced as a whole when the source lists
+them again (§ 15.10).
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `text` | Text 1–5000 | **yes** | The announcement's text. |
+| `postedAt` | LocalDateTime | no | When it was posted. |
+| `url` | URL | no | Link to the announcement. |
+| `references` | array of [Reference](#82-reference), ≤ 50 entries | no | Its attachments and links. |
 
 ## 8. Assignments
 
@@ -868,7 +884,7 @@ rejects an invalid file as a whole and lists every problem with its location
 
 ### 13.1 Structure
 
-1. **[S]** The root is an object; `schemaVersion` is the string `"1.0"` or `"1.1"`, and is `"1.1"` when a 1.1 field is used;
+1. **[S]** The root is an object; `schemaVersion` is the string `"1.0"`, `"1.1"` or `"1.2"`, and is at least the version of every field used (§ 2);
    `classes`, `assignments`, `events`, `availability` and `scheduleBlocks`
    are present and are arrays.
 2. **[S]** Every field has the type, format, length, numeric range, array size,
@@ -1458,7 +1474,7 @@ The website shows listed items under "Changes to your items", pre-ticked when
 | issue `status` | person | no; resolved/dismissed issues are kept and not raised again | current `resolved`/`dismissed` kept |
 | `settings` | person | only when the person asks in this request | "Settings", opt-in |
 | `deleted` | person (written by the website) | copied; MAY append entries for items it removes | unioned |
-| titles, names, descriptions, dates, estimates, priority, `topic`, `topics`, tasks, references, `dependsOn`, `sources`, `sourceState`, `issues` of unlocked `generated` items | generator | yes, except overridden fields | file's value |
+| titles, names, descriptions, dates, estimates, priority, `topic`, `topics`, tasks, references, `announcements`, `dependsOn`, `sources`, `sourceState`, `issues` of unlocked `generated` items | generator | yes, except overridden fields | file's value |
 | `description` of unlocked `generated`/`planner` blocks | generator | yes | file's value |
 | `start`/`end` of unlocked, future, `planned` `generated`/`planner` blocks | generator | yes (move, replace; remove unless it has `notes`) | file's value; missing ones → "Outdated planned work" (files with `meta.basedOn`) |
 | `done`/`skipped` blocks | person | no (a past `planned` block MAY become `done` or `skipped` on evidence, § 15.7) | current block kept as a whole |
@@ -2153,3 +2169,4 @@ Saturday, Oct 24, 9 to 11 AM; I want to do two past papers"). It shows:
 | --- | --- | --- |
 | 1.0 | 2026-10-07 | Initial version. |
 | 1.1 | 2026-10-12 | Optional `settings.commitmentsDescription` (onboarding). |
+| 1.2 | 2026-10-12 | Optional class `announcements` (§ 7.1). |

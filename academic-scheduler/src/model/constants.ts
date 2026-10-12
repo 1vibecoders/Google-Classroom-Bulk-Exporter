@@ -11,6 +11,7 @@ import type {
   ReferenceKind,
   ResolvedSettings,
   SchemaVersion,
+  SchoolClass,
   Settings,
   SourceKind,
   SourceState,
@@ -18,12 +19,13 @@ import type {
   WorkStatus,
 } from './types';
 
-export const SCHEMA_VERSION = '1.1' as const;
+export const SCHEMA_VERSION = '1.2' as const;
 export const SUPPORTED_MAJOR = 1;
-export const SUPPORTED_MINOR = 1;
+export const SUPPORTED_MINOR = 2;
 
 /** The lowest version that has every feature `doc` uses (§ 2: writers write this). */
-export function schemaVersionFor(doc: { settings?: Settings }): SchemaVersion {
+export function schemaVersionFor(doc: { settings?: Settings; classes?: unknown }): SchemaVersion {
+  if (Array.isArray(doc.classes) && doc.classes.some((c) => (c as SchoolClass | null)?.announcements !== undefined)) return '1.2';
   return doc.settings?.commitmentsDescription !== undefined ? '1.1' : '1.0';
 }
 export const APP_NAME = 'Academic Scheduler';

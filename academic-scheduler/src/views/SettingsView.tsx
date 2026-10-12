@@ -508,7 +508,7 @@ function About() {
           <Icon name="file" />
           <div>
             <strong>Schedule format {SCHEMA_VERSION}.</strong> Imports and exports use the documented schedule file format (
-            <span className="mono">"schemaVersion": "1.0"</span> or <span className="mono">"{SCHEMA_VERSION}"</span>
+            <span className="mono">"schemaVersion": "1.0"</span> to <span className="mono">"{SCHEMA_VERSION}"</span>
             ). Read the{' '}
             <a href={FORMAT_SPEC_URL} target="_blank" rel="noopener noreferrer">
               format specification (SCHEDULE_FORMAT.md)

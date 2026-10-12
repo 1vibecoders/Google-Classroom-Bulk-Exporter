@@ -110,6 +110,37 @@ describe('merging a Classroom sync batch', () => {
     expect(p.changes.filter((c) => c.category !== 'unchanged')).toEqual([]);
   });
 
+  it('brings in announcements, topics, materials, the description and turned-in work', () => {
+    const current = example();
+    const b = batch([item('NzAwMDAwMDAwMDAx', { title: 'Othello Essay', due: '2026-10-16T23:59:00', topic: 'Unit 3', turnedIn: true }), ...UNCHANGED.slice(1)]);
+    Object.assign(b.courses[0], {
+      description: 'Reading and writing.',
+      topics: ['Unit 3'],
+      materials: [{ title: 'Unit 3 notes', url: 'https://classroom.google.com/c/NjI3ODk0MjE0NTQ5/m/1' }],
+      announcements: [{ text: 'Essay moved to Friday.', postedAt: '2026-10-11T08:00:00', links: [{ title: 'New rubric', url: 'https://example.org/rubric' }] }],
+    });
+    const { incoming, plan: p } = plan(current, b);
+    expect(incoming.schemaVersion).toBe('1.2');
+    const after = applyImport(current, incoming, p, defaultSelection(p), NOW);
+    const english = after.classes.find((c) => c.id === ENGLISH)!;
+    expect(english.description).toBe('Reading and writing.');
+    expect(english.topics).toContain('Unit 3');
+    expect(english.references).toContainEqual({ title: 'Unit 3 notes', url: 'https://classroom.google.com/c/NjI3ODk0MjE0NTQ5/m/1', kind: 'link' });
+    expect(english.announcements).toEqual([
+      { text: 'Essay moved to Friday.', postedAt: '2026-10-11T08:00:00', references: [{ title: 'New rubric', url: 'https://example.org/rubric', kind: 'link' }] },
+    ]);
+    expect(after.schemaVersion).toBe('1.2');
+    const essay = after.assignments.find((a) => a.id === 'gc-NzAwMDAwMDAwMDAx')!;
+    expect(essay).toMatchObject({ topic: 'Unit 3', status: 'done' });
+
+    // A later sync with no announcements left clears the list; one that could not read them keeps it.
+    const kept = plan(after, batch(UNCHANGED));
+    expect(kept.incoming.classes.find((c) => c.id === ENGLISH)!.announcements).toHaveLength(1);
+    const empty = batch(UNCHANGED);
+    empty.courses[0].announcements = [];
+    expect(plan(after, empty).incoming.classes.find((c) => c.id === ENGLISH)!.announcements).toBeUndefined();
+  });
+
   it('keeps a withdrawn item withdrawn while Classroom still lists it', () => {
     const current = example();
     expect(current.assignments.find((a) => a.id === 'gc-NzAwMDAwMDAwMDAz')!.sourceState).toBe('withdrawn');

@@ -1220,3 +1220,13 @@ details > summary.ls-subhead {
   margin-top: 2px;
   color: var(--accent);
 }
+
+.ls-announcements {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.ls-announcements > li + li {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}

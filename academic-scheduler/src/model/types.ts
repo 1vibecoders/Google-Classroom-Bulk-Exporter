@@ -18,7 +18,7 @@ export type DateOrDateTimeStr = string;
 /** `#RRGGBB` */
 export type ColorStr = string;
 
-export type SchemaVersion = '1.0' | '1.1';
+export type SchemaVersion = '1.0' | '1.1' | '1.2';
 export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 /** `planner` = placed by the website's deterministic planner (schedule blocks only). */
 export type Origin = 'user' | 'generated' | 'planner';
@@ -103,6 +103,17 @@ export interface SchoolClass extends ItemBase {
   archived?: boolean;
   topics?: string[];
   /** Class materials that are not work (syllabus, unit notes, slides). */
+  references?: Reference[];
+  /** Format 1.2: the class's announcements as the source last listed them, newest first. */
+  announcements?: Announcement[];
+}
+
+/** Format 1.2: a teacher's post to the whole class (e.g. a Google Classroom announcement). */
+export interface Announcement {
+  text: string;
+  /** When it was posted (local wall-clock time). */
+  postedAt?: LocalDateTimeStr;
+  url?: string;
   references?: Reference[];
 }
 

@@ -7,10 +7,16 @@
 // Attempts refused before that (no allowance left, already running, sign-in
 // expired, missing permission, Google unreachable) are not counted.
 //
+// What is read (the same content the browser extension exports): per active
+// course its description, topics, published coursework with the person's
+// turned-in state, materials and newest announcements. Attachments are links;
+// their files are not downloaded.
+//
 // Change detection (§ 13.2): the Classroom API has no "changed since" filter
 // for coursework, so every sync lists the active courses and their published
-// coursework and compares each item's stable id and content fingerprint with
-// the knowledge base (source_records). Unchanged items keep their records.
+// coursework, materials and announcements and compares each item's stable id
+// and content fingerprint with the knowledge base (source_records). Unchanged
+// items keep their records.
 //
 // Disappearance (§ 13.4): an item is marked `missing` only when its course was
 // listed completely in this run. A course that refuses access is marked
@@ -18,11 +24,31 @@
 // longer listed is marked `missing` and its items are left as they were.
 // Nothing is ever deleted here; the website shows "Removed from source" and
 // the person decides.
-import { IMPORT_BATCH_VERSION, type ImportBatch, type ImportedAssignment, type ImportedCourse, type ImportedLink, type SyncAllowance, type SyncCounts } from '../src/model/importBatch.js';
+import {
+  IMPORT_BATCH_VERSION,
+  type ImportBatch,
+  type ImportedAnnouncement,
+  type ImportedAssignment,
+  type ImportedCourse,
+  type ImportedLink,
+  type SyncAllowance,
+  type SyncCounts,
+} from '../src/model/importBatch.js';
 import { decrypt, sha256 } from './crypto.js';
 import type { Context } from './context.js';
 import type { Db } from './db.js';
-import { GoogleError, SCOPES, type CourseWork, type GoogleDate, type GoogleTime, type Material } from './google.js';
+import {
+  GoogleError,
+  SCOPES,
+  type Announcement,
+  type CourseWork,
+  type CourseWorkMaterial,
+  type GoogleDate,
+  type GoogleTime,
+  type Material,
+  type StudentSubmission,
+  type Topic,
+} from './google.js';
 import type { SessionUser } from './http.js';
 
 export const SYNC_LIMIT = 3;
@@ -149,8 +175,11 @@ function links(materials: Material[] | undefined): ImportedLink[] | undefined {
 
 type WorkData = Omit<ImportedAssignment, 'id' | 'classId' | 'sourceId' | 'state'>;
 
-export function workData(work: CourseWork, timezone: string): WorkData {
+export function workData(work: CourseWork, timezone: string, topics?: Map<string, string>, turnedIn?: Set<string>): WorkData {
   const data: WorkData = { title: cut(work.title, 200) ?? 'Untitled' };
+  const topic = work.topicId ? topics?.get(work.topicId) : undefined;
+  if (topic) data.topic = topic;
+  if (turnedIn?.has(work.id)) data.turnedIn = true;
   const description = cut(work.description, 5000);
   if (description) data.description = description;
   const due = localDue(work.dueDate, work.dueTime, timezone);
@@ -161,6 +190,30 @@ export function workData(work: CourseWork, timezone: string): WorkData {
   const found = links(work.materials);
   if (found) data.links = found;
   return data;
+}
+
+export function announcementData(a: Announcement, timezone: string): ImportedAnnouncement | null {
+  const text = cut(a.text, 5000);
+  if (!text) return null;
+  const data: ImportedAnnouncement = { text };
+  const posted = a.creationTime ? new Date(a.creationTime) : null;
+  if (posted && !Number.isNaN(posted.getTime())) data.postedAt = localDateTime(posted, timezone);
+  const url = httpsUrl(a.alternateLink);
+  if (url) data.url = url;
+  const found = links(a.materials);
+  if (found) data.links = found;
+  return data;
+}
+
+/** The result of one listing, or the Google error that stopped it. */
+async function attempt<T>(listing: Promise<T>, onError: () => void): Promise<T | GoogleError> {
+  try {
+    return await listing;
+  } catch (err) {
+    if (!(err instanceof GoogleError)) throw err;
+    onError();
+    return err;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -186,8 +239,13 @@ const UPSERT = `INSERT INTO source_records (user_id, kind, source_id, course_id,
     changed_at = CASE WHEN source_records.fingerprint <> EXCLUDED.fingerprint THEN now() ELSE source_records.changed_at END,
     fingerprint = EXCLUDED.fingerprint`;
 
-function hasScopes(granted: string): boolean {
-  const have = new Set(granted.split(/\s+/));
+// Google may report classroom.coursework.me.readonly under its older name.
+const SCOPE_ALIASES: Record<string, string> = {
+  'https://www.googleapis.com/auth/classroom.student-submissions.me.readonly': 'https://www.googleapis.com/auth/classroom.coursework.me.readonly',
+};
+
+export function hasScopes(granted: string): boolean {
+  const have = new Set(granted.split(/\s+/).map((s) => SCOPE_ALIASES[s] ?? s));
   return SCOPES.filter((s) => s.startsWith('https://')).every((s) => have.has(s));
 }
 
@@ -234,44 +292,107 @@ export async function runSync(context: Context, user: SessionUser, timezone: str
     const warnings: string[] = [];
     let partial = false;
 
+    /** Compares one record with the knowledge base and counts it. */
+    const record = (kind: string, sourceId: string, courseSource: string, data: unknown) => {
+      const fingerprint = sha256(JSON.stringify(data));
+      const old = before.get(`${kind}:${sourceId}`);
+      if (!old) counts.new++;
+      else if (old.fingerprint !== fingerprint || old.state !== 'present') counts.changed++;
+      else counts.unchanged++;
+      return { kind, source_id: sourceId, course_id: courseSource, fingerprint, data, state: 'present' };
+    };
+    const failed = () => {
+      partial = true;
+    };
+
     for (const course of courses) {
       const courseSource = classroomId(course.id);
-      const courseData = { name: cut(course.name, 200) ?? 'Untitled class', section: cut(course.section, 100), room: cut(course.room, 100), url: httpsUrl(course.alternateLink) };
+      const courseData = {
+        name: cut(course.name, 200) ?? 'Untitled class',
+        section: cut(course.section, 100),
+        room: cut(course.room, 100),
+        url: httpsUrl(course.alternateLink),
+        description: cut(course.description, 5000),
+      };
       const imported: ImportedCourse = { id: `gc-class-${courseSource}`, sourceId: courseSource, ...stripUndefined(courseData), state: 'present' };
-      let works: CourseWork[] | null = null;
-      try {
-        works = await google.listCourseWork(accessToken, course.id);
-      } catch (err) {
-        if (!(err instanceof GoogleError)) throw err;
-        partial = true;
-        if (!err.transient && (err.status === 403 || err.status === 404)) {
+      // The listings of one course are independent; one that fails leaves its part of the schedule as it was.
+      const [works, materials, announcements, topics, submissions] = await Promise.all([
+        attempt<CourseWork[]>(google.listCourseWork(accessToken, course.id), failed),
+        attempt<CourseWorkMaterial[]>(google.listMaterials(accessToken, course.id), failed),
+        attempt<Announcement[]>(google.listAnnouncements(accessToken, course.id), failed),
+        attempt<Topic[]>(google.listTopics(accessToken, course.id), failed),
+        attempt<StudentSubmission[]>(google.listSubmissions(accessToken, course.id), failed),
+      ]);
+
+      if (works instanceof GoogleError) {
+        if (!works.transient && (works.status === 403 || works.status === 404)) {
           imported.state = 'inaccessible';
           warnings.push(`The coursework of “${courseData.name}” could not be read (Google refused access). Its items were left as they were.`);
         } else {
           warnings.push(`The coursework of “${courseData.name}” could not be read right now. Its items were left as they were; the next sync tries again.`);
         }
+      } else {
+        const unread: string[] = [];
+        if (announcements instanceof GoogleError) unread.push('announcements');
+        if (materials instanceof GoogleError) unread.push('materials');
+        if (topics instanceof GoogleError) unread.push('topics');
+        if (submissions instanceof GoogleError) unread.push('turned-in states');
+        if (unread.length) warnings.push(`The ${listText(unread)} of “${courseData.name}” could not be read. They were left as they were.`);
       }
-      await db.query(UPSERT, [
-        user.id,
-        JSON.stringify([{ kind: 'course', source_id: courseSource, course_id: courseSource, fingerprint: sha256(JSON.stringify(courseData)), data: courseData, state: imported.state }]),
-      ]);
-      batchCourses.push(imported);
-      if (!works) continue;
 
-      // The course was listed completely: compare every item with the knowledge base.
-      const records = works.map((work) => {
-        const sourceId = classroomId(work.id);
-        const data = workData(work, timezone);
-        const fingerprint = sha256(JSON.stringify(data));
-        const old = before.get(`coursework:${sourceId}`);
-        if (!old) counts.new++;
-        else if (old.fingerprint !== fingerprint || old.state !== 'present') counts.changed++;
-        else counts.unchanged++;
-        batchItems.push({ id: `gc-${sourceId}`, classId: imported.id, sourceId, ...data, state: 'present' });
-        return { kind: 'coursework', source_id: sourceId, course_id: courseSource, fingerprint, data, state: 'present' };
-      });
-      if (records.length) await db.query(UPSERT, [user.id, JSON.stringify(records)]);
-      const seen = new Set(records.map((r) => r.source_id));
+      const topicNames = new Map<string, string>();
+      if (!(topics instanceof GoogleError)) {
+        for (const t of topics) {
+          const name = cut(t.name, 200);
+          if (name) topicNames.set(t.topicId, name);
+        }
+        if (topicNames.size) imported.topics = [...new Set(topicNames.values())];
+      }
+      const turnedIn =
+        submissions instanceof GoogleError ? undefined : new Set(submissions.filter((x) => x.state === 'TURNED_IN' || x.state === 'RETURNED').map((x) => x.courseWorkId));
+
+      const records = [
+        { kind: 'course', source_id: courseSource, course_id: courseSource, fingerprint: sha256(JSON.stringify(courseData)), data: courseData as unknown, state: imported.state as string },
+      ];
+      // Materials and announcements go to the knowledge base too. Only the newest
+      // announcements are listed, so an announcement is never marked missing.
+      if (!(materials instanceof GoogleError)) {
+        const found: ImportedLink[] = [];
+        for (const m of materials) {
+          const title = cut(m.title, 300) ?? 'Material';
+          const page = httpsUrl(m.alternateLink);
+          const attached = links(m.materials) ?? [];
+          records.push(record('material', classroomId(m.id), courseSource, { title, url: page, links: attached }));
+          if (page) found.push({ title, url: page });
+          for (const link of attached) found.push({ title: Array.from(`${title}: ${link.title}`).slice(0, 300).join(''), url: link.url });
+        }
+        imported.materials = found.slice(0, 200);
+      }
+      if (!(announcements instanceof GoogleError)) {
+        imported.announcements = [];
+        for (const a of announcements) {
+          const data = announcementData(a, timezone);
+          if (!data) continue;
+          records.push(record('announcement', classroomId(a.id), courseSource, data));
+          imported.announcements.push(data);
+        }
+        imported.announcements.sort((x, y) => (y.postedAt ?? '').localeCompare(x.postedAt ?? ''));
+      }
+      batchCourses.push(imported);
+
+      // The coursework was listed completely: compare every item with the knowledge base.
+      const seen = new Set<string>();
+      if (!(works instanceof GoogleError)) {
+        for (const work of works) {
+          const sourceId = classroomId(work.id);
+          const data = workData(work, timezone, topicNames, turnedIn);
+          records.push(record('coursework', sourceId, courseSource, data));
+          seen.add(sourceId);
+          batchItems.push({ id: `gc-${sourceId}`, classId: imported.id, sourceId, ...data, state: 'present' });
+        }
+      }
+      await db.query(UPSERT, [user.id, JSON.stringify(records)]);
+      if (works instanceof GoogleError) continue;
       for (const old of previous) {
         if (old.kind !== 'coursework' || old.course_id !== courseSource || seen.has(old.source_id)) continue;
         if (old.state === 'present') counts.missing++;
@@ -316,6 +437,11 @@ export async function runSync(context: Context, user: SessionUser, timezone: str
     const message = begun && problem.kind === 'failed' ? 'The sync stopped part way because Google Classroom could not be reached. Try again later.' : problem.message;
     return { ...problem, message, allowance: await allowance(db, user.id) };
   }
+}
+
+/** "a", "a and b", "a, b and c" */
+function listText(items: string[]): string {
+  return items.length < 2 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
 
 function stripUndefined<T extends Record<string, unknown>>(value: T): T {

@@ -151,7 +151,8 @@ minus the time of sessions marked done.
 - Only if you sign in with Google for [Classroom sync](#google-classroom-sync):
   the server keeps your Google account id and email, an AES-256-GCM encrypted
   Google refresh token, a log of your syncs (counts only) and what it read from
-  Classroom (course and coursework titles, descriptions, due dates, links).
+  Classroom (courses, coursework, materials and announcements: titles, texts,
+  due dates, links).
   Settings → Google Classroom sync → *Download server data* / *Delete server
   data* (deletion also revokes the website's Google access).
 - Clearing the browser's site data deletes it. **Export regularly** to keep a
@@ -165,12 +166,18 @@ Settings (or the setup's "Classes and data" step) → **Sign in with Google** �
 **Sync now**. The result opens in the import preview, so nothing changes until
 you import, the usual rules protect your own edits, and **Undo import** works.
 
-- **Read-only scopes:** `classroom.courses.readonly` and
-  `classroom.coursework.me.readonly` (plus `openid email`). Announcements,
-  materials' files and Drive documents are not read yet.
-- **What is synced:** active courses and their published coursework: title,
-  description, due date (converted from UTC to your time zone), points, the
-  Classroom link and attached links. IDs follow SCHEDULE_FORMAT.md § 14.1, so an
+- **Read-only scopes:** `classroom.courses.readonly`,
+  `classroom.coursework.me.readonly`, `classroom.courseworkmaterials.readonly`,
+  `classroom.announcements.readonly` and `classroom.topics.readonly` (plus
+  `openid email`). Attachment files and Drive documents are not downloaded;
+  they are kept as links.
+- **What is synced** (what the browser extension exports): active courses with
+  their description and topics; published coursework (assignments and
+  questions): title, topic, description, due date (converted from UTC to your
+  time zone), points, the Classroom link and attached links, and whether you
+  turned it in (turned-in work becomes *Done*); class materials as class
+  materials; the newest 20 announcements per class (format 1.2, shown on the
+  Classes page). IDs follow SCHEDULE_FORMAT.md § 14.1, so an
   item already imported via the extension and the skill is matched, not
   duplicated. Estimates, tasks, priorities, notes and planned work are never
   changed by a sync; a missing due date never clears one you have; items you

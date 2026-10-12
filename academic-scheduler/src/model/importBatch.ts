@@ -23,12 +23,26 @@ export interface ImportedCourse {
   section?: string;
   room?: string;
   url?: string;
+  description?: string;
+  /** Topic names in source order. Absent when the topics could not be read. */
+  topics?: string[];
+  /** Class materials (each material's page and its attachments). Absent when they could not be read. */
+  materials?: ImportedLink[];
+  /** Newest first. Absent when the announcements could not be read. */
+  announcements?: ImportedAnnouncement[];
   state: BatchItemState;
 }
 
 export interface ImportedLink {
   title: string;
   url: string;
+}
+
+export interface ImportedAnnouncement {
+  text: string;
+  postedAt?: LocalDateTimeStr;
+  url?: string;
+  links?: ImportedLink[];
 }
 
 export interface ImportedAssignment {
@@ -44,6 +58,9 @@ export interface ImportedAssignment {
   points?: string;
   url?: string;
   links?: ImportedLink[];
+  topic?: string;
+  /** The person turned it in (or it was returned). */
+  turnedIn?: boolean;
   state: Exclude<BatchItemState, 'inaccessible'>;
 }
 

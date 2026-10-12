@@ -1,6 +1,6 @@
 // Classes view: one card per class with its color, teacher, description,
-// counts (open assignments, remaining work, next deadline), topics, class
-// materials (references) and issues; create, edit and delete (asking what
+// counts (open assignments, remaining work, next deadline), topics,
+// announcements, class materials (references) and issues; create, edit and delete (asking what
 // happens to the class's assignments and events).
 import { useMemo, useState } from 'react';
 import { ASSIGNMENT_TYPE_LABELS } from '../model/constants';
@@ -20,7 +20,7 @@ import { countOpen, itemIssues } from './lists/assignmentModel';
 import { IssuePanel } from './lists/IssuePanel';
 import { ControlBadges, ProvenancePanel } from './lists/Provenance';
 import { ReferenceList } from './lists/ReferenceList';
-import { formatWhen, plural, relativeDays } from './lists/format';
+import { formatLdt, formatWhen, plural, relativeDays, safeHref } from './lists/format';
 import '../styles/lists.css';
 
 function ClassCard({
@@ -151,6 +151,34 @@ function ClassCard({
               ))}
             </ul>
           </div>
+        ) : null}
+
+        {c.announcements?.length ? (
+          <details>
+            <summary className="ls-subhead">Announcements ({c.announcements.length})</summary>
+            <ul className="stack ls-announcements">
+              {c.announcements.map((a, i) => {
+                const href = safeHref(a.url);
+                return (
+                  <li key={i} className="stack">
+                    {a.postedAt || href ? (
+                      <div className="small muted">
+                        {a.postedAt ? formatLdt(a.postedAt, year) : null}
+                        {a.postedAt && href ? ' · ' : null}
+                        {href ? (
+                          <a href={href} target="_blank" rel="noopener noreferrer">
+                            Open in Classroom
+                          </a>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <p className="ls-text small">{a.text}</p>
+                    <ReferenceList references={a.references} />
+                  </li>
+                );
+              })}
+            </ul>
+          </details>
         ) : null}
 
         {refs.length ? (

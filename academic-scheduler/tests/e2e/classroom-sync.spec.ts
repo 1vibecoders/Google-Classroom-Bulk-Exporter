@@ -1,7 +1,7 @@
 // Google Classroom sync in the browser, against a mocked backend: the
 // allowance is shown, a sync opens the import preview with only the real
 // changes, and a refusal from the server is shown without changing anything.
-import { expect, loadExample, test } from './fixtures';
+import { expect, loadExample, navTo, test } from './fixtures';
 
 const ALLOWANCE = { limit: 3, remaining: 2, nextAvailableAt: null, running: false };
 
@@ -39,6 +39,26 @@ test('a sync opens the import preview with the new Classroom work', async ({ pag
   // Sync warnings are listed with the file's warnings.
   await page.getByText(/warnings? about the file/).click();
   await expect(page.getByText('The coursework of “Biology” could not be read')).toBeVisible();
+});
+
+test('synced announcements and turned-in work show up after the import', async ({ page }) => {
+  await page.route('**/api/me', (route) => route.fulfill({ json: { signedIn: true, email: 'student@example.com', allowance: ALLOWANCE } }));
+  const batch = structuredClone(BATCH);
+  Object.assign(batch.courses[0], {
+    announcements: [{ text: 'Essay conferences are on Thursday.', postedAt: '2026-10-06T08:15:00', url: 'https://classroom.google.com/c/NjI3ODk0MjE0NTQ5/p/1' }],
+  });
+  Object.assign(batch.assignments[1], { topic: 'Poetry', turnedIn: true });
+  await page.route('**/api/sync', (route) => route.fulfill({ json: { batch, allowance: { ...ALLOWANCE, remaining: 1 } } }));
+  await loadExample(page);
+  await page.getByRole('region', { name: 'Google Classroom sync' }).getByRole('button', { name: 'Sync now' }).click();
+  await page.getByRole('region', { name: 'Schedule Import' }).getByRole('button', { name: 'Import' }).click();
+  await expect(page.getByRole('region', { name: 'Schedule imported' })).toBeVisible();
+
+  await navTo(page, 'Classes');
+  const english = page.getByRole('article', { name: 'English 10' });
+  await english.getByText('Announcements (1)').click();
+  await expect(english.getByText('Essay conferences are on Thursday.')).toBeVisible();
+  await expect(english.getByRole('link', { name: 'Open in Classroom' })).toHaveAttribute('href', 'https://classroom.google.com/c/NjI3ODk0MjE0NTQ5/p/1');
 });
 
 test('a refused sync is explained and changes nothing', async ({ page }) => {

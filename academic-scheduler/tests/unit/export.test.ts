@@ -21,7 +21,7 @@ const OPTIONS = { exportId: 'u-exp-test0001', timezone: 'America/New_York' };
 
 type Json = Record<string, any>;
 
-const schema = JSON.parse(readFileSync(join(ROOT, 'schema', 'schedule-1.1.schema.json'), 'utf8'));
+const schema = JSON.parse(readFileSync(join(ROOT, 'schema', 'schedule-1.2.schema.json'), 'utf8'));
 const schemaValidate = new Ajv2020({ allErrors: true, strict: false }).compile(schema);
 
 function loadDoc(path: string): ScheduleDocument {

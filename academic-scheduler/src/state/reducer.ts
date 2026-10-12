@@ -434,7 +434,7 @@ export function reducer(state: AppState, action: Action): AppState {
         if (settings[key] === undefined) delete settings[key];
       }
       // Keep the version in step with the features used, or the saved data would not validate on reload.
-      return withDoc(state, { ...doc, settings, schemaVersion: schemaVersionFor({ settings }) });
+      return withDoc(state, { ...doc, settings, schemaVersion: schemaVersionFor({ ...doc, settings }) });
     }
 
     default:

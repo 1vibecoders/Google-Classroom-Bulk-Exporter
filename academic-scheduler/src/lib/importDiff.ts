@@ -1856,7 +1856,6 @@ function assemble(an: Analysis, fate: Map<string, Fate>, vs: Versions, sel: Sel)
   if (meta) out.meta = meta;
   const settings = mergeSettings(an, sel);
   if (settings) out.settings = settings;
-  out.schemaVersion = schemaVersionFor(out as { settings?: Settings });
 
   const lists = {} as Record<CollectionName, Obj[]>;
   for (const c of COLLECTION_ORDER) {
@@ -1887,6 +1886,7 @@ function assemble(an: Analysis, fate: Map<string, Fate>, vs: Versions, sel: Sel)
     if (typeof b.taskId === 'string' && !(typeof b.assignmentId === 'string' && asgTasks.get(b.assignmentId)?.has(b.taskId))) delete b.taskId;
   }
   for (const c of COLLECTION_ORDER) out[c] = lists[c];
+  out.schemaVersion = schemaVersionFor(out);
 
   const issues = mergeRootIssues(an, finalIds);
   dedupeIssueIds(issues, lists);
@@ -2501,6 +2501,7 @@ const FIELD_LABELS: Record<string, string> = {
   archived: 'Archived',
   topics: 'Topics',
   references: 'References',
+  announcements: 'Announcements',
   classId: 'Class',
   type: 'Type',
   topic: 'Topic',
@@ -2670,6 +2671,8 @@ function fmtValue(an: Analysis, c: ItemCollection, field: string, value: unknown
         : '—';
     case 'topics':
       return Array.isArray(value) ? truncate(value.join(', '), 120) : String(value);
+    case 'announcements':
+      return Array.isArray(value) ? `${plural(value.length, 'announcement', 'announcements')}${isObj(value[0]) ? `, newest: “${truncate(text(value[0].text) ?? '', 80)}”` : ''}` : '—';
     case 'dependsOn':
       return Array.isArray(value)
         ? truncate(value.map((id) => an.names.asg.get(String(id)) ?? an.names.task.get(String(id)) ?? String(id)).join(', '), 120)

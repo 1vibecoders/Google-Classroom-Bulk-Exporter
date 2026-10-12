@@ -126,13 +126,22 @@ export function validateDocument(input: unknown, options: ValidateOptions = {}):
   const normalized = walkObject(input, ROOT_SPEC, '', ctx, 'schemaVersion');
   const doc = (normalized === INVALID ? {} : normalized) as Record<string, unknown>;
   // The stored version is the lowest one that has every feature the file uses (§ 2).
-  const needed = schemaVersionFor(doc as { settings?: Settings });
-  if (needed === '1.1' && version.version === '1.0') {
-    ctx.errors.push({
-      path: 'settings.commitmentsDescription',
-      code: 'version-feature',
-      message: '"commitmentsDescription" is new in schema version 1.1, but this file says "schemaVersion": "1.0". Write "1.1" or leave the field out.',
-    });
+  const needed = schemaVersionFor(doc);
+  if (version.version && needed > version.version) {
+    const announced = needed === '1.2' ? (doc.classes as Array<Record<string, unknown>>).findIndex((c) => c?.announcements !== undefined) : -1;
+    ctx.errors.push(
+      announced >= 0
+        ? {
+            path: `classes[${announced}].announcements`,
+            code: 'version-feature',
+            message: `"announcements" is new in schema version 1.2, but this file says "schemaVersion": "${version.version}". Write "1.2" or leave the field out.`,
+          }
+        : {
+            path: 'settings.commitmentsDescription',
+            code: 'version-feature',
+            message: `"commitmentsDescription" is new in schema version 1.1, but this file says "schemaVersion": "${version.version}". Write "1.1" or leave the field out.`,
+          },
+    );
   }
   doc.schemaVersion = needed;
   // Keep the root key order of a canonical file: schemaVersion first.
@@ -443,6 +452,17 @@ function itemSpec(
   });
 }
 
+const ANNOUNCEMENT_SPEC = spec(
+  'an announcement',
+  [
+    ['text', text(5000, true)],
+    ['postedAt', LDT],
+    ['url', URL_KIND],
+    ['references', arrayOf(object(REFERENCE_SPEC), { max: 50 })],
+  ],
+  ['text'],
+);
+
 const CLASS_SPEC = itemSpec(
   'a class',
   'class',
@@ -456,6 +476,7 @@ const CLASS_SPEC = itemSpec(
     ['archived', BOOL],
     ['topics', arrayOf(text(200), { max: 200 })],
     ['references', arrayOf(object(REFERENCE_SPEC), { max: 200 })],
+    ['announcements', arrayOf(object(ANNOUNCEMENT_SPEC), { max: 100 })],
   ],
   ['name'],
   { withSource: true },
@@ -609,6 +630,7 @@ export const FORMAT_SPECS = {
   rootIssue: ROOT_ISSUE_SPEC,
   source: SOURCE_SPEC,
   reference: REFERENCE_SPEC,
+  announcement: ANNOUNCEMENT_SPEC,
   recurrence: RECURRENCE_SPEC,
   estimateRange: ESTIMATE_RANGE_SPEC,
   tombstone: TOMBSTONE_SPEC,

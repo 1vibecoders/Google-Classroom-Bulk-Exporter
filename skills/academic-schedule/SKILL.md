@@ -15,7 +15,7 @@ when to do it) is decided here, by you, from evidence.
 **Output contract**
 
 1. A file (default `schedule.json`, or the name/location the person asks for) that conforms exactly
-   to [references/SCHEDULE_FORMAT.md](references/SCHEDULE_FORMAT.md) (version `"1.1"` only if `settings.commitmentsDescription` is present, else `"1.0"`). Data only: no
+   to [references/SCHEDULE_FORMAT.md](references/SCHEDULE_FORMAT.md) (version `"1.2"` if a class has `announcements`, else `"1.1"` if `settings.commitmentsDescription` is present, else `"1.0"`). Data only: no
    comments, no prose outside the fields made for text (`description`, `estimateBasis`,
    `issues[].message`, `requestedChanges[].reason`, labels). Always write the file; JSON pasted in
    the chat is only ever an extra copy of it.

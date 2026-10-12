@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/1vibecoders/Google-Classroom-Bulk-Exporter/academic-scheduler/schema/schedule-1.1.schema.json",
-  "title": "Academic Scheduler schedule file, versions 1.0 and 1.1",
+  "$id": "https://github.com/1vibecoders/Google-Classroom-Bulk-Exporter/academic-scheduler/schema/schedule-1.2.schema.json",
+  "title": "Academic Scheduler schedule file, versions 1.0 to 1.2",
   "description": "Structural rules of the schedule format (the rules marked [S] in SCHEDULE_FORMAT.md section 13). Semantic rules marked [V] (unique IDs, tombstones, issue ids, references, dependency cycles, date ordering, block end on the start date or at the next midnight, real calendar dates, non-blank required text, estimate ranges, settings after defaults) are described in section 13 and enforced by the website and validate_schedule.py. Every pattern must match the whole value: Python validators must use full-match semantics, because Python's '$' also matches before a trailing newline. 'default' annotations repeat the defaults of SCHEDULE_FORMAT.md; they are informative and never change validity.",
   "type": "object",
   "required": ["schemaVersion", "classes", "assignments", "events", "availability", "scheduleBlocks"],
   "properties": {
-    "schemaVersion": { "enum": ["1.0", "1.1"] },
+    "schemaVersion": { "enum": ["1.0", "1.1", "1.2"] },
     "meta": { "$ref": "#/$defs/meta" },
     "settings": { "$ref": "#/$defs/settings" },
     "classes": { "type": "array", "items": { "$ref": "#/$defs/class" } },
@@ -17,8 +17,16 @@
     "issues": { "type": "array", "items": { "$ref": "#/$defs/rootIssue" } },
     "deleted": { "type": "array", "maxItems": 5000, "items": { "$ref": "#/$defs/tombstone" } }
   },
-  "if": { "required": ["settings"], "properties": { "settings": { "required": ["commitmentsDescription"] } } },
-  "then": { "properties": { "schemaVersion": { "const": "1.1" } } },
+  "allOf": [
+    {
+      "if": { "required": ["settings"], "properties": { "settings": { "required": ["commitmentsDescription"] } } },
+      "then": { "properties": { "schemaVersion": { "enum": ["1.1", "1.2"] } } }
+    },
+    {
+      "if": { "required": ["classes"], "properties": { "classes": { "contains": { "type": "object", "required": ["announcements"] } } } },
+      "then": { "properties": { "schemaVersion": { "const": "1.2" } } }
+    }
+  ],
   "patternProperties": { "^x-": true },
   "additionalProperties": false,
   "$defs": {
@@ -277,7 +285,8 @@
         "description": { "type": "string", "maxLength": 5000 },
         "archived": { "type": "boolean", "default": false },
         "topics": { "type": "array", "maxItems": 200, "items": { "type": "string", "maxLength": 200 } },
-        "references": { "type": "array", "maxItems": 200, "items": { "$ref": "#/$defs/reference" } }
+        "references": { "type": "array", "maxItems": 200, "items": { "$ref": "#/$defs/reference" } },
+        "announcements": { "description": "Version 1.2.", "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/announcement" } }
       },
       "patternProperties": { "^x-": true },
       "additionalProperties": false
@@ -291,6 +300,18 @@
         "path": { "type": "string", "maxLength": 500 },
         "kind": { "enum": ["attachment", "link", "reading", "rubric", "template", "other"], "default": "attachment" },
         "required": { "type": "boolean", "default": false }
+      },
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false
+    },
+    "announcement": {
+      "type": "object",
+      "required": ["text"],
+      "properties": {
+        "text": { "type": "string", "minLength": 1, "maxLength": 5000 },
+        "postedAt": { "$ref": "#/$defs/localDateTime" },
+        "url": { "$ref": "#/$defs/url" },
+        "references": { "type": "array", "maxItems": 50, "items": { "$ref": "#/$defs/reference" } }
       },
       "patternProperties": { "^x-": true },
       "additionalProperties": false

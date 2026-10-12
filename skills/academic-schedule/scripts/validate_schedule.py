@@ -34,7 +34,7 @@ import sys
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 SUPPORTED_MAJOR = 1
-SUPPORTED_MINOR = 1
+SUPPORTED_MINOR = 2
 SUPPORTED = "%d.%d" % (SUPPORTED_MAJOR, SUPPORTED_MINOR)
 MAX_FILE_BYTES = 10 * 1024 * 1024  # the website's import limit
 MAX_EXTENSION_DEPTH = 200  # the website cannot store deeper x- values
@@ -519,6 +519,13 @@ def _item_spec(name: str, item_type: str, fields: List[Tuple[str, dict]], requir
 
 WORK_STATUS = ENUM(WORK_STATUSES, STATUS_HINTS)
 
+ANNOUNCEMENT_SPEC = Spec("an announcement", [
+    ("text", TEXT(5000, True)),
+    ("postedAt", LDT),
+    ("url", URL),
+    ("references", ARRAY(OBJECT(REFERENCE_SPEC), None, 50)),
+], ["text"])
+
 CLASS_SPEC = _item_spec("a class", "class", [
     ("name", TEXT(200, True)),
     ("teacher", TEXT(200)),
@@ -529,6 +536,7 @@ CLASS_SPEC = _item_spec("a class", "class", [
     ("archived", BOOL),
     ("topics", ARRAY(TEXT(200), None, 200)),
     ("references", ARRAY(OBJECT(REFERENCE_SPEC), None, 200)),
+    ("announcements", ARRAY(OBJECT(ANNOUNCEMENT_SPEC), None, 100)),
 ], ["name"], with_source=True)
 
 TASK_SPEC = _item_spec("a task", "task", [
@@ -613,7 +621,7 @@ BLOCK_SPEC = _item_spec("a schedule block", "block", [
 ], ["start", "end"], with_source=True, planner=True, check=_check_block_shape)
 
 ROOT_SPEC = Spec("the schedule", [
-    ("schemaVersion", ENUM(["1.0", "1.1"])),
+    ("schemaVersion", ENUM(["1.0", "1.1", "1.2"])),
     ("meta", OBJECT(META_SPEC)),
     ("settings", OBJECT(SETTINGS_SPEC)),
     ("classes", ARRAY(OBJECT(CLASS_SPEC))),
@@ -629,7 +637,7 @@ FORMAT_SPECS = {
     "root": ROOT_SPEC, "meta": META_SPEC, "settings": SETTINGS_SPEC, "class": CLASS_SPEC,
     "assignment": ASSIGNMENT_SPEC, "task": TASK_SPEC, "event": EVENT_SPEC, "availability": AVAILABILITY_SPEC,
     "block": BLOCK_SPEC, "issue": ITEM_ISSUE_SPEC, "rootIssue": ROOT_ISSUE_SPEC, "source": SOURCE_SPEC,
-    "reference": REFERENCE_SPEC, "recurrence": RECURRENCE_SPEC, "estimateRange": ESTIMATE_RANGE_SPEC,
+    "reference": REFERENCE_SPEC, "announcement": ANNOUNCEMENT_SPEC, "recurrence": RECURRENCE_SPEC, "estimateRange": ESTIMATE_RANGE_SPEC,
     "tombstone": TOMBSTONE_SPEC, "requestedChange": REQUESTED_CHANGE_SPEC, "generator": GENERATOR_SPEC,
 }
 
@@ -985,6 +993,9 @@ def _walk_ldt(value: Any, path: str, ctx: Ctx, or_date: bool) -> Any:
 
 def schema_version_for(doc: dict) -> str:
     """The lowest version that has every feature `doc` uses (section 2: writers write this)."""
+    classes = doc.get("classes")
+    if isinstance(classes, list) and any(isinstance(c, dict) and "announcements" in c for c in classes):
+        return "1.2"
     settings = doc.get("settings")
     return "1.1" if isinstance(settings, dict) and "commitmentsDescription" in settings else "1.0"
 
@@ -1743,10 +1754,16 @@ def validate_document(data: Any, today: Optional[str] = None, generator: bool = 
         doc.update(normalized)
     # The stored version is the lowest one that has every feature the file uses (section 2).
     needed = schema_version_for(doc)
-    if needed == "1.1" and version == "1.0":
-        ctx.errors.append({"path": "settings.commitmentsDescription", "code": "version-feature",
-                           "message": '"commitmentsDescription" is new in schema version 1.1, but this file says '
-                                      '"schemaVersion": "1.0". Write "1.1" or leave the field out.'})
+    if version and needed > version:
+        announced = next((i for i, c in enumerate(doc.get("classes") or []) if isinstance(c, dict) and "announcements" in c), None)
+        if needed == "1.2" and announced is not None:
+            ctx.errors.append({"path": "classes[%d].announcements" % announced, "code": "version-feature",
+                               "message": '"announcements" is new in schema version 1.2, but this file says '
+                                          '"schemaVersion": "%s". Write "1.2" or leave the field out.' % version})
+        else:
+            ctx.errors.append({"path": "settings.commitmentsDescription", "code": "version-feature",
+                               "message": '"commitmentsDescription" is new in schema version 1.1, but this file says '
+                                          '"schemaVersion": "%s". Write "1.1" or leave the field out.' % version})
     doc["schemaVersion"] = needed
     _check_semantics(doc, data, ctx)
     _collect_warnings(doc, ctx, today if today and is_valid_date(today) else _today_local())

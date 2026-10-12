@@ -7,8 +7,18 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { migrate, type Db } from '../../server/db';
 import { encrypt } from '../../server/crypto';
 import { setTestContext, type Context } from '../../server/context';
-import { GoogleError, SCOPES, type Course, type CourseWork, type GoogleApi } from '../../server/google';
-import { allowance, classroomId, localDue, reserveSync, runSync } from '../../server/sync';
+import {
+  GoogleError,
+  SCOPES,
+  type Announcement,
+  type Course,
+  type CourseWork,
+  type CourseWorkMaterial,
+  type GoogleApi,
+  type StudentSubmission,
+  type Topic,
+} from '../../server/google';
+import { allowance, classroomId, hasScopes, localDue, reserveSync, runSync } from '../../server/sync';
 import { callback, deleteAccount, login, me, sync } from '../../server/routes';
 import type { SessionUser } from '../../server/http';
 
@@ -28,11 +38,23 @@ function pgliteDb(pg: PGlite): Db {
   };
 }
 
+type PerCourse<T> = Record<string, T[] | GoogleError>;
+
 interface FakeClassroom {
   courses: Course[];
-  work: Record<string, CourseWork[] | GoogleError>;
+  work: PerCourse<CourseWork>;
+  materials?: PerCourse<CourseWorkMaterial>;
+  announcements?: PerCourse<Announcement>;
+  topics?: PerCourse<Topic>;
+  submissions?: PerCourse<StudentSubmission>;
   refreshError?: GoogleError;
   coursesError?: GoogleError;
+}
+
+async function listing<T>(lists: PerCourse<T> | undefined, courseId: string): Promise<T[]> {
+  const found = lists?.[courseId] ?? [];
+  if (found instanceof GoogleError) throw found;
+  return found;
 }
 
 function fakeGoogle(classroom: FakeClassroom): GoogleApi {
@@ -47,11 +69,11 @@ function fakeGoogle(classroom: FakeClassroom): GoogleApi {
       if (classroom.coursesError) throw classroom.coursesError;
       return classroom.courses;
     },
-    listCourseWork: async (_token, courseId) => {
-      const work = classroom.work[courseId] ?? [];
-      if (work instanceof GoogleError) throw work;
-      return work;
-    },
+    listCourseWork: (_token, courseId) => listing(classroom.work, courseId),
+    listMaterials: (_token, courseId) => listing(classroom.materials, courseId),
+    listAnnouncements: (_token, courseId) => listing(classroom.announcements, courseId),
+    listTopics: (_token, courseId) => listing(classroom.topics, courseId),
+    listSubmissions: (_token, courseId) => listing(classroom.submissions, courseId),
     revoke: async () => {},
   };
 }
@@ -161,6 +183,12 @@ describe('sync allowance (3 per rolling 24 hours, server-side)', () => {
     expect((await allowance(db, 'u1')).remaining).toBe(3);
   });
 
+  it('accepts the older name Google may report for the read-only coursework scope', () => {
+    const granted = SCOPES.join(' ').replace('classroom.coursework.me.readonly', 'classroom.student-submissions.me.readonly');
+    expect(hasScopes(granted)).toBe(true);
+    expect(hasScopes(granted.replace(/\S*announcements\S*/, ''))).toBe(false);
+  });
+
   it('asks to sign in again when Classroom permissions were not granted', async () => {
     const outcome = await runSync(context, { ...user, scopes: 'openid email' }, TZ);
     expect(outcome.kind).toBe('reauth');
@@ -214,6 +242,59 @@ describe('change detection and the knowledge base', () => {
     expect(outcome.batch.warnings.join(' ')).toContain('Biology');
     const lab = await db.query<{ state: string }>(`SELECT state FROM source_records WHERE source_id = $1`, [classroomId('903')]);
     expect(lab[0].state).toBe('present');
+    const run = await db.query<{ status: string }>(`SELECT status FROM sync_runs ORDER BY id DESC LIMIT 1`);
+    expect(run[0].status).toBe('partial');
+  });
+
+  it('reads what the extension exports: description, topics, turned-in state, materials and newest announcements', async () => {
+    classroom.courses[0].description = 'Reading and writing about Shakespeare.';
+    classroom.work['111'] = [work('901', '111', 'Othello essay', { topicId: 't1' }), work('902', '111', 'Vocab quiz')];
+    classroom.topics = { '111': [{ topicId: 't1', name: 'Unit 3: Othello' }, { topicId: 't2', name: 'Grammar' }] };
+    classroom.submissions = { '111': [{ courseWorkId: '902', state: 'TURNED_IN' }, { courseWorkId: '901', state: 'CREATED' }] };
+    classroom.materials = {
+      '111': [{ id: '701', title: 'Unit 3 notes', alternateLink: 'https://classroom.google.com/c/111/m/701', materials: [{ driveFile: { driveFile: { title: 'Slides', alternateLink: 'https://docs.google.com/presentation/d/s' } } }] }],
+    };
+    classroom.announcements = {
+      '111': [
+        { id: '801', text: 'Essay due date moved to Friday.', creationTime: '2026-10-06T12:15:00Z', alternateLink: 'https://classroom.google.com/c/111/p/801' },
+        { id: '802', text: 'Bring the novel tomorrow.', creationTime: '2026-10-07T13:00:00Z', materials: [{ link: { title: 'Reading list', url: 'https://example.org/list' } }] },
+        { id: '803', text: '   ' },
+      ],
+    };
+    const outcome = await runSync(context, user, TZ);
+    if (outcome.kind !== 'ok') throw new Error(outcome.kind);
+    const english = outcome.batch.courses.find((c) => c.name === 'English 10')!;
+    expect(english).toMatchObject({ description: 'Reading and writing about Shakespeare.', topics: ['Unit 3: Othello', 'Grammar'] });
+    expect(english.materials).toEqual([
+      { title: 'Unit 3 notes', url: 'https://classroom.google.com/c/111/m/701' },
+      { title: 'Unit 3 notes: Slides', url: 'https://docs.google.com/presentation/d/s' },
+    ]);
+    expect(english.announcements).toEqual([
+      { text: 'Bring the novel tomorrow.', postedAt: '2026-10-07T09:00:00', links: [{ title: 'Reading list', url: 'https://example.org/list' }] },
+      { text: 'Essay due date moved to Friday.', postedAt: '2026-10-06T08:15:00', url: 'https://classroom.google.com/c/111/p/801' },
+    ]);
+    const essay = outcome.batch.assignments.find((a) => a.title === 'Othello essay')!;
+    expect(essay.topic).toBe('Unit 3: Othello');
+    expect(essay.turnedIn).toBeUndefined();
+    expect(outcome.batch.assignments.find((a) => a.title === 'Vocab quiz')!.turnedIn).toBe(true);
+    // 3 coursework + 1 material + 2 announcements.
+    expect(outcome.batch.counts).toEqual({ new: 6, changed: 0, unchanged: 0, missing: 0 });
+    const again = await runSync(context, user, TZ);
+    expect(again.kind === 'ok' && again.batch.counts).toEqual({ new: 0, changed: 0, unchanged: 6, missing: 0 });
+  });
+
+  it('keeps the coursework when only the announcements or materials cannot be read, and says so', async () => {
+    classroom.announcements = { '111': new GoogleError('forbidden', 403, 'PERMISSION_DENIED', false) };
+    classroom.materials = { '111': new GoogleError('down', 503, 'http_503', true) };
+    const outcome = await runSync(context, user, TZ);
+    if (outcome.kind !== 'ok') throw new Error(outcome.kind);
+    const english = outcome.batch.courses.find((c) => c.name === 'English 10')!;
+    expect(english.state).toBe('present');
+    expect(english.announcements).toBeUndefined();
+    expect(english.materials).toBeUndefined();
+    expect(outcome.batch.courses.find((c) => c.name === 'Biology')!.announcements).toEqual([]);
+    expect(outcome.batch.assignments.filter((a) => a.classId === english.id)).toHaveLength(2);
+    expect(outcome.batch.warnings).toEqual(['The announcements and materials of “English 10” could not be read. They were left as they were.']);
     const run = await db.query<{ status: string }>(`SELECT status FROM sync_runs ORDER BY id DESC LIMIT 1`);
     expect(run[0].status).toBe('partial');
   });

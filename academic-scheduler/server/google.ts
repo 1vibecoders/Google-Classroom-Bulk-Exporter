@@ -1,11 +1,14 @@
 // Google sign-in (OAuth 2.0 authorization code flow with PKCE, run on the
 // server) and the Classroom REST API, with plain fetch.
 //
-// Scopes: only what the sync reads (SPEC.md § 12.1).
-//   openid, email                         who signed in
-//   classroom.courses.readonly            the person's courses
-//   classroom.coursework.me.readonly      coursework of those courses, as a student
-// Announcements, materials and Drive files are not requested yet.
+// Scopes: only what the sync reads (SPEC.md § 12.1), the same content the
+// browser extension exports (attachment files themselves are not downloaded).
+//   openid, email                              who signed in
+//   classroom.courses.readonly                 the person's courses
+//   classroom.coursework.me.readonly           coursework and the person's own submissions
+//   classroom.courseworkmaterials.readonly     class materials
+//   classroom.announcements.readonly           announcements
+//   classroom.topics.readonly                  topic names
 //
 // The Classroom API has no "changed since" filter for coursework, so the sync
 // compares stable ids and content fingerprints instead (server/sync.ts).
@@ -15,6 +18,9 @@ export const SCOPES = [
   'email',
   'https://www.googleapis.com/auth/classroom.courses.readonly',
   'https://www.googleapis.com/auth/classroom.coursework.me.readonly',
+  'https://www.googleapis.com/auth/classroom.courseworkmaterials.readonly',
+  'https://www.googleapis.com/auth/classroom.announcements.readonly',
+  'https://www.googleapis.com/auth/classroom.topics.readonly',
 ];
 
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -38,6 +44,7 @@ export interface Course {
   name: string;
   section?: string;
   room?: string;
+  description?: string;
   alternateLink?: string;
   courseState?: string;
 }
@@ -61,8 +68,37 @@ export interface CourseWork {
   maxPoints?: number;
   workType?: string;
   materials?: Material[];
+  topicId?: string;
   updateTime?: string;
 }
+
+export interface CourseWorkMaterial {
+  id: string;
+  title?: string;
+  alternateLink?: string;
+  materials?: Material[];
+}
+
+export interface Announcement {
+  id: string;
+  text?: string;
+  alternateLink?: string;
+  creationTime?: string;
+  materials?: Material[];
+}
+
+export interface Topic {
+  topicId: string;
+  name?: string;
+}
+
+export interface StudentSubmission {
+  courseWorkId: string;
+  state?: string;
+}
+
+/** Newest announcements kept per class (the format allows 100). */
+export const ANNOUNCEMENT_LIMIT = 20;
 
 export interface Tokens {
   accessToken: string;
@@ -94,6 +130,10 @@ export interface GoogleApi {
   refresh(refreshToken: string): Promise<string>;
   listCourses(accessToken: string): Promise<Course[]>;
   listCourseWork(accessToken: string, courseId: string): Promise<CourseWork[]>;
+  listMaterials(accessToken: string, courseId: string): Promise<CourseWorkMaterial[]>;
+  listAnnouncements(accessToken: string, courseId: string): Promise<Announcement[]>;
+  listTopics(accessToken: string, courseId: string): Promise<Topic[]>;
+  listSubmissions(accessToken: string, courseId: string): Promise<StudentSubmission[]>;
   revoke(token: string): Promise<void>;
 }
 
@@ -155,7 +195,7 @@ export function googleApi(options: { clientId: string; clientSecret: string; fet
     })) as Record<string, string>;
   }
 
-  async function list<T>(url: string, accessToken: string, key: string): Promise<T[]> {
+  async function list<T>(url: string, accessToken: string, key: string, max = Infinity): Promise<T[]> {
     const out: T[] = [];
     let pageToken = '';
     do {
@@ -164,8 +204,8 @@ export function googleApi(options: { clientId: string; clientSecret: string; fet
       })) as Record<string, unknown>;
       out.push(...((page[key] as T[] | undefined) ?? []));
       pageToken = typeof page.nextPageToken === 'string' ? page.nextPageToken : '';
-    } while (pageToken);
-    return out;
+    } while (pageToken && out.length < max);
+    return out.slice(0, max);
   }
 
   return {
@@ -192,6 +232,18 @@ export function googleApi(options: { clientId: string; clientSecret: string; fet
     listCourses: (accessToken) => list<Course>(`${CLASSROOM}/courses?studentId=me&courseStates=ACTIVE&pageSize=100`, accessToken, 'courses'),
     listCourseWork: (accessToken, courseId) =>
       list<CourseWork>(`${CLASSROOM}/courses/${encodeURIComponent(courseId)}/courseWork?courseWorkStates=PUBLISHED&pageSize=100`, accessToken, 'courseWork'),
+    listMaterials: (accessToken, courseId) =>
+      list<CourseWorkMaterial>(`${CLASSROOM}/courses/${encodeURIComponent(courseId)}/courseWorkMaterials?courseWorkMaterialStates=PUBLISHED&pageSize=100`, accessToken, 'courseWorkMaterial'),
+    listAnnouncements: (accessToken, courseId) =>
+      list<Announcement>(
+        `${CLASSROOM}/courses/${encodeURIComponent(courseId)}/announcements?announcementStates=PUBLISHED&orderBy=updateTime%20desc&pageSize=${ANNOUNCEMENT_LIMIT}`,
+        accessToken,
+        'announcements',
+        ANNOUNCEMENT_LIMIT,
+      ),
+    listTopics: (accessToken, courseId) => list<Topic>(`${CLASSROOM}/courses/${encodeURIComponent(courseId)}/topics?pageSize=100`, accessToken, 'topic'),
+    listSubmissions: (accessToken, courseId) =>
+      list<StudentSubmission>(`${CLASSROOM}/courses/${encodeURIComponent(courseId)}/courseWork/-/studentSubmissions?userId=me&pageSize=100`, accessToken, 'studentSubmissions'),
     async revoke(tokenValue) {
       await call(REVOKE_URL, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ token: tokenValue }) });
     },

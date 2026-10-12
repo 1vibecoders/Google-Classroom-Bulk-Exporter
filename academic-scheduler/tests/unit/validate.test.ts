@@ -134,7 +134,7 @@ describe('§ 2 schemaVersion', () => {
     });
     onlyError(result, 'schemaVersion', 'version-unsupported');
     expect(result.errors[0].message).toBe(
-      'This file uses schema version 1.3, but this version of the Academic Scheduler supports up to 1.1. Update the website or generate a 1.1 file.',
+      'This file uses schema version 1.3, but this version of the Academic Scheduler supports up to 1.2. Update the website or generate a 1.2 file.',
     );
   });
 
