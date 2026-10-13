@@ -4,8 +4,8 @@ A calm, no-nonsense planner for students: classes, assignments, commitments, stu
 time and scheduled work, shown as a day timeline, a week grid and an assignment
 list. It answers one question — **"What am I supposed to do, and when?"**
 
-Planning on the website uses **no AI**: it displays, edits, stores and schedules
-structured data with fixed, predictable rules, and the offline version makes no
+The website displays, edits, stores and schedules structured data with fixed,
+predictable rules, and the offline version makes no
 network requests at all. The online version can optionally sync Google Classroom
 and [read announcements with AI](#reading-announcements-with-ai) for changed due
 dates and announced tests; those findings are checked, and applied with Undo or
@@ -35,7 +35,7 @@ Live site: see [Deployment](#deployment) (the project is deployed on Vercel).
 - [Exporting](#exporting)
 - [Receiving classes from the browser extension](#receiving-classes-from-the-browser-extension)
 - [Using it with the /academic-schedule skill](#using-it-with-the-academic-schedule-skill)
-- [How planning works (no AI)](#how-planning-works-no-ai)
+- [How planning works](#how-planning-works)
 - [Where your data lives](#where-your-data-lives)
 - [Google Classroom sync](#google-classroom-sync)
 - [Reading announcements with AI](#reading-announcements-with-ai)
@@ -149,7 +149,7 @@ field and answers with a receipt.
 4. When Classroom changes, export from here and run `/academic-schedule` again with the
    new Classroom export. It updates the plan without destroying your work.
 
-## How planning works (no AI)
+## How planning works
 
 *Plan unscheduled work* is a fixed rule, not a model: for every assignment with
 remaining work that is not yet scheduled, earliest deadline first, it fills your

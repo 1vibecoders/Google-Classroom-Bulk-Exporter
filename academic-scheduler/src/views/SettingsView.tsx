@@ -1,6 +1,6 @@
 // Settings and data: scheduling preferences (with what each one means), data
 // management (export, import, example schedule, undo history, delete all),
-// where the data lives, and what this website is (no AI, offline, format).
+// where the data lives, and what this website is (how planning works, offline, format).
 import { useMemo, useState } from 'react';
 import example from '../../examples/complete-schedule.json';
 import { APP_VERSION, COLLECTION_LABELS, SCHEMA_VERSION, resolveSettings } from '../model/constants';
@@ -485,9 +485,9 @@ function About() {
         <div className="ls-about-point">
           <Icon name="info" />
           <div>
-            <strong>Planning never uses AI.</strong> Free time, remaining work and “Plan unscheduled work” are fixed arithmetic on the data you entered or
-            imported — the same input always gives the same result. AI is used only to read Classroom announcements and instructions, on the online version
-            when it is set up (see “Reading announcements with AI”); what it finds is checked and either applied with Undo or shown in Review.
+            Free time, remaining work and “Plan unscheduled work” are fixed arithmetic on the data you entered or imported — the same input always gives
+            the same result. On the online version, when it is set up, AI reads Classroom announcements and instructions (see “Reading announcements with
+            AI”); what it finds is checked and either applied with Undo or shown in Review.
           </div>
         </div>
         <div className="ls-about-point">

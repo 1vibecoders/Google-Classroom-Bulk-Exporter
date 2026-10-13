@@ -396,12 +396,12 @@ describe('SettingsView', () => {
     expect(latest.snapshots[0].doc.assignments).toHaveLength(2);
   });
 
-  it('links to the format specification and states there is no AI', async () => {
+  it('links to the format specification and explains how planning works', async () => {
     await mount(<SettingsView />);
     const link = Array.from(container.querySelectorAll('a')).find((a) => a.textContent?.includes('SCHEDULE_FORMAT.md'))!;
     expect(link.getAttribute('href')).toBe('https://github.com/1vibecoders/Google-Classroom-Bulk-Exporter/blob/main/academic-scheduler/SCHEDULE_FORMAT.md');
     expect(link.getAttribute('rel')).toContain('noopener');
-    expect(container.textContent).toContain('Planning never uses AI.');
+    expect(container.textContent).toContain('fixed arithmetic on the data you entered');
     expect(container.textContent).toContain('Schedule format 1.2');
   });
 });
