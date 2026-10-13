@@ -3,11 +3,27 @@
 // window.postMessage until it gets a receipt. Only messages from this page's
 // own window and origin are read; the data is validated and opens the import
 // preview like any other import, so nothing changes until the person imports.
+// Course documents sent along are read into text and stored (on the server when
+// signed in, so the AI reads them; otherwise in this browser).
 import { useEffect, useRef } from 'react';
+import { storeDocuments } from '../../lib/documents/api';
+import { readDocuments, type ExtensionDocument } from '../../lib/documents/fromExtension';
 import { EXTENSION_FILE_NAME, EXTENSION_PROTOCOL, EXTENSION_PROTOCOL_VERSION, readExtensionMessage, scansToBatch } from '../../lib/sync/extensionScan';
 import { nowLocal } from '../../lib/time';
 import { useStore } from '../../state/store';
 import { openBatchPreview } from './fromBatch';
+
+async function keepDocuments(docs: ExtensionDocument[], notify: ReturnType<typeof useStore>['notify']): Promise<void> {
+  const read = await readDocuments(docs);
+  const where = await storeDocuments(read);
+  const withText = read.filter((r) => r.doc.status === 'ok').length;
+  if (where === 'failed') notify('The course documents from the extension could not be stored in this browser.', { tone: 'warning' });
+  else
+    notify(
+      `Read ${withText} of ${read.length} course ${read.length === 1 ? 'document' : 'documents'} from the extension${where === 'browser' ? ' (kept in this browser)' : ''}. They are listed on the Classes page.`,
+      { tone: 'success' },
+    );
+}
 
 export function useExtensionImport(): void {
   const { state, notify } = useStore();
@@ -30,7 +46,10 @@ export function useExtensionImport(): void {
           const failed = openBatchPreview(latest.current.doc, batch, message.scans.length === 1 ? `${EXTENSION_FILE_NAME}: ${message.scans[0].classInfo.name}` : EXTENSION_FILE_NAME);
           answer = failed ? { ok: false, message: failed } : { ok: true };
           if (failed) latest.current.notify(`The extension’s scan could not be used: ${failed}`, { tone: 'error' });
-          else latest.current.notify(`Received ${classes} from the browser extension. Review the changes before importing.`, { tone: 'success' });
+          else {
+            latest.current.notify(`Received ${classes} from the browser extension. Review the changes before importing.`, { tone: 'success' });
+            if (message.documents.length) void keepDocuments(message.documents, latest.current.notify);
+          }
         }
         answered.set(message.id, answer);
       }

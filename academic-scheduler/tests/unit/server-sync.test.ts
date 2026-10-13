@@ -8,8 +8,10 @@ import { migrate, type Db } from '../../server/db';
 import { encrypt } from '../../server/crypto';
 import { setTestContext, type Context } from '../../server/context';
 import {
+  DRIVE_SCOPE,
   GoogleError,
   SCOPES,
+  type DriveFile,
   type Announcement,
   type Course,
   type CourseWork,
@@ -20,6 +22,8 @@ import {
 } from '../../server/google';
 import { allowance, classroomId, hasScopes, localDue, reserveSync, runSync } from '../../server/sync';
 import { callback, deleteAccount, login, me, sync } from '../../server/routes';
+import { getDocuments, postDocuments } from '../../server/documentRoutes';
+import { createSession } from '../../server/http';
 import type { SessionUser } from '../../server/http';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
@@ -47,6 +51,8 @@ interface FakeClassroom {
   announcements?: PerCourse<Announcement>;
   topics?: PerCourse<Topic>;
   submissions?: PerCourse<StudentSubmission>;
+  drive?: Record<string, { meta: DriveFile; text: string } | GoogleError>;
+  downloads?: string[];
   refreshError?: GoogleError;
   coursesError?: GoogleError;
 }
@@ -74,6 +80,16 @@ function fakeGoogle(classroom: FakeClassroom): GoogleApi {
     listAnnouncements: (_token, courseId) => listing(classroom.announcements, courseId),
     listTopics: (_token, courseId) => listing(classroom.topics, courseId),
     listSubmissions: (_token, courseId) => listing(classroom.submissions, courseId),
+    getDriveFile: async (_token, fileId) => {
+      const found = classroom.drive?.[fileId];
+      if (!found) throw new GoogleError('File not found', 404, 'notFound', false);
+      if (found instanceof GoogleError) throw found;
+      return found.meta;
+    },
+    downloadDriveFile: async (_token, file) => {
+      (classroom.downloads ??= []).push(file.id);
+      return new TextEncoder().encode((classroom.drive![file.id] as { text: string }).text);
+    },
     revoke: async () => {},
   };
 }
@@ -306,6 +322,110 @@ describe('change detection and the knowledge base', () => {
     if (outcome.kind !== 'ok') throw new Error(outcome.kind);
     expect(outcome.batch.counts.missing).toBe(0);
     expect(outcome.batch.warnings.join(' ')).toContain('no longer among your active Google Classroom courses');
+  });
+});
+
+describe('course documents', () => {
+  const DOC = 'doc_1234567890';
+  const PHOTO = 'img_1234567890';
+  const GONE = 'gone_1234567890';
+  const attach = (id: string, title: string) => ({ driveFile: { driveFile: { id, title, alternateLink: `https://drive.google.com/file/d/${id}` } } });
+  const documents = async () =>
+    Object.fromEntries(
+      (await db.query<{ source_id: string; data: { status: string; text?: string; parents: unknown[] } }>(`SELECT source_id, data FROM source_records WHERE kind = 'document'`)).map((r) => [
+        r.source_id,
+        r.data,
+      ]),
+    );
+
+  beforeEach(() => {
+    (classroom.work['222'] as CourseWork[])[0].materials = [attach(DOC, 'Lab instructions'), attach(PHOTO, 'Diagram'), attach(GONE, 'Old handout')];
+    classroom.announcements = { '111': [{ id: '701', text: 'Study guide attached', materials: [attach(DOC, 'Lab instructions')] }] };
+    classroom.drive = {
+      [DOC]: { meta: { id: DOC, name: 'Lab instructions', mimeType: 'application/vnd.google-apps.document', modifiedTime: '2026-10-01T10:00:00Z' }, text: 'Lab report due   Friday.\r\n\r\n\r\nWrite 2 pages.' },
+      [PHOTO]: { meta: { id: PHOTO, name: 'Diagram.png', mimeType: 'image/png', size: '2000' }, text: '' },
+    };
+    user.scopes = `${SCOPES.join(' ')} ${DRIVE_SCOPE}`;
+  });
+
+  it('reads attached documents once, records what has no text, and reads a changed file again', async () => {
+    const outcome = await runSync(context, user, TZ);
+    expect(outcome.kind).toBe('ok');
+    const docs = await documents();
+    expect(docs[DOC]).toMatchObject({ status: 'ok', text: 'Lab report due Friday.\n\nWrite 2 pages.', via: 'drive' });
+    expect(docs[DOC].parents).toEqual([
+      { kind: 'announcement', sourceId: classroomId('701') },
+      { kind: 'coursework', sourceId: classroomId('903') },
+    ]);
+    expect(docs[PHOTO]).toMatchObject({ status: 'unsupported' });
+    expect(docs[GONE]).toMatchObject({ status: 'inaccessible' });
+    expect(classroom.downloads).toEqual([DOC]);
+
+    await pg.query(`DELETE FROM sync_runs`);
+    await runSync(context, user, TZ);
+    expect(classroom.downloads).toEqual([DOC]);
+
+    (classroom.drive![DOC] as { meta: DriveFile }).meta.modifiedTime = '2026-10-05T10:00:00Z';
+    (classroom.drive![DOC] as { text: string }).text = 'Lab report due Monday.';
+    await pg.query(`DELETE FROM sync_runs`);
+    await runSync(context, user, TZ);
+    expect(classroom.downloads).toEqual([DOC, DOC]);
+    expect((await documents())[DOC].text).toBe('Lab report due Monday.');
+  });
+
+  it('lists documents without their text and returns the text of one document on request', async () => {
+    await runSync(context, user, TZ);
+    setTestContext(context);
+    const cookie = (await createSession(context, 'u1')).split(';')[0];
+    const list = await (await getDocuments(new Request(`${ORIGIN}/api/documents`, { headers: { cookie } }))).json();
+    expect(list.documents).toContainEqual({
+      id: DOC,
+      classId: `gc-class-${classroomId('111')}`,
+      title: 'Lab instructions',
+      url: `https://drive.google.com/file/d/${DOC}`,
+      mime: 'application/vnd.google-apps.document',
+      status: 'ok',
+      chars: 38,
+      via: 'drive',
+    });
+    expect(JSON.stringify(list)).not.toContain('Write 2 pages');
+    const one = await (await getDocuments(new Request(`${ORIGIN}/api/documents?id=${DOC}`, { headers: { cookie } }))).json();
+    expect(one.text).toContain('Write 2 pages');
+    expect((await getDocuments(new Request(`${ORIGIN}/api/documents`))).status).toBe(401);
+  });
+
+  it('stores documents the extension sent, but never replaces one read from Drive', async () => {
+    await runSync(context, user, TZ);
+    setTestContext(context);
+    const cookie = (await createSession(context, 'u1')).split(';')[0];
+    const post = (documents: unknown[], headers: Record<string, string> = { cookie, origin: ORIGIN }) =>
+      postDocuments(new Request(`${ORIGIN}/api/documents`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify({ documents }) }));
+    const sent = (id: string, text: string) => ({
+      id,
+      classId: `gc-class-${classroomId('222')}`,
+      title: 'Sent',
+      mime: 'application/pdf',
+      status: 'ok',
+      text,
+      parents: [{ kind: 'coursework', sourceId: classroomId('903') }],
+    });
+    expect((await post([sent('ext_1234567890', 'Quiz Friday.'), sent(DOC, 'Overwritten?')])).status).toBe(204);
+    const docs = await documents();
+    expect(docs.ext_1234567890).toMatchObject({ status: 'ok', text: 'Quiz Friday.', via: 'extension' });
+    expect(docs[DOC]).toMatchObject({ via: 'drive', text: 'Lab report due Friday.\n\nWrite 2 pages.' });
+    expect((await post([{ ...sent('x_1234567890', 'x'), parents: [{ kind: 'grade', sourceId: 'x' }] }])).status).toBe(400);
+    expect((await post([sent('y_1234567890', '')])).status).toBe(400);
+    expect((await post([sent('z_1234567890', 'z')], { cookie, origin: 'https://evil.example' })).status).toBe(403);
+  });
+
+  it('syncs without document text when Drive was not allowed, and says how to include it', async () => {
+    user.scopes = SCOPES.join(' ');
+    const outcome = await runSync(context, user, TZ);
+    if (outcome.kind !== 'ok') throw new Error(outcome.kind);
+    expect(outcome.batch.warnings).toContain(
+      'The text of attached course documents was not read: sign in with Google again and allow Google Drive (read-only) to include it.',
+    );
+    expect(await documents()).toEqual({});
   });
 });
 

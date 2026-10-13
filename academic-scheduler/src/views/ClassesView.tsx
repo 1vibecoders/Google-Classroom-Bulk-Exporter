@@ -1,10 +1,12 @@
 // Classes view: one card per class with its color, teacher, description,
 // counts (open assignments, remaining work, next deadline), topics,
-// announcements, class materials (references) and issues; create, edit and delete (asking what
+// announcements, class materials (references), course documents and issues; create, edit and delete (asking what
 // happens to the class's assignments and events).
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ASSIGNMENT_TYPE_LABELS, NO_CLASS_COLOR } from '../model/constants';
+import type { CourseDocument } from '../model/courseDocument';
 import type { SchoolClass } from '../model/types';
+import { listDocuments } from '../lib/documents/api';
 import { useDoc } from '../state/store';
 import { useEditors } from '../editors/EditorHost';
 import { routeToHash } from '../router';
@@ -18,6 +20,7 @@ import { classStats, type ClassStats } from './lists/classModel';
 import { DeleteClassDialog } from './lists/DeleteClassDialog';
 import { countOpen, itemIssues } from './lists/assignmentModel';
 import { IssuePanel } from './lists/IssuePanel';
+import { CourseDocuments } from './lists/CourseDocuments';
 import { ControlBadges, ProvenancePanel } from './lists/Provenance';
 import { ReferenceList } from './lists/ReferenceList';
 import { formatWhen, plural, relativeDays, safeHref } from './lists/format';
@@ -28,12 +31,14 @@ function ClassCard({
   color,
   stats,
   now,
+  documents,
   onDelete,
 }: {
   schoolClass: SchoolClass;
   color: string;
   stats: ClassStats;
   now: string;
+  documents: CourseDocument[];
   onDelete: () => void;
 }) {
   const doc = useDoc();
@@ -195,6 +200,8 @@ function ClassCard({
           )
         ) : null}
 
+        <CourseDocuments documents={documents} />
+
         <IssuePanel entries={issues} />
 
         <details className="ls-provenance-details">
@@ -218,6 +225,14 @@ export function ClassesView() {
   const now = useNow();
   const editors = useEditors();
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [documents, setDocuments] = useState<CourseDocument[]>([]);
+  useEffect(() => {
+    let live = true;
+    void listDocuments().then((list) => live && setDocuments(list));
+    return () => {
+      live = false;
+    };
+  }, []);
   const stats = useMemo(() => classStats(doc, now), [doc, now]);
   const colors = classColorMap(doc);
   const sorted = useMemo(() => [...doc.classes].sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true })), [doc.classes]);
@@ -227,7 +242,11 @@ export function ClassesView() {
   const target = deleting ? doc.classes.find((c) => c.id === deleting) : undefined;
 
   const card = (c: SchoolClass) => (
-    <ClassCard key={c.id} schoolClass={c} color={colors.get(c.id) ?? NO_CLASS_COLOR} stats={stats.get(c.id)!} now={now} onDelete={() => setDeleting(c.id)} />
+    <ClassCard key={c.id} schoolClass={c} color={colors.get(c.id) ?? NO_CLASS_COLOR} stats={stats.get(c.id)!}
+      now={now}
+      documents={documents.filter((d) => d.classId === c.id)}
+      onDelete={() => setDeleting(c.id)}
+    />
   );
 
   return (

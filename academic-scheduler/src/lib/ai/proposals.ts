@@ -98,7 +98,7 @@ export function reviewItems(doc: ScheduleDocument, proposals: AiProposal[]): Rev
 }
 
 function sourceOf(p: AiProposal): Source {
-  const what = p.source.kind === 'announcement' ? 'Announcement' : 'Classroom instructions';
+  const what = { announcement: 'Announcement', coursework: 'Classroom instructions', document: 'Course document' }[p.source.kind];
   const label = Array.from(`${what}: “${p.excerpt}”`).slice(0, 200).join('');
   return { kind: 'google_classroom', ...(p.source.url ? { url: p.source.url } : {}), label };
 }

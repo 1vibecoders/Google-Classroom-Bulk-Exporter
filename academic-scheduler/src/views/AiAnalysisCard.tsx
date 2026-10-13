@@ -38,7 +38,7 @@ export function AiAnalysisCard() {
         ) : (
           <>
             <p className="small">
-              After each sync, an AI reads new or changed announcements and assignment instructions for changed due dates, announced quizzes and tests, and stated
+              After each sync, an AI reads new or changed announcements, assignment instructions and course documents for changed due dates, announced quizzes and tests, and stated
               time estimates. It never does your work. Findings go to <a href={routeToHash({ name: 'review' })}>Review</a>.
             </p>
             <label className="small">
@@ -66,8 +66,8 @@ export function AiAnalysisCard() {
               </button>
             </div>
             <p className="small muted">
-              Sent to the AI provider ({status.model}): the class name, the titles and due dates of its assignments, and the text of new or changed announcements and
-              instructions. Nothing else, and only when there is something new to read.
+              Sent to the AI provider ({status.model}): the class name, the titles and due dates of its assignments, and the text of new or changed announcements,
+              instructions and course documents (the first 20,000 characters of each). Nothing else, and only when there is something new to read.
             </p>
           </>
         )}

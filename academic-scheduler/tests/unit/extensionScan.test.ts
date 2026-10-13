@@ -100,7 +100,7 @@ describe('the extension message (trust boundary)', () => {
   });
 
   it('answers an unknown version, an empty send and unusable classes with a reason', () => {
-    expect(readExtensionMessage(message([ENGLISH], { version: 2 }))).toMatchObject({ id: 'm1', error: expect.stringContaining('Update the extension') });
+    expect(readExtensionMessage(message([ENGLISH], { version: 3 }))).toMatchObject({ id: 'm1', error: expect.stringContaining('Update the extension') });
     expect(readExtensionMessage(message([]))).toMatchObject({ error: 'The extension sent no classes.' });
     expect(readExtensionMessage(message([{ classInfo: { courseId: '../x y', name: 'Bad' } }]))).toMatchObject({ error: expect.stringContaining('could not read') });
   });

@@ -242,8 +242,10 @@ Chrome asks once to let the extension open that one website, the website opens
 on its Import page and shows the changes to review. Nothing changes in your
 schedule until you click **Import** there. What is sent: class names, topics,
 assignments and questions (title, instructions, due date and points as
-displayed), materials and announcements, and attachment links. Attachment
-files are not sent.
+displayed), materials and announcements, and attachment links, plus the
+attached documents themselves (Google Docs and Slides, PDFs, Word and PowerPoint
+files; at most 40, 10 MB each and 25 MB in all) so the website can read them.
+They are downloaded the same way the ZIP export downloads them.
 
 ## Permissions
 
@@ -271,8 +273,8 @@ the same hosts.
 - Everything happens locally in your browser. There is no server, analytics or
   telemetry. Classroom content, attachments and the archive never leave your
   computer except as the ZIP saved to your Downloads folder, or when you click
-  **Send to Academic Scheduler** (then the scanned classes go to the website
-  address you typed).
+  **Send to Academic Scheduler** (then the scanned classes and their attached
+  documents go to the website address you typed).
 - Requests go only to Google, as you, with your existing session. The exporter
   can only see and download what you can already open in Classroom; it does
   not bypass sharing settings, "disable download" settings, sign-in or DRM.

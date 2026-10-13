@@ -9,8 +9,8 @@
 //
 // What is read (the same content the browser extension exports): per active
 // course its description, topics, published coursework with the person's
-// turned-in state, materials and newest announcements. Attachments are links;
-// their files are not downloaded.
+// turned-in state, materials and newest announcements. The text of attached
+// Drive documents is read too when the person allowed Drive (server/documents.ts).
 //
 // Change detection (§ 13.2): the Classroom API has no "changed since" filter
 // for coursework, so every sync lists the active courses and their published
@@ -35,9 +35,11 @@ import {
   type SyncCounts,
 } from '../src/model/importBatch.js';
 import { decrypt, sha256 } from './crypto.js';
+import { driveRefs, syncDocuments, type DocumentRef } from './documents.js';
 import type { Context } from './context.js';
 import type { Db } from './db.js';
 import {
+  DRIVE_SCOPE,
   GoogleError,
   SCOPES,
   type Announcement,
@@ -228,7 +230,7 @@ type Previous = {
   state: string;
 };
 
-const UPSERT = `INSERT INTO source_records (user_id, kind, source_id, course_id, fingerprint, data, state)
+export const UPSERT = `INSERT INTO source_records (user_id, kind, source_id, course_id, fingerprint, data, state)
   SELECT $1, r.kind, r.source_id, r.course_id, r.fingerprint, r.data, r.state
   FROM jsonb_to_recordset($2::jsonb) AS r(kind text, source_id text, course_id text, fingerprint text, data jsonb, state text)
   ON CONFLICT (user_id, kind, source_id) DO UPDATE SET
@@ -290,6 +292,7 @@ export async function runSync(context: Context, user: SessionUser, timezone: str
     const batchCourses: ImportedCourse[] = [];
     const batchItems: ImportedAssignment[] = [];
     const warnings: string[] = [];
+    const documents: DocumentRef[] = [];
     let partial = false;
 
     /** Compares one record with the knowledge base and counts it. */
@@ -363,6 +366,7 @@ export async function runSync(context: Context, user: SessionUser, timezone: str
           const page = httpsUrl(m.alternateLink);
           const attached = links(m.materials) ?? [];
           records.push(record('material', classroomId(m.id), courseSource, { title, url: page, links: attached }));
+          documents.push(...driveRefs(m.materials, courseSource, { kind: 'material', sourceId: classroomId(m.id) }));
           if (page) found.push({ title, url: page });
           for (const link of attached) found.push({ title: Array.from(`${title}: ${link.title}`).slice(0, 300).join(''), url: link.url });
         }
@@ -374,6 +378,7 @@ export async function runSync(context: Context, user: SessionUser, timezone: str
           const data = announcementData(a, timezone);
           if (!data) continue;
           records.push(record('announcement', classroomId(a.id), courseSource, data));
+          documents.push(...driveRefs(a.materials, courseSource, { kind: 'announcement', sourceId: classroomId(a.id) }));
           imported.announcements.push(data);
         }
         imported.announcements.sort((x, y) => (y.postedAt ?? '').localeCompare(x.postedAt ?? ''));
@@ -387,6 +392,7 @@ export async function runSync(context: Context, user: SessionUser, timezone: str
           const sourceId = classroomId(work.id);
           const data = workData(work, timezone, topicNames, turnedIn);
           records.push(record('coursework', sourceId, courseSource, data));
+          documents.push(...driveRefs(work.materials, courseSource, { kind: 'coursework', sourceId }));
           seen.add(sourceId);
           batchItems.push({ id: `gc-${sourceId}`, classId: imported.id, sourceId, ...data, state: 'present' });
         }
@@ -417,7 +423,18 @@ export async function runSync(context: Context, user: SessionUser, timezone: str
       );
     }
 
-    await finishRun(db, runId, partial ? 'partial' : 'ok', true, { courses: courses.length, ...counts, warnings: warnings.length });
+    let documentCounts = {};
+    if (documents.length) {
+      if (user.scopes.split(/\s+/).includes(DRIVE_SCOPE)) {
+        const result = await syncDocuments(context, user.id, accessToken, documents);
+        documentCounts = { documents: result.counts };
+        warnings.push(...result.warnings);
+      } else {
+        warnings.push('The text of attached course documents was not read: sign in with Google again and allow Google Drive (read-only) to include it.');
+      }
+    }
+
+    await finishRun(db, runId, partial ? 'partial' : 'ok', true, { courses: courses.length, ...counts, ...documentCounts, warnings: warnings.length });
     console.log(JSON.stringify({ event: 'sync_finished', run: runId, courses: courses.length, ...counts, partial }));
     const batch: ImportBatch = {
       batchVersion: IMPORT_BATCH_VERSION,

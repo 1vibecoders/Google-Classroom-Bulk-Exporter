@@ -52,10 +52,11 @@ export async function initSend(call) {
       status.textContent = 'Not sent: the extension needs your permission to open that website.';
       return;
     }
-    status.textContent = 'Opening the website…';
+    status.textContent = 'Reading attached documents and opening the website…';
     try {
-      const { classes } = await call(P.MSG.POPUP_SEND_TO_SCHEDULER, { site: origin });
-      status.textContent = `Sent ${classes === 1 ? '1 class' : `${classes} classes`}. Review the changes on the website, then import.`;
+      const { classes, documents } = await call(P.MSG.POPUP_SEND_TO_SCHEDULER, { site: origin });
+      const docs = documents ? ` and ${documents === 1 ? '1 document' : `${documents} documents`}` : '';
+      status.textContent = `Sent ${classes === 1 ? '1 class' : `${classes} classes`}${docs}. Review the changes on the website, then import.`;
     } catch (err) {
       status.textContent = (err && err.message) || String(err);
     }

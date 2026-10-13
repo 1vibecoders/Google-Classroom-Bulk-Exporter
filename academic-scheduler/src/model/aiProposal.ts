@@ -13,8 +13,8 @@ export interface AiProposal {
   kind: ProposalKind;
   /** Schedule ID of the class (`gc-class-…`). */
   classId: Id;
-  /** The Classroom item the evidence comes from. */
-  source: { kind: 'announcement' | 'coursework'; id: string; url?: string; postedAt?: DateOrDateTimeStr };
+  /** The Classroom item (or attached Drive document) the evidence comes from. */
+  source: { kind: 'announcement' | 'coursework' | 'document'; id: string; url?: string; postedAt?: DateOrDateTimeStr };
   /** Verbatim quote from the source (checked on the server). */
   excerpt: string;
   /** due_change and estimate: the assignment it is about. */

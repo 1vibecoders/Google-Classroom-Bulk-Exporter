@@ -17,11 +17,14 @@ import {
   type ImportedCourse,
   type ImportedLink,
 } from '../../model/importBatch';
+import { readExtensionDocuments, type ExtensionDocument } from '../documents/fromExtension';
 import { todayLocal } from '../time';
 import { parseClassroomDate } from './classroomDates';
 
 export const EXTENSION_PROTOCOL = 'academic-scheduler/extension-import';
-export const EXTENSION_PROTOCOL_VERSION = 1;
+export const EXTENSION_PROTOCOL_VERSION = 2;
+/** Version 1 (extension 1.0.0) sends classes only; version 2 adds course documents. */
+const ACCEPTED_VERSIONS = [1, 2];
 export const EXTENSION_FILE_NAME = 'Browser extension scan';
 const MAX_CLASSES = 40;
 const MAX_ITEMS = 2000;
@@ -48,7 +51,7 @@ export interface ClassScan {
   warnings: string[];
 }
 
-export type ExtensionMessage = { id: string; scans: ClassScan[] } | { id: string; error: string };
+export type ExtensionMessage = { id: string; scans: ClassScan[]; documents: ExtensionDocument[] } | { id: string; error: string };
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -91,14 +94,14 @@ function readScan(v: unknown): ClassScan | null {
 /** null: not an extension import message (ignore it). */
 export function readExtensionMessage(data: unknown): ExtensionMessage | null {
   if (!isObj(data) || data.protocol !== EXTENSION_PROTOCOL || data.type !== 'import' || typeof data.id !== 'string' || !data.id || data.id.length > 100) return null;
-  if (data.version !== EXTENSION_PROTOCOL_VERSION) {
+  if (!ACCEPTED_VERSIONS.includes(data.version as number)) {
     return { id: data.id, error: 'This version of the extension does not match the website. Update the extension and reload the website.' };
   }
   if (!Array.isArray(data.snapshots) || data.snapshots.length === 0) return { id: data.id, error: 'The extension sent no classes.' };
   if (data.snapshots.length > MAX_CLASSES) return { id: data.id, error: `Send at most ${MAX_CLASSES} classes at a time.` };
   const scans = data.snapshots.map(readScan);
   if (scans.some((s) => s === null)) return { id: data.id, error: 'The extension sent a class the website could not read.' };
-  return { id: data.id, scans: scans as ClassScan[] };
+  return { id: data.id, scans: scans as ClassScan[], documents: readExtensionDocuments(data.documents) };
 }
 
 function scanDay(createdAt: string, fallback: DateStr): DateStr {

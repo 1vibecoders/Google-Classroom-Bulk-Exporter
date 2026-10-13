@@ -125,6 +125,22 @@ afterEach(async () => {
 });
 
 describe('analysis runs', () => {
+  it('reads course documents with the work they are attached to; documents without text are skipped', async () => {
+    await record('document', 'doc_1234567890', {
+      title: 'Essay instructions',
+      status: 'ok',
+      text: 'Final draft: the Othello essay is now due Friday.',
+      parents: [{ kind: 'coursework', sourceId: 'OTAx' }, { kind: 'announcement', sourceId: 'ODAx' }],
+      via: 'drive',
+    });
+    await record('document', 'img_1234567890', { title: 'Diagram', status: 'unsupported', parents: [], via: 'drive' });
+    const result = await runAnalysis(context, 'u1', TZ, 'user');
+    const texts = JSON.parse(calls[0].input).texts as Array<{ id: string; kind: string; attachedTo?: string[] }>;
+    expect(texts.find((t) => t.kind === 'document')).toEqual(expect.objectContaining({ id: 'doc_1234567890', attachedTo: ['gc-OTAx'] }));
+    expect(texts.map((t) => t.id)).not.toContain('img_1234567890');
+    expect(result.status).toMatchObject({ pending: 0, lastRun: { analyzed: 3 } });
+  });
+
   it('analyzes new texts once and reuses the result while they are unchanged', async () => {
     const first = await runAnalysis(context, 'u1', TZ, 'user');
     expect(calls).toHaveLength(1);

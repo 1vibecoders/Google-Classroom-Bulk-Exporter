@@ -9,11 +9,25 @@
 //
 // What is sent is the scan as read from Classroom's pages (titles, texts,
 // dates as displayed, links); the website turns it into its import batch.
+// Attached course documents (Google Docs and Slides, PDFs, Word and PowerPoint
+// files) are downloaded with the person's own Google session, the same way the
+// ZIP export downloads them, and sent as files for the website to read.
 
+import { planDownload } from '../engine/download-resolver.js';
+import { downloadWithRetry } from '../engine/fetcher.js';
 import * as store from './store.js';
 
 export const PROTOCOL = 'academic-scheduler/extension-import';
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
+/** Course documents sent with the classes: at most this many, this large each and in total. */
+export const MAX_DOCUMENTS = 40;
+export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+export const MAX_TOTAL_DOCUMENT_BYTES = 25 * 1024 * 1024;
+const DOCUMENT_KINDS = new Set(['google-doc', 'google-slides', 'drive-file']);
+const PDF = 'application/pdf';
+const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const PPTX = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+const TYPE_BY_EXT = { '.pdf': PDF, '.docx': DOCX, '.pptx': PPTX };
 /** Classes kept for sending (the most recently scanned). */
 export const MAX_CLASSES = 40;
 const LOAD_TIMEOUT_MS = 30000;
@@ -33,7 +47,17 @@ export function sendableSnapshot(snapshot) {
       description: item.description || '',
       classroomUrl: item.classroomUrl || null,
       meta: { dueText: item.meta?.dueText || null, pointsText: item.meta?.pointsText || null, postedText: item.meta?.postedText || null },
-      resources: (item.resources || []).map((r) => ({ kind: r.kind, title: r.title || null, url: r.url })),
+      resources: (item.resources || []).map((r) => ({
+        kind: r.kind,
+        title: r.title || null,
+        url: r.url,
+        id: r.id || null,
+        source: r.source || null,
+        resourceKey: r.resourceKey || null,
+        authuser: r.authuser ?? null,
+        hint: r.hint || null,
+        published: !!r.published,
+      })),
     })),
     warnings: snapshot.warnings || [],
   };
@@ -114,6 +138,56 @@ export function deliver(message, origin) {
   });
 }
 
+function base64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let text = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(text);
+}
+
+/**
+ * Downloads the documents attached to the scanned items for the website to
+ * read. A file that cannot be downloaded or is not a document is reported
+ * with a status; it never stops the sending.
+ */
+export async function collectDocuments(snapshots, { download = downloadWithRetry } = {}) {
+  const out = [];
+  const seen = new Set();
+  let total = 0;
+  for (const snapshot of snapshots) {
+    for (const item of snapshot.items) {
+      for (const r of item.resources) {
+        if (!DOCUMENT_KINDS.has(r.kind) || !r.id || r.source !== 'attachment' || seen.has(r.id) || out.length >= MAX_DOCUMENTS) continue;
+        seen.add(r.id);
+        const doc = { fileId: r.id, courseId: snapshot.classInfo.courseId, itemId: item.id, itemType: item.type, title: r.title || 'Document', url: r.url };
+        const plan = planDownload(r, { googleFormat: 'office' });
+        if (!plan.downloadable) continue;
+        let got = null;
+        for (const attempt of plan.attempts) {
+          try {
+            got = { ...(await download(attempt.url, { retries: 1 })), ext: attempt.ext };
+            break;
+          } catch {
+            // try the next way of downloading it
+          }
+        }
+        if (!got) {
+          out.push({ ...doc, status: 'inaccessible' });
+          continue;
+        }
+        const mime = TYPE_BY_EXT[got.ext] || String(got.contentType || '').split(';')[0].trim();
+        if (![PDF, DOCX, PPTX].includes(mime)) out.push({ ...doc, status: 'unsupported' });
+        else if (got.size > MAX_DOCUMENT_BYTES || total + got.size > MAX_TOTAL_DOCUMENT_BYTES) out.push({ ...doc, status: 'too_large' });
+        else {
+          total += got.size;
+          out.push({ ...doc, status: 'file', mime, data: base64(await got.blob.arrayBuffer()) });
+        }
+      }
+    }
+  }
+  return out;
+}
+
 /** Open the website and hand it every remembered class scan. */
 export async function sendToScheduler(siteUrl) {
   const origin = siteOrigin(siteUrl);
@@ -124,9 +198,10 @@ export async function sendToScheduler(siteUrl) {
   await store.setSchedulerSite(origin);
   const tab = await chrome.tabs.create({ url: `${origin}/#/import` });
   await waitForLoad(tab.id);
-  const message = { protocol: PROTOCOL, version: PROTOCOL_VERSION, type: 'import', id: crypto.randomUUID(), sentAt: new Date().toISOString(), snapshots };
+  const documents = await collectDocuments(snapshots);
+  const message = { protocol: PROTOCOL, version: PROTOCOL_VERSION, type: 'import', id: crypto.randomUUID(), sentAt: new Date().toISOString(), snapshots, documents };
   const [injection] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: deliver, args: [message, origin] });
   const result = injection && injection.result;
   if (!result || !result.ok) throw new Error((result && result.message) || 'The website did not receive the scan.');
-  return { classes: snapshots.length };
+  return { classes: snapshots.length, documents: documents.filter((d) => d.status === 'file').length };
 }

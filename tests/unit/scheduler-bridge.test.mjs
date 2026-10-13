@@ -3,7 +3,7 @@
 // page confirms this exact message.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PROTOCOL, deliver, sendableSnapshot, siteOrigin } from '../../src/background/scheduler-bridge.js';
+import { MAX_DOCUMENT_BYTES, PROTOCOL, collectDocuments, deliver, sendableSnapshot, siteOrigin } from '../../src/background/scheduler-bridge.js';
 
 test('accepts https addresses and this computer only', () => {
   assert.equal(siteOrigin(' https://my-site.vercel.app/#/import '), 'https://my-site.vercel.app');
@@ -50,11 +50,51 @@ test('sends only what the website uses', () => {
         description: 'Write it.',
         classroomUrl: 'https://classroom.google.com/c/NjI3/a/NzAw/details',
         meta: { dueText: 'Oct 16, 11:59 PM', pointsText: '100 points', postedText: 'Oct 1' },
-        resources: [{ kind: 'drive-file', title: 'Rubric', url: 'https://drive.google.com/file/d/abc/view' }],
+        resources: [
+          { kind: 'drive-file', title: 'Rubric', url: 'https://drive.google.com/file/d/abc/view', id: 'abc', source: 'detail', resourceKey: 'rk', authuser: 1, hint: null, published: false },
+        ],
       },
     ],
     warnings: ['w'],
   });
+});
+
+test('downloads attached documents once, as files the website can read, and reports the rest', async () => {
+  const res = (kind, id, title, source = 'attachment') => ({ kind, id, title, source, url: `https://drive.google.com/file/d/${id}/view`, authuser: 0 });
+  const snapshots = [
+    {
+      classInfo: { courseId: 'NjI3' },
+      items: [
+        { id: 'NzAw', type: 'assignment', resources: [res('google-doc', 'doc1', 'Essay guide'), res('drive-file', 'pdf1', 'Rubric.pdf'), res('drive-file', 'img1', 'Map.png')] },
+        { id: 'NzAx', type: 'material', resources: [res('google-doc', 'doc1', 'Essay guide'), res('drive-file', 'big1', 'Scan.pdf'), res('drive-file', 'gone1', 'Old'), res('google-doc', 'link1', 'Linked', 'description')] },
+      ],
+    },
+  ];
+  const files = {
+    doc1: { type: 'application/zip', size: 4 },
+    pdf1: { type: 'application/pdf', size: 3 },
+    img1: { type: 'image/png', size: 3 },
+    big1: { type: 'application/pdf', size: MAX_DOCUMENT_BYTES + 1 },
+  };
+  const tried = [];
+  const download = async (url) => {
+    const id = /\/d\/([^/]+)\/|[?&]id=([^&]+)/.exec(url).slice(1).find(Boolean);
+    tried.push(id);
+    const f = files[id];
+    if (!f) throw new Error('not found');
+    return { blob: new Blob([new Uint8Array(Math.min(f.size, 4)).fill(65)]), size: f.size, contentType: f.type };
+  };
+  const docs = await collectDocuments(snapshots, { download });
+  const byId = Object.fromEntries(docs.map((d) => [d.fileId, d]));
+  assert.deepEqual(Object.keys(byId).sort(), ['big1', 'doc1', 'gone1', 'img1', 'pdf1']);
+  assert.equal(byId.doc1.mime, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  assert.equal(byId.doc1.data, 'QUFBQQ==');
+  assert.equal(byId.doc1.itemId, 'NzAw');
+  assert.equal(byId.pdf1.status, 'file');
+  assert.equal(byId.img1.status, 'unsupported');
+  assert.equal(byId.big1.status, 'too_large');
+  assert.equal(byId.gone1.status, 'inaccessible');
+  assert.ok(!tried.includes('link1'));
 });
 
 function fakePage(origin, answer) {

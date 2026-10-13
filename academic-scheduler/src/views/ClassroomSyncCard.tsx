@@ -109,7 +109,8 @@ export function ClassroomSyncCard() {
         {view.kind === 'account' && !view.account.signedIn ? (
           <>
             <p className="small">
-              Sign in with Google to read your classes and coursework straight from Google Classroom (read-only). Your schedule stays in this browser;
+              Sign in with Google to read your classes and coursework straight from Google Classroom (read-only), and, if you allow Google Drive, the text of
+              documents attached to them. Your schedule stays in this browser;
               the server keeps what it read from Classroom so later syncs only report changes. Your school may not allow this; the browser extension
               works either way.
             </p>

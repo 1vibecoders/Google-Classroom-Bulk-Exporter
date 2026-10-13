@@ -22,6 +22,7 @@ export const test = base.extend<{ consoleProblems: string[] }>({
       await page.clock.install({ time: NOW });
       // `vite preview` has no sync backend; answer as a backend with nobody signed in (tests may route /api/* themselves).
       await page.route('**/api/me', (route) => route.fulfill({ json: { signedIn: false } }));
+      await page.route('**/api/documents', (route) => route.fulfill({ json: { documents: [] } }));
       await page.route('**/api/analysis', (route) => route.fulfill({ json: { configured: false, proposals: [], pending: 0, budget: { limit: 20, used: 0 } } }));
       await use(problems);
       expect(problems, 'console errors, warnings and page errors').toEqual([]);

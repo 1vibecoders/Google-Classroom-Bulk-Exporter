@@ -486,7 +486,7 @@ function About() {
           <Icon name="info" />
           <div>
             Free time, remaining work and “Plan unscheduled work” are fixed arithmetic on the data you entered or imported — the same input always gives
-            the same result. On the online version, when it is set up, AI reads Classroom announcements and instructions (see “Reading announcements with
+            the same result. On the online version, when it is set up, AI reads Classroom announcements, instructions and course documents (see “Reading announcements with
             AI”); what it finds is checked and either applied with Undo or shown in Review.
           </div>
         </div>

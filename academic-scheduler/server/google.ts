@@ -2,13 +2,17 @@
 // server) and the Classroom REST API, with plain fetch.
 //
 // Scopes: only what the sync reads (SPEC.md § 12.1), the same content the
-// browser extension exports (attachment files themselves are not downloaded).
+// browser extension exports, plus the text of attached Drive documents.
 //   openid, email                              who signed in
 //   classroom.courses.readonly                 the person's courses
 //   classroom.coursework.me.readonly           coursework and the person's own submissions
 //   classroom.courseworkmaterials.readonly     class materials
 //   classroom.announcements.readonly           announcements
 //   classroom.topics.readonly                  topic names
+//   drive.readonly (optional, DRIVE_SCOPE)     text of attached course documents
+//
+// The Drive permission is asked for but not required: a person (or school) can
+// refuse it and Classroom sync still works, without document text.
 //
 // The Classroom API has no "changed since" filter for coursework, so the sync
 // compares stable ids and content fingerprints instead (server/sync.ts).
@@ -23,10 +27,13 @@ export const SCOPES = [
   'https://www.googleapis.com/auth/classroom.topics.readonly',
 ];
 
+export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
 const CLASSROOM = 'https://classroom.googleapis.com/v1';
+const DRIVE = 'https://www.googleapis.com/drive/v3/files';
 
 export interface GoogleDate {
   year?: number;
@@ -50,7 +57,7 @@ export interface Course {
 }
 
 export interface Material {
-  driveFile?: { driveFile?: { title?: string; alternateLink?: string } };
+  driveFile?: { driveFile?: { id?: string; title?: string; alternateLink?: string } };
   youtubeVideo?: { title?: string; alternateLink?: string };
   link?: { title?: string; url?: string };
   form?: { title?: string; formUrl?: string };
@@ -97,6 +104,16 @@ export interface StudentSubmission {
   state?: string;
 }
 
+export interface DriveFile {
+  id: string;
+  name?: string;
+  mimeType: string;
+  modifiedTime?: string;
+  md5Checksum?: string;
+  size?: string;
+  webViewLink?: string;
+}
+
 /** Newest announcements kept per class (the format allows 100). */
 export const ANNOUNCEMENT_LIMIT = 20;
 
@@ -134,6 +151,9 @@ export interface GoogleApi {
   listAnnouncements(accessToken: string, courseId: string): Promise<Announcement[]>;
   listTopics(accessToken: string, courseId: string): Promise<Topic[]>;
   listSubmissions(accessToken: string, courseId: string): Promise<StudentSubmission[]>;
+  getDriveFile(accessToken: string, fileId: string): Promise<DriveFile>;
+  /** Google Docs and Slides as their text/plain export; other files as stored. */
+  downloadDriveFile(accessToken: string, file: DriveFile, asText: boolean): Promise<Uint8Array>;
   revoke(token: string): Promise<void>;
 }
 
@@ -157,7 +177,7 @@ export function googleApi(options: { clientId: string; clientSecret: string; fet
   const delays = options.retryDelaysMs ?? [400, 1200];
 
   // Retries rate limits, server errors and network failures with bounded backoff.
-  async function call(url: string, init: RequestInit): Promise<unknown> {
+  async function call(url: string, init: RequestInit, read: (r: Response) => Promise<unknown> = (r) => r.json()): Promise<unknown> {
     for (let attempt = 0; ; attempt++) {
       let response: Response | null = null;
       try {
@@ -165,7 +185,7 @@ export function googleApi(options: { clientId: string; clientSecret: string; fet
       } catch {
         response = null;
       }
-      if (response && response.ok) return response.status === 204 ? null : response.json();
+      if (response && response.ok) return response.status === 204 ? null : read(response);
       const status = response?.status ?? 0;
       const transient = status === 0 || status === 429 || status >= 500;
       if (!transient || attempt >= delays.length) {
@@ -214,7 +234,7 @@ export function googleApi(options: { clientId: string; clientSecret: string; fet
         client_id: clientId,
         redirect_uri: redirectUri,
         response_type: 'code',
-        scope: SCOPES.join(' '),
+        scope: [...SCOPES, DRIVE_SCOPE].join(' '),
         state,
         code_challenge: codeChallenge,
         code_challenge_method: 'S256',
@@ -244,6 +264,16 @@ export function googleApi(options: { clientId: string; clientSecret: string; fet
     listTopics: (accessToken, courseId) => list<Topic>(`${CLASSROOM}/courses/${encodeURIComponent(courseId)}/topics?pageSize=100`, accessToken, 'topic'),
     listSubmissions: (accessToken, courseId) =>
       list<StudentSubmission>(`${CLASSROOM}/courses/${encodeURIComponent(courseId)}/courseWork/-/studentSubmissions?userId=me&pageSize=100`, accessToken, 'studentSubmissions'),
+    getDriveFile: async (accessToken, fileId) =>
+      (await call(`${DRIVE}/${encodeURIComponent(fileId)}?fields=id,name,mimeType,modifiedTime,md5Checksum,size,webViewLink&supportsAllDrives=true`, {
+        headers: { authorization: `Bearer ${accessToken}` },
+      })) as DriveFile,
+    downloadDriveFile: async (accessToken, file, asText) =>
+      (await call(
+        `${DRIVE}/${encodeURIComponent(file.id)}${asText ? '/export?mimeType=text%2Fplain' : '?alt=media&supportsAllDrives=true'}`,
+        { headers: { authorization: `Bearer ${accessToken}` } },
+        async (r) => new Uint8Array(await r.arrayBuffer()),
+      )) as Uint8Array,
     async revoke(tokenValue) {
       await call(REVOKE_URL, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ token: tokenValue }) });
     },

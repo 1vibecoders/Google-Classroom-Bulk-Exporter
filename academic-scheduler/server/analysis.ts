@@ -1,7 +1,8 @@
 // AI analysis of the knowledge base (SPEC.md § 16–18), separate from syncing:
 // a sync stores what Classroom says; an analysis reads the stored
-// announcements and coursework texts that are new or changed since they were
-// last analyzed and asks the AI for scheduling proposals.
+// announcements, coursework texts and course documents that are new or changed
+// since they were last analyzed and asks the AI for scheduling proposals.
+// shortcut: only the first DOCUMENT_AI_CHARS of a document reach the AI; split long documents into parts if dates late in long readers are missed.
 //
 // Cost controls (§ 18.1): a source is analyzed again only when the text sent
 // to the AI, the task version or the model changes (ai_extractions); sources
@@ -23,6 +24,7 @@ export const MAX_CALLS_PER_RUN = 8;
 const MAX_SOURCES_PER_CALL = 12;
 const MAX_CHARS_PER_CALL = 24000;
 const RUNNING_MINUTES = 5;
+const DOCUMENT_AI_CHARS = 20000;
 
 type Trigger = 'user' | 'background';
 
@@ -55,15 +57,29 @@ export function sourceText(record: Record_): SourceText | null {
     const description = str(d.description);
     return description ? { kind: 'coursework', id: record.source_id, title: str(d.title), text: description, url: str(d.url) } : null;
   }
+  if (record.kind === 'document') {
+    const text = str(d.text);
+    if (!text || d.status !== 'ok') return null;
+    const parents = Array.isArray(d.parents) ? (d.parents as Array<{ kind?: unknown; sourceId?: unknown }>) : [];
+    const attachedTo = parents.filter((p) => p.kind === 'coursework' && typeof p.sourceId === 'string').map((p) => `gc-${p.sourceId}`);
+    return {
+      kind: 'document',
+      id: record.source_id,
+      title: str(d.title),
+      text: Array.from(text).slice(0, DOCUMENT_AI_CHARS).join(''),
+      url: str(d.url),
+      ...(attachedTo.length ? { attachedTo } : {}),
+    };
+  }
   return null;
 }
 
-const hashOf = (s: SourceText) => createHash('sha256').update(JSON.stringify([s.title ?? '', s.text, s.postedAt ?? ''])).digest('hex');
+const hashOf = (s: SourceText) => createHash('sha256').update(JSON.stringify([s.title ?? '', s.text, s.postedAt ?? '', s.attachedTo ?? []])).digest('hex');
 
 async function load(db: Db, userId: string) {
   const [records, extractions] = await Promise.all([
     db.query<Record_ & { state: string }>(
-      `SELECT kind, source_id, course_id, data, state FROM source_records WHERE user_id = $1 AND kind IN ('course', 'coursework', 'announcement') AND state = 'present'`,
+      `SELECT kind, source_id, course_id, data, state FROM source_records WHERE user_id = $1 AND kind IN ('course', 'coursework', 'announcement', 'document') AND state = 'present'`,
       [userId],
     ),
     db.query<Extraction>('SELECT kind, source_id, content_hash, task_version, model, proposals FROM ai_extractions WHERE user_id = $1', [userId]),
@@ -247,7 +263,7 @@ export async function backgroundAnalysis(context: Context, maxPeople = 20): Prom
   if (!context.ai) return { people: 0 };
   const people = await context.db.query<{ user_id: string; timezone: string | null }>(
     `SELECT DISTINCT r.user_id, u.timezone FROM source_records r JOIN users u ON u.id = r.user_id
-     WHERE r.kind IN ('announcement', 'coursework') AND r.state = 'present' AND u.timezone IS NOT NULL
+     WHERE r.kind IN ('announcement', 'coursework', 'document') AND r.state = 'present' AND u.timezone IS NOT NULL
        AND (r.kind = 'announcement' OR coalesce(r.data->>'description', '') <> '')
        AND NOT EXISTS (SELECT 1 FROM ai_extractions e WHERE e.user_id = r.user_id AND e.kind = r.kind AND e.source_id = r.source_id AND e.task_version = $1 AND e.model = $2)
      LIMIT $3`,

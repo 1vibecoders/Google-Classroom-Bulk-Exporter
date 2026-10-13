@@ -30,8 +30,8 @@ function heading(item: ReviewItem): string {
 }
 
 function sourceLine(p: AiProposal, year: number): string {
-  const what = p.source.kind === 'announcement' ? 'An announcement' : 'The assignment’s instructions';
-  return p.source.postedAt ? `${what} (${formatWhen(p.source.postedAt, year)}) says:` : `${what} say${p.source.kind === 'announcement' ? 's' : ''}:`;
+  const what = { announcement: 'An announcement', coursework: 'The assignment’s instructions', document: 'A course document' }[p.source.kind];
+  return p.source.postedAt ? `${what} (${formatWhen(p.source.postedAt, year)}) says:` : `${what} say${p.source.kind === 'coursework' ? '' : 's'}:`;
 }
 
 function ReviewCard({ item, year, onDone }: { item: ReviewItem; year: number; onDone: (key: string, decision: Decision) => void }) {
@@ -179,7 +179,7 @@ export function ReviewView() {
     <div className="page stack">
       <h1>Review</h1>
       <p className="muted">
-        Changes the AI read in your Classroom announcements and assignment instructions. Safe ones are applied for you (with Undo) if you allow it in{' '}
+        Changes the AI read in your Classroom announcements, assignment instructions and course documents. Safe ones are applied for you (with Undo) if you allow it in{' '}
         <a href={routeToHash({ name: 'settings' })}>Settings</a>; everything else waits here. The AI only reads dates and times; it never does your work.
       </p>
       {!status?.configured ? (

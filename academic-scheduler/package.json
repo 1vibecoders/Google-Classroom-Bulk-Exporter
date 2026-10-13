@@ -15,8 +15,10 @@
   },
   "dependencies": {
     "@neondatabase/serverless": "1.2.0",
+    "fflate": "0.8.3",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "unpdf": "1.8.1"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.9",

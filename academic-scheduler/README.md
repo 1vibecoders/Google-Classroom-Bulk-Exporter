@@ -133,8 +133,15 @@ issue on the assignment for you to check (it goes away when a later scan or
 sync is clear, unless you resolved or dismissed it). A scan never marks
 anything as removed, because a page may not show everything.
 
+Documents attached to the scanned items (Google Docs and Slides, PDFs, Word and
+PowerPoint files; up to 40, 10 MB each, 25 MB in all) come along as files and are
+read into text in the browser. Signed in, they are stored on the server with the
+Drive documents, where the AI reads them; otherwise they stay in this browser
+(IndexedDB). Either way they are listed under *Course documents* on the Classes
+page. A document the sync already read from Drive is not replaced.
+
 The message format is versioned (`academic-scheduler/extension-import`,
-version 1). The website only reads messages from its own page, validates every
+version 2; version 1 from extension 1.0.0, without documents, is still accepted). The website only reads messages from its own page, validates every
 field and answers with a receipt.
 
 ## Using it with the /academic-schedule skill
@@ -190,8 +197,8 @@ you import, the usual rules protect your own edits, and **Undo import** works.
 - **Read-only scopes:** `classroom.courses.readonly`,
   `classroom.coursework.me.readonly`, `classroom.courseworkmaterials.readonly`,
   `classroom.announcements.readonly` and `classroom.topics.readonly` (plus
-  `openid email`). Attachment files and Drive documents are not downloaded;
-  they are kept as links.
+  `openid email`), and optionally `drive.readonly` for course documents (below).
+  A person or school can refuse Drive; the sync then works without document text.
 - **What is synced** (what the browser extension exports): active courses with
   their description and topics; published coursework (assignments and
   questions): title, topic, description, due date (converted from UTC to your
@@ -213,6 +220,14 @@ you import, the usual rules protect your own edits, and **Undo import** works.
   none are left or one is already running, sign-in expired or Classroom access
   not granted, Google unreachable before answering. Settings shows how many are
   left and when the next one is available.
+- **Course documents:** with Drive allowed, the text of Google Docs, Google
+  Slides, PDFs and Word/PowerPoint files attached to coursework, materials and
+  announcements is read and shown on the Classes page (*Course documents*).
+  Drive's own change tracking is used: a file is downloaded again only when its
+  modified time or checksum changes. Images, videos, forms and scans have no
+  text to read and are listed with that status; files your account cannot open
+  are reported, never guessed. At most 60 files are checked and 25 downloaded
+  per sync; the rest waits for the next one.
 - **School restrictions:** if your school blocks third-party access to
   Classroom, the sync says so; the browser extension and the /academic-schedule
   skill still work.
@@ -221,7 +236,9 @@ you import, the usual rules protect your own edits, and **Undo import** works.
 
 Optional, on a deployment with the sync backend and an AI key (below). After each
 Classroom sync, and once a day in the background, the server sends new or changed
-announcements and assignment instructions to an AI model and asks only for
+announcements, assignment instructions and course documents (the first 20,000
+characters of each; a document says which assignment it is attached to) to an AI
+model and asks only for
 scheduling facts: a changed due date of known work, a newly announced quiz, test or
 project, or a time estimate the text states. It never answers questions or does any
 part of the work (SPEC § 7), and texts are treated as data, not instructions.
@@ -265,6 +282,10 @@ The site is deployed on **Vercel** from this repository (root directory
      `DATABASE_URL`. Tables are created on first use.
    - In Google Cloud: enable the **Google Classroom API**, configure the OAuth
      consent screen (scopes above; while unverified, add your test users), and
+     for course documents also enable the **Google Drive API** and add the
+     `drive.readonly` scope. Google classes it as *restricted*: fine while the
+     app is in testing, internal to a school, or allowlisted by the school's
+     admin; a public launch needs Google's verification and security review.
      create an **OAuth client ID** of type *Web application* with the redirect
      URI `https://<your-domain>/api/auth/callback`.
    - Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `TOKEN_ENCRYPTION_KEY`
