@@ -231,7 +231,7 @@ export function ColorField({ value, onChange, label = 'Color' }: { value: string
         <input
           type="color"
           aria-label="Custom color"
-          value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : '#2563eb'}
+          value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : CLASS_PALETTE[0]}
           onChange={(e) => onChange(e.target.value.toUpperCase())}
           style={{ width: 32, height: 28, border: 'none', background: 'none', padding: 0 }}
         />

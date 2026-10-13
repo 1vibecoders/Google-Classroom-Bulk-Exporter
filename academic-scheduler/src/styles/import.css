@@ -499,9 +499,7 @@ label.imp-row-title {
   overflow-wrap: anywhere;
 }
 .imp-kind {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 12px;
   color: var(--text-3);
 }
 .imp-action {

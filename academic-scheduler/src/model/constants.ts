@@ -191,17 +191,17 @@ export function resolveSettings(settings: Settings | undefined): ResolvedSetting
 
 /** Palette for classes without a color (assigned in order, then reused). */
 export const CLASS_PALETTE = [
-  '#2563EB', // blue
-  '#16A34A', // green
-  '#DC2626', // red
-  '#9333EA', // purple
-  '#EA580C', // orange
-  '#0891B2', // cyan
-  '#DB2777', // pink
-  '#65A30D', // lime
-  '#CA8A04', // amber
-  '#4F46E5', // indigo
-  '#0D9488', // teal
-  '#7C3AED', // violet
+  '#2F5D8C', // ink blue
+  '#3D7A3A', // green
+  '#B23A2B', // brick red
+  '#7A4A8C', // plum
+  '#C0661E', // burnt orange
+  '#2B7A86', // teal blue
+  '#B04A72', // rose
+  '#6E7F23', // olive
+  '#A87A12', // mustard
+  '#4A4F9A', // indigo
+  '#1F7A6A', // teal
+  '#8A5A3C', // brown
 ];
-export const NO_CLASS_COLOR = '#64748B';
+export const NO_CLASS_COLOR = '#7A7466';

@@ -3,7 +3,7 @@
 // announcements, class materials (references) and issues; create, edit and delete (asking what
 // happens to the class's assignments and events).
 import { useMemo, useState } from 'react';
-import { ASSIGNMENT_TYPE_LABELS } from '../model/constants';
+import { ASSIGNMENT_TYPE_LABELS, NO_CLASS_COLOR } from '../model/constants';
 import type { SchoolClass } from '../model/types';
 import { useDoc } from '../state/store';
 import { useEditors } from '../editors/EditorHost';
@@ -227,7 +227,7 @@ export function ClassesView() {
   const target = deleting ? doc.classes.find((c) => c.id === deleting) : undefined;
 
   const card = (c: SchoolClass) => (
-    <ClassCard key={c.id} schoolClass={c} color={colors.get(c.id) ?? '#64748B'} stats={stats.get(c.id)!} now={now} onDelete={() => setDeleting(c.id)} />
+    <ClassCard key={c.id} schoolClass={c} color={colors.get(c.id) ?? NO_CLASS_COLOR} stats={stats.get(c.id)!} now={now} onDelete={() => setDeleting(c.id)} />
   );
 
   return (

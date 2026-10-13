@@ -139,7 +139,7 @@ describe('buildDay on the complete example', () => {
     expect(day.blocks[1].taskTitle).toBe('Outline (printed copy due in class)');
     expect(day.blocks[1].title).toBe('Outline (printed copy due in class)');
     expect(day.blocks[1].subtitle).toBe('English 10');
-    expect(day.blocks[1].color).toBe('#2563EB');
+    expect(day.blocks[1].color).toBe('#2F5D8C');
     expect(day.blocks.some((b) => b.conflict || b.late)).toBe(false);
     expect(day.plannedMinutes).toBe(80);
     expect(day.overFreeTime).toBe(false);
@@ -188,7 +188,7 @@ describe('buildDay on the complete example', () => {
       ['assessment', 'Test 9:10 AM', 'Unit 2 Test: Cells'],
       ['due', 'Due 11:59 PM', 'Othello Essay'],
     ]);
-    expect(day.markers[0].color).toBe('#16A34A');
+    expect(day.markers[0].color).toBe('#3D7A3A');
   });
 
   it('Saturday Oct 24: the exam sitting event is linked to its assessment', () => {

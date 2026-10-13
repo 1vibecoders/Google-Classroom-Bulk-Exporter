@@ -1,36 +1,38 @@
 /* Academic Scheduler — design tokens and shared component styles. */
 
 :root {
-  --bg: #f6f7fb;
-  --surface: #ffffff;
-  --surface-2: #f1f3f8;
-  --surface-3: #e8ebf3;
-  --text: #1b2130;
-  --text-2: #4a5468;
-  --text-3: #6b7489;
-  --border: #dde1ea;
-  --border-strong: #c5cbd8;
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --accent-soft: #e0e9ff;
+  /* Paper planner: warm paper, near-black ink, one ink-green accent; class colors carry the rest. */
+  --bg: #f6f3ea;
+  --surface: #fffdf7;
+  --surface-2: #f0ece1;
+  --surface-3: #e6e0d2;
+  --text: #1d1b16;
+  --text-2: #49453c;
+  --text-3: #6b665a;
+  --border: #e0d9c9;
+  --border-strong: #c4bba7;
+  --accent: #1f5c45;
+  --accent-hover: #174a37;
+  --accent-soft: #e2ece4;
   --accent-text: #ffffff;
-  --success: #15803d;
-  --success-soft: #dcfce7;
-  --warning: #b45309;
-  --warning-soft: #fef3c7;
-  --danger: #b91c1c;
-  --danger-soft: #fee2e2;
-  --available: #e7f6ec;
-  --available-border: #9fd8b1;
-  --busy: #eceef4;
-  --busy-stripe: #e1e4ec;
-  --now: #e11d48;
-  --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
-  --shadow-2: 0 8px 24px rgba(16, 24, 40, 0.14);
-  --radius-s: 6px;
-  --radius-m: 10px;
-  --radius-l: 14px;
-  --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --success: #2e6a33;
+  --success-soft: #e3eedc;
+  --warning: #8f5300;
+  --warning-soft: #f7ead0;
+  --danger: #a3301c;
+  --danger-soft: #f6e0da;
+  --available: #eaf0e2;
+  --available-border: #a8c098;
+  --busy: #ece7da;
+  --busy-stripe: #e2dccd;
+  --now: #c23b22;
+  --shadow-1: none;
+  --shadow-2: 0 12px 32px rgba(45, 35, 15, 0.14);
+  --radius-s: 4px;
+  --radius-m: 6px;
+  --radius-l: 8px;
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --header-h: 56px;
   --hour-h: 56px;
@@ -39,60 +41,62 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --bg: #11141b;
-    --surface: #181c25;
-    --surface-2: #1f2430;
-    --surface-3: #272d3b;
-    --text: #e8ebf2;
-    --text-2: #b4bccc;
-    --text-3: #8b94a8;
-    --border: #2c3342;
-    --border-strong: #3b4457;
-    --accent: #6d9bff;
-    --accent-hover: #8fb2ff;
-    --accent-soft: #1e2b4d;
-    --accent-text: #0b1530;
-    --success: #4ade80;
-    --success-soft: #133222;
-    --warning: #fbbf24;
-    --warning-soft: #3a2c0c;
-    --danger: #f87171;
-    --danger-soft: #3b1414;
-    --available: #13281c;
-    --available-border: #2f6a45;
-    --busy: #1e222c;
-    --busy-stripe: #252a36;
-    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.5);
+    --bg: #171612;
+    --surface: #1e1d18;
+    --surface-2: #26241e;
+    --surface-3: #302d26;
+    --text: #ece7dc;
+    --text-2: #c4bdae;
+    --text-3: #9d9586;
+    --border: #34312a;
+    --border-strong: #4c483e;
+    --accent: #86c4a4;
+    --accent-hover: #a2d4ba;
+    --accent-soft: #1f3229;
+    --accent-text: #0f1a14;
+    --success: #9ccc8a;
+    --success-soft: #1e2b1b;
+    --warning: #e3ac52;
+    --warning-soft: #33280f;
+    --danger: #f08d76;
+    --danger-soft: #3a1d16;
+    --available: #1b2519;
+    --available-border: #45603c;
+    --busy: #23211b;
+    --busy-stripe: #2b2821;
+    --now: #f08d76;
+    --shadow-1: none;
+    --shadow-2: 0 12px 32px rgba(0, 0, 0, 0.55);
     color-scheme: dark;
   }
 }
 :root[data-theme='dark'] {
-  --bg: #11141b;
-  --surface: #181c25;
-  --surface-2: #1f2430;
-  --surface-3: #272d3b;
-  --text: #e8ebf2;
-  --text-2: #b4bccc;
-  --text-3: #8b94a8;
-  --border: #2c3342;
-  --border-strong: #3b4457;
-  --accent: #6d9bff;
-  --accent-hover: #8fb2ff;
-  --accent-soft: #1e2b4d;
-  --accent-text: #0b1530;
-  --success: #4ade80;
-  --success-soft: #133222;
-  --warning: #fbbf24;
-  --warning-soft: #3a2c0c;
-  --danger: #f87171;
-  --danger-soft: #3b1414;
-  --available: #13281c;
-  --available-border: #2f6a45;
-  --busy: #1e222c;
-  --busy-stripe: #252a36;
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --bg: #171612;
+  --surface: #1e1d18;
+  --surface-2: #26241e;
+  --surface-3: #302d26;
+  --text: #ece7dc;
+  --text-2: #c4bdae;
+  --text-3: #9d9586;
+  --border: #34312a;
+  --border-strong: #4c483e;
+  --accent: #86c4a4;
+  --accent-hover: #a2d4ba;
+  --accent-soft: #1f3229;
+  --accent-text: #0f1a14;
+  --success: #9ccc8a;
+  --success-soft: #1e2b1b;
+  --warning: #e3ac52;
+  --warning-soft: #33280f;
+  --danger: #f08d76;
+  --danger-soft: #3a1d16;
+  --available: #1b2519;
+  --available-border: #45603c;
+  --busy: #23211b;
+  --busy-stripe: #2b2821;
+  --now: #f08d76;
+  --shadow-1: none;
+  --shadow-2: 0 12px 32px rgba(0, 0, 0, 0.55);
   color-scheme: dark;
 }
 
@@ -126,7 +130,10 @@ h4 {
   line-height: 1.25;
 }
 h1 {
-  font-size: 20px;
+  font-family: var(--serif);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 h2 {
   font-size: 17px;
@@ -165,17 +172,18 @@ h3 {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 0 16px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border-strong);
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-weight: 700;
-  font-size: 15px;
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: 18px;
   color: var(--text);
   text-decoration: none;
   white-space: nowrap;
@@ -183,11 +191,9 @@ h3 {
 .brand-mark {
   width: 26px;
   height: 26px;
-  border-radius: 7px;
-  background: var(--accent);
   display: grid;
   place-items: center;
-  color: #fff;
+  color: var(--accent);
 }
 
 .nav {
@@ -197,20 +203,19 @@ h3 {
   scrollbar-width: none;
 }
 .nav a {
-  padding: 7px 11px;
-  border-radius: var(--radius-s);
+  padding: 7px 10px;
   color: var(--text-2);
   text-decoration: none;
   font-weight: 500;
   white-space: nowrap;
 }
 .nav a:hover {
-  background: var(--surface-2);
   color: var(--text);
 }
 .nav a[aria-current='page'] {
-  background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--accent);
 }
 
 .header-actions {
@@ -225,7 +230,7 @@ h3 {
   width: 100%;
   max-width: 1440px;
   margin: 0 auto;
-  padding: 20px 20px 48px;
+  padding: 28px 24px 56px;
 }
 
 .page-header {
@@ -472,7 +477,7 @@ h3 {
 .weekday-picker button {
   min-width: 44px;
   height: 32px;
-  border-radius: 16px;
+  border-radius: var(--radius-s);
   border: 1px solid var(--border-strong);
   background: var(--surface);
   color: var(--text-2);
@@ -521,7 +526,7 @@ dialog.modal.narrow {
   width: min(440px, calc(100vw - 24px));
 }
 dialog.modal::backdrop {
-  background: rgba(15, 20, 30, 0.45);
+  background: rgba(30, 25, 15, 0.4);
 }
 .modal-inner {
   display: flex;
@@ -561,13 +566,13 @@ dialog.modal::backdrop {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 11px;
-  background: var(--surface-3);
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: var(--surface-2);
   color: var(--text-2);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
 }
 .badge.success {
@@ -638,18 +643,18 @@ dialog.modal::backdrop {
   gap: 10px;
   padding: 10px 12px 10px 14px;
   border-radius: var(--radius-m);
-  background: #1f2533;
-  color: #fff;
+  background: #24221c;
+  color: #f6f3ea;
   box-shadow: var(--shadow-2);
 }
 .toast.success {
-  background: #14532d;
+  background: #23492a;
 }
 .toast.warning {
-  background: #78350f;
+  background: #66400b;
 }
 .toast.error {
-  background: #7f1d1d;
+  background: #6f2617;
 }
 .toast .msg {
   flex: 1;
@@ -675,8 +680,6 @@ dialog.modal::backdrop {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
   padding: 8px 10px;
   border-bottom: 1px solid var(--border);
 }

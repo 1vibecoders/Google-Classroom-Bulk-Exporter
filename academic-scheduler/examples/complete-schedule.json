@@ -33,7 +33,7 @@
       "name": "English 10",
       "teacher": "Ms. Rivera",
       "section": "Period 3",
-      "color": "#2563EB",
+      "color": "#2F5D8C",
       "topics": ["Unit 2: Othello", "Grammar"],
       "references": [
         { "title": "Othello (Folger edition).pdf", "kind": "reading", "required": false, "path": "English 10 - Period 3/Materials/Othello full text/Attachments/Othello (Folger edition).pdf", "url": "https://classroom.google.com/c/NjI3ODk0MjE0NTQ5/m/NzAwMDAwMDAwMDA1/details" }
@@ -45,7 +45,7 @@
       "id": "cls-biology",
       "name": "Biology",
       "teacher": "Mr. Chen",
-      "color": "#16A34A",
+      "color": "#3D7A3A",
       "origin": "generated",
       "source": { "kind": "syllabus", "label": "Biology syllabus.pdf" }
     }

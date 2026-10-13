@@ -432,10 +432,8 @@
   position: absolute;
   top: 2px;
   right: 6px;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 600;
   color: var(--success);
   white-space: nowrap;
 }
@@ -452,8 +450,6 @@
   font-size: 11px;
   font-weight: 500;
   line-height: 1.25;
-  letter-spacing: 0;
-  text-transform: none;
 }
 
 /* Timed due / assessment lines */
@@ -1304,8 +1300,8 @@
     --text-3: #555555;
     --border: #cccccc;
     --border-strong: #999999;
-    --accent: #1d4ed8;
-    --accent-soft: #e0e9ff;
+    --accent: #1f5c45;
+    --accent-soft: #e2ece4;
     --success: #15803d;
     --success-soft: #dcfce7;
     --warning: #92400e;
