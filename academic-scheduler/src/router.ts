@@ -1,6 +1,7 @@
 // Hash routing (works on any static host and from a single offline file):
 //   #/day/2026-10-13  #/week/2026-10-12  #/assignments  #/classes
 //   #/commitments     #/import           #/settings   #/welcome (onboarding)
+//   #/review (AI proposals)
 // Unknown or malformed hashes fall back to today's day view.
 import { useEffect, useState } from 'react';
 import { isValidDate, todayLocal } from './lib/time';
@@ -13,6 +14,7 @@ export type Route =
   | { name: 'commitments' }
   | { name: 'import' }
   | { name: 'settings' }
+  | { name: 'review' }
   | { name: 'welcome' };
 
 export function parseHash(hash: string, today = todayLocal()): Route {
@@ -28,6 +30,7 @@ export function parseHash(hash: string, today = todayLocal()): Route {
     case 'commitments':
     case 'import':
     case 'settings':
+    case 'review':
     case 'welcome':
       return { name };
     default:

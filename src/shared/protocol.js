@@ -31,6 +31,7 @@
     POPUP_RESET: 'popup/reset',
     POPUP_SHOW_ARCHIVE: 'popup/show-archive',
     POPUP_RETRY_SAVE: 'popup/retry-save',
+    POPUP_SEND_TO_SCHEDULER: 'popup/send-to-scheduler',
 
     // background -> content script
     CS_PING: 'cs/ping',

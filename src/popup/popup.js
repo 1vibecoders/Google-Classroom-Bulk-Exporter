@@ -3,6 +3,7 @@
 // at any time during an export.
 
 import '../shared/protocol.js';
+import { initSend } from './send.js';
 
 const P = globalThis.GCX_PROTOCOL;
 const JOB_KEY = 'gcx.job';
@@ -456,6 +457,7 @@ function bind() {
 
 async function init() {
   bind();
+  initSend(call).catch(showError);
   state.tabId = await resolveTabId();
   try {
     const { job, options } = await call(P.MSG.POPUP_GET_STATE);

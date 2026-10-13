@@ -114,7 +114,7 @@ beforeEach(async () => {
       '222': [work('903', '222', 'Lab report', { materials: [{ link: { title: 'Rubric', url: 'https://example.org/rubric' } }, { link: { url: 'javascript:alert(1)' } }] })],
     },
   };
-  context = { config: { googleClientId: 'client', googleClientSecret: 'secret', tokenKey: KEY }, db, google: fakeGoogle(classroom) };
+  context = { config: { googleClientId: 'client', googleClientSecret: 'secret', tokenKey: KEY }, db, google: fakeGoogle(classroom), ai: null };
   const sealed = encrypt('refresh-token', KEY);
   await db.query('INSERT INTO users (id, email, refresh_token, scopes) VALUES ($1, $2, $3, $4)', ['u1', 'student@example.com', sealed, SCOPES.join(' ')]);
   user = { id: 'u1', email: 'student@example.com', scopes: SCOPES.join(' '), refreshToken: sealed };

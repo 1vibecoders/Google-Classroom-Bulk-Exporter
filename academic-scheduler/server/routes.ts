@@ -6,6 +6,7 @@
 //   POST   /api/sync           run a sync → { batch, allowance }
 //   GET    /api/account        download everything stored about the account
 //   DELETE /api/account        revoke Google access and delete everything
+// AI analysis routes: server/aiRoutes.ts.
 // Requests that change something must come from this site (Origin check);
 // cookies are HttpOnly, Secure, SameSite=Lax.
 import { encrypt, decrypt, randomToken, sha256 } from './crypto.js';
@@ -93,6 +94,7 @@ export function sync(request: Request): Promise<Response> {
       /* checked below */
     }
     if (!isTimeZone(body.timezone)) return error(400, 'bad_timezone', 'The request did not include a valid time zone.');
+    await context.db.query('UPDATE users SET timezone = $2 WHERE id = $1', [user.id, body.timezone]);
     const outcome = await runSync(context, user, body.timezone);
     switch (outcome.kind) {
       case 'ok':
@@ -115,11 +117,14 @@ export function exportAccount(request: Request): Promise<Response> {
   return withContext(async (context) => {
     const user = await sessionUser(context, request);
     if (!user) return error(401, 'signed_out', 'Sign in with Google first.');
-    const [syncs, records] = await Promise.all([
+    const [syncs, records, aiRuns, aiResults, aiDecisions] = await Promise.all([
       context.db.query('SELECT started_at, finished_at, status, counted, summary FROM sync_runs WHERE user_id = $1 ORDER BY started_at', [user.id]),
       context.db.query('SELECT kind, source_id, course_id, state, data, first_seen, last_seen, changed_at FROM source_records WHERE user_id = $1 ORDER BY kind, source_id', [user.id]),
+      context.db.query('SELECT started_at, trigger, status, calls, input_tokens, output_tokens, analyzed, reused, failed, rejected FROM ai_runs WHERE user_id = $1 ORDER BY started_at', [user.id]),
+      context.db.query('SELECT kind, source_id, course_id, task_version, model, proposals, created_at FROM ai_extractions WHERE user_id = $1 ORDER BY kind, source_id', [user.id]),
+      context.db.query('SELECT key, decision, decided_at FROM ai_reviews WHERE user_id = $1 ORDER BY decided_at', [user.id]),
     ]);
-    return json({ email: user.email, scopes: user.scopes.split(/\s+/), syncs, classroomRecords: records }, 200, {
+    return json({ email: user.email, scopes: user.scopes.split(/\s+/), syncs, classroomRecords: records, aiRuns, aiResults, aiDecisions }, 200, {
       'content-disposition': 'attachment; filename="academic-scheduler-account.json"',
     });
   });

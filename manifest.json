@@ -35,5 +35,10 @@
     "https://drive.usercontent.google.com/*",
     "https://docs.google.com/*",
     "https://*.googleusercontent.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ]
 }

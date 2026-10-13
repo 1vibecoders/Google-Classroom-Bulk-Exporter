@@ -20,7 +20,7 @@ import { countOpen, itemIssues } from './lists/assignmentModel';
 import { IssuePanel } from './lists/IssuePanel';
 import { ControlBadges, ProvenancePanel } from './lists/Provenance';
 import { ReferenceList } from './lists/ReferenceList';
-import { formatLdt, formatWhen, plural, relativeDays, safeHref } from './lists/format';
+import { formatWhen, plural, relativeDays, safeHref } from './lists/format';
 import '../styles/lists.css';
 
 function ClassCard({
@@ -163,7 +163,7 @@ function ClassCard({
                   <li key={i} className="stack">
                     {a.postedAt || href ? (
                       <div className="small muted">
-                        {a.postedAt ? formatLdt(a.postedAt, year) : null}
+                        {a.postedAt ? formatWhen(a.postedAt, year) : null}
                         {a.postedAt && href ? ' · ' : null}
                         {href ? (
                           <a href={href} target="_blank" rel="noopener noreferrer">

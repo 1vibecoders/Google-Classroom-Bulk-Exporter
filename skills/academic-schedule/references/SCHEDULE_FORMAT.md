@@ -454,7 +454,7 @@ them again (§ 15.10).
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `text` | Text 1–5000 | **yes** | The announcement's text. |
-| `postedAt` | LocalDateTime | no | When it was posted. |
+| `postedAt` | DateOrDateTime | no | When it was posted (a date, or a date and time when the source shows the time). |
 | `url` | URL | no | Link to the announcement. |
 | `references` | array of [Reference](#82-reference), ≤ 50 entries | no | Its attachments and links. |
 

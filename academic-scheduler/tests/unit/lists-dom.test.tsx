@@ -401,7 +401,7 @@ describe('SettingsView', () => {
     const link = Array.from(container.querySelectorAll('a')).find((a) => a.textContent?.includes('SCHEDULE_FORMAT.md'))!;
     expect(link.getAttribute('href')).toBe('https://github.com/1vibecoders/Google-Classroom-Bulk-Exporter/blob/main/academic-scheduler/SCHEDULE_FORMAT.md');
     expect(link.getAttribute('rel')).toContain('noopener');
-    expect(container.textContent).toContain('No AI in this website.');
+    expect(container.textContent).toContain('Planning never uses AI.');
     expect(container.textContent).toContain('Schedule format 1.2');
   });
 });

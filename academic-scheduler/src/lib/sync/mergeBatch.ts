@@ -8,23 +8,41 @@
 // announcements, and adds its topics and materials; an assignment's title,
 // class, topic, description, due date, points, Classroom links and whether
 // Classroom still lists it. A turned-in assignment becomes done (status only
-// moves forward, SCHEDULE_FORMAT.md § 15.10). Everything else (estimates,
+// moves forward, SCHEDULE_FORMAT.md § 15.10). A due date the source shows
+// unclearly gets an issue for the person to review (§ 14.2); the issue goes
+// once the source is clear, unless the person already resolved or dismissed
+// it. Everything else (estimates,
 // tasks, priority, notes, blocks) stays as it is. A value Classroom does not
 // give (e.g. no due date) never clears one the schedule already has.
 import { schemaVersionFor } from '../../model/constants';
 import type { ImportBatch, ImportedLink } from '../../model/importBatch';
-import type { Announcement, Assignment, Reference, ScheduleDocument, SchoolClass, Source } from '../../model/types';
+import type { Announcement, Assignment, Issue, Reference, ScheduleDocument, SchoolClass, Source } from '../../model/types';
 
 export const SYNC_FILE_NAME = 'Google Classroom sync';
 
-function classroomSource(sourceId: string, url: string | undefined, retrievedAt: string): Source {
-  return { kind: 'google_classroom', id: sourceId, ...(url ? { url } : {}), label: 'Google Classroom', retrievedAt };
+const SOURCE_LABELS: Record<ImportBatch['sourceType'], string> = {
+  classroom_api: 'Google Classroom',
+  browser_extension: 'Google Classroom (browser extension scan)',
+};
+
+function classroomSource(sourceId: string, url: string | undefined, label: string, retrievedAt: string): Source {
+  return { kind: 'google_classroom', id: sourceId, ...(url ? { url } : {}), label, retrievedAt };
+}
+
+/** The item's issues with the source's note about its due date (stable id `<itemId>-due`). */
+function withDueNote(issues: Issue[] | undefined, itemId: string, note: { kind: Issue['kind']; message: string } | undefined): Issue[] {
+  const id = `${itemId}-due`;
+  const others = (issues ?? []).filter((i) => i.id !== id);
+  const existing = issues?.find((i) => i.id === id);
+  // A decision the person made stays; an open issue follows the source.
+  if (existing && (existing.status === 'resolved' || existing.status === 'dismissed')) return [...others, existing];
+  return note ? [...others, { id, kind: note.kind, field: 'due', message: note.message }] : others;
 }
 
 /** Keep the current source when it already names this Classroom item, so a sync does not rewrite it every time. */
-function sourceFor(current: { source?: Source } | undefined, sourceId: string, url: string | undefined, retrievedAt: string): Source {
+function sourceFor(current: { source?: Source } | undefined, sourceId: string, url: string | undefined, label: string, retrievedAt: string): Source {
   const cur = current?.source;
-  return cur && cur.kind === 'google_classroom' && cur.id === sourceId ? cur : classroomSource(sourceId, url, retrievedAt);
+  return cur && cur.kind === 'google_classroom' && cur.id === sourceId ? cur : classroomSource(sourceId, url, label, retrievedAt);
 }
 
 /** `current` plus the links it does not have yet (matched by URL), at most `max`. */
@@ -42,6 +60,7 @@ export function mergeBatch(current: ScheduleDocument, batch: ImportBatch): Sched
   const asgIndex = new Map(doc.assignments.map((a, i) => [a.id, i]));
   // Items the person deleted are not brought back (a generator never re-creates them, § 15).
   const deleted = new Set((doc.deleted ?? []).map((t) => t.id));
+  const label = SOURCE_LABELS[batch.sourceType];
 
   for (const course of batch.courses) {
     if (deleted.has(course.id)) continue;
@@ -53,7 +72,7 @@ export function mergeBatch(current: ScheduleDocument, batch: ImportBatch): Sched
       ...(course.section ? { section: course.section } : {}),
       ...(course.room ? { room: course.room } : {}),
       ...(course.description ? { description: course.description } : {}),
-      source: sourceFor(cur, course.sourceId, course.url, batch.importedAt),
+      source: sourceFor(cur, course.sourceId, course.url, label, batch.importedAt),
     };
     if (course.topics?.length) next.topics = [...new Set([...(cur?.topics ?? []), ...course.topics])].slice(0, 200);
     const references = withLinks(cur?.references, course.materials, 200);
@@ -91,8 +110,11 @@ export function mergeBatch(current: ScheduleDocument, batch: ImportBatch): Sched
       ...(item.due ? { due: item.due } : {}),
       ...(item.points ? { points: item.points } : {}),
       ...(references.length ? { references } : {}),
-      source: sourceFor(cur, item.sourceId, item.url, batch.importedAt),
+      source: sourceFor(cur, item.sourceId, item.url, label, batch.importedAt),
     };
+    const issues = withDueNote(cur?.issues, item.id, item.dueNote);
+    if (issues.length) next.issues = issues;
+    else delete next.issues;
     // Listed again after being missing. A teacher's "withdrawn" is a statement, not a listing, so it stays.
     if (cur?.sourceState === 'missing') next.sourceState = 'present';
     if (item.turnedIn && next.status !== 'done' && next.status !== 'cancelled') next.status = 'done';

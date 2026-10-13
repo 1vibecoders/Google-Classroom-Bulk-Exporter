@@ -40,7 +40,7 @@ export interface ImportedLink {
 
 export interface ImportedAnnouncement {
   text: string;
-  postedAt?: LocalDateTimeStr;
+  postedAt?: DateOrDateTimeStr;
   url?: string;
   links?: ImportedLink[];
 }
@@ -61,6 +61,8 @@ export interface ImportedAssignment {
   topic?: string;
   /** The person turned it in (or it was returned). */
   turnedIn?: boolean;
+  /** The source's due date needs the person's review (e.g. a year-less date that fits two years). */
+  dueNote?: { kind: 'ambiguity' | 'missing_information'; message: string };
   state: Exclude<BatchItemState, 'inaccessible'>;
 }
 

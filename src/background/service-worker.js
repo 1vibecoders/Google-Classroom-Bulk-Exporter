@@ -5,6 +5,7 @@
 
 import '../shared/protocol.js';
 import * as jobs from './job-controller.js';
+import { sendToScheduler } from './scheduler-bridge.js';
 
 const P = globalThis.GCX_PROTOCOL;
 
@@ -37,6 +38,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return respond(jobs.showArchive(), sendResponse);
     case P.MSG.POPUP_RETRY_SAVE:
       return respond(jobs.retrySave(), sendResponse);
+    case P.MSG.POPUP_SEND_TO_SCHEDULER:
+      return respond(sendToScheduler(message.site), sendResponse);
 
     // Content script events
     case P.MSG.CS_PROGRESS:

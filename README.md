@@ -233,6 +233,18 @@ that ZIP as well.
 Dates are kept as Classroom displays them (e.g. `Oct 10, 11:59 PM`), because
 Classroom does not show years for the current year or time zones.
 
+### Sending classes to the Academic Scheduler website
+
+After you scan or export a class, the popup shows **Send to Academic
+Scheduler** with every class scanned in this browser session. Type the
+website's address (e.g. `https://your-site.vercel.app`) and click **Send**:
+Chrome asks once to let the extension open that one website, the website opens
+on its Import page and shows the changes to review. Nothing changes in your
+schedule until you click **Import** there. What is sent: class names, topics,
+assignments and questions (title, instructions, due date and points as
+displayed), materials and announcements, and attachment links. Attachment
+files are not sent.
+
 ## Permissions
 
 | Permission | Why it is needed |
@@ -245,9 +257,11 @@ Classroom does not show years for the current year or time zones.
 | `downloads` | Save the finished ZIP file to your Downloads folder and show it in its folder. |
 | `offscreen` | A hidden extension page that downloads the files and builds the ZIP; unlike the service worker it is not stopped while a long export runs. |
 | `storage` | Remember your options and the progress of the current export (session storage, cleared when the browser closes). |
+| optional: the Academic Scheduler's address | Only when you click **Send to Academic Scheduler**: Chrome asks to allow that one website, so the extension can open it and hand it your scanned classes. Declared as optional `https://*/*` (plus `localhost`) because the address is yours to choose; nothing is granted until you allow a specific site. |
 
-The extension does **not** request `tabs`, `cookies`, `webRequest`, `<all_urls>`
-or access to any non-Google site. External links are saved as shortcuts
+The extension does **not** request `tabs`, `cookies`, `webRequest` or
+`<all_urls>`, and no non-Google site unless you allow your Academic Scheduler
+address. External links are saved as shortcuts
 instead of being fetched, so no broad host permission is needed. **Export all
 classes** needs no additional permission: it uses the same Classroom tab and
 the same hosts.
@@ -256,7 +270,9 @@ the same hosts.
 
 - Everything happens locally in your browser. There is no server, analytics or
   telemetry. Classroom content, attachments and the archive never leave your
-  computer except as the ZIP saved to your Downloads folder.
+  computer except as the ZIP saved to your Downloads folder, or when you click
+  **Send to Academic Scheduler** (then the scanned classes go to the website
+  address you typed).
 - Requests go only to Google, as you, with your existing session. The exporter
   can only see and download what you can already open in Classroom; it does
   not bypass sharing settings, "disable download" settings, sign-in or DRM.

@@ -456,7 +456,7 @@ const ANNOUNCEMENT_SPEC = spec(
   'an announcement',
   [
     ['text', text(5000, true)],
-    ['postedAt', LDT],
+    ['postedAt', DODT],
     ['url', URL_KIND],
     ['references', arrayOf(object(REFERENCE_SPEC), { max: 50 })],
   ],

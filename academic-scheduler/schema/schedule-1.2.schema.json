@@ -309,7 +309,7 @@
       "required": ["text"],
       "properties": {
         "text": { "type": "string", "minLength": 1, "maxLength": 5000 },
-        "postedAt": { "$ref": "#/$defs/localDateTime" },
+        "postedAt": { "$ref": "#/$defs/dateOrDateTime" },
         "url": { "$ref": "#/$defs/url" },
         "references": { "type": "array", "maxItems": 50, "items": { "$ref": "#/$defs/reference" } }
       },

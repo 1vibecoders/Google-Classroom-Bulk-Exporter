@@ -55,6 +55,10 @@ const permissions = manifest.permissions || [];
 for (const p of ['tabs', '<all_urls>', 'cookies', 'webRequest']) {
   if (permissions.includes(p) || (manifest.host_permissions || []).includes(p)) problems.push(`Unexpected broad permission: ${p}`);
 }
+// The Academic Scheduler's address is asked for one origin at a time (src/background/scheduler-bridge.js).
+for (const p of manifest.optional_host_permissions || []) {
+  if (p === '<all_urls>' || (manifest.host_permissions || []).includes(p)) problems.push(`Optional host permission must stay optional and narrow: ${p}`);
+}
 
 if (problems.length) {
   console.error(problems.join('\n'));

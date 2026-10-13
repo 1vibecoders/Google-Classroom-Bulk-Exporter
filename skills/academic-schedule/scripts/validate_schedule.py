@@ -521,7 +521,7 @@ WORK_STATUS = ENUM(WORK_STATUSES, STATUS_HINTS)
 
 ANNOUNCEMENT_SPEC = Spec("an announcement", [
     ("text", TEXT(5000, True)),
-    ("postedAt", LDT),
+    ("postedAt", DODT),
     ("url", URL),
     ("references", ARRAY(OBJECT(REFERENCE_SPEC), None, 50)),
 ], ["text"])

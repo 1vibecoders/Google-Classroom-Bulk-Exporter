@@ -56,6 +56,47 @@ export const SCHEMA: string[] = [
     changed_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (user_id, kind, source_id)
   )`,
+  // The person's time zone, for background analysis (relative dates in announcements).
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone text`,
+  // AI analysis (SPEC.md § 16, § 18): the cached result per source, keyed by a
+  // hash of the text that was analyzed, the task version and the model, so a
+  // source is analyzed again only when one of them changes.
+  `CREATE TABLE IF NOT EXISTS ai_extractions (
+    user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind text NOT NULL,
+    source_id text NOT NULL,
+    course_id text NOT NULL,
+    content_hash text NOT NULL,
+    task_version text NOT NULL,
+    model text NOT NULL,
+    proposals jsonb NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, kind, source_id)
+  )`,
+  // Each analysis run: what it cost (calls, tokens as reported by the provider) and did.
+  `CREATE TABLE IF NOT EXISTS ai_runs (
+    id bigserial PRIMARY KEY,
+    user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    started_at timestamptz NOT NULL DEFAULT now(),
+    trigger text NOT NULL,
+    status text NOT NULL,
+    calls integer NOT NULL DEFAULT 0,
+    input_tokens integer NOT NULL DEFAULT 0,
+    output_tokens integer NOT NULL DEFAULT 0,
+    analyzed integer NOT NULL DEFAULT 0,
+    reused integer NOT NULL DEFAULT 0,
+    failed integer NOT NULL DEFAULT 0,
+    rejected integer NOT NULL DEFAULT 0
+  )`,
+  `CREATE INDEX IF NOT EXISTS ai_runs_user_started ON ai_runs (user_id, started_at)`,
+  // The person's decisions on proposals (§ 16.4), so a decided proposal does not come back.
+  `CREATE TABLE IF NOT EXISTS ai_reviews (
+    user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    key text NOT NULL,
+    decision text NOT NULL,
+    decided_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, key)
+  )`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

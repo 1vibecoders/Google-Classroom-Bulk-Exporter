@@ -6,12 +6,11 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../state/store';
 import { useConfirm } from '../ui/common';
 import { Icon } from '../ui/Icon';
-import { navigate } from '../router';
-import { nowLocal, todayLocal } from '../lib/time';
-import { validateDocument } from '../lib/validate';
 import { LOGIN_URL, deleteAccount, fetchAccount, runSync, signOut, type Account } from '../lib/sync/api';
-import { SYNC_FILE_NAME, mergeBatch } from '../lib/sync/mergeBatch';
-import { setPendingImport } from './import/pending';
+import { SYNC_FILE_NAME } from '../lib/sync/mergeBatch';
+import { openBatchPreview } from './import/fromBatch';
+import { runAnalysis } from '../lib/ai/api';
+import { getAiStatus, setAiStatus } from '../state/aiStore';
 import type { SyncAllowance } from '../model/importBatch';
 
 type State = { kind: 'loading' } | { kind: 'none'; message: string } | { kind: 'account'; account: Account };
@@ -65,17 +64,15 @@ export function ClassroomSyncCard() {
       return;
     }
     setAllowance(result.allowance);
-    const checked = validateDocument(mergeBatch(state.doc, result.batch), { today: todayLocal() });
-    if (!checked.ok || !checked.doc) {
-      const first = checked.errors[0];
-      setProblem(`The synced data could not be used (${first ? `${first.path}: ${first.message}` : 'invalid'}). Nothing was changed.`);
+    // New Classroom data: read what changed with AI in the background (SPEC.md § 17.1); findings appear in Review.
+    if (getAiStatus()?.configured) void runAnalysis(Intl.DateTimeFormat().resolvedOptions().timeZone).then((r) => 'error' in r || setAiStatus(r));
+    const failed = openBatchPreview(state.doc, result.batch, SYNC_FILE_NAME);
+    if (failed) {
+      setProblem(failed);
       return;
     }
     const { counts } = result.batch;
-    const warnings = result.batch.warnings.map((message) => ({ path: '', code: 'sync', message }));
-    setPendingImport({ loaded: { incoming: checked.doc, fileName: SYNC_FILE_NAME, warnings: [...warnings, ...checked.warnings], importTime: nowLocal() }, choices: {} });
     notify(`Synced: ${counts.new} new, ${counts.changed} changed, ${counts.missing} no longer in Classroom. Review the changes before importing.`, { tone: 'success' });
-    navigate({ name: 'import' });
   };
 
   const leave = async () => {

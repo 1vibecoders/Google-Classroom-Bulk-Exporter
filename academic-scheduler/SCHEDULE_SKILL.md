@@ -6,8 +6,10 @@ have to do and how long it will take, and writes a `schedule.json` file that the
 **Academic Scheduler** website imports. It can also update a schedule you have been using in the
 website without destroying your own changes.
 
-The two parts are deliberately separate. **The website contains no AI**: it displays, edits and
-schedules structured data with fixed rules. All interpretation — reading instructions, finding
+The two parts are deliberately separate. **The website plans without AI**: it displays, edits and
+schedules structured data with fixed rules. Its only AI use is optional, on the online version:
+reading synced Classroom announcements for changed dates and announced tests (README → "Reading
+announcements with AI"). The full interpretation — reading instructions and documents, finding
 test dates, estimating workload, deciding when to work — happens in this skill, in Claude. The two
 communicate only through the documented file format, [SCHEDULE_FORMAT.md](SCHEDULE_FORMAT.md).
 

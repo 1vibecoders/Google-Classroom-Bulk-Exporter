@@ -111,8 +111,8 @@ export interface SchoolClass extends ItemBase {
 /** Format 1.2: a teacher's post to the whole class (e.g. a Google Classroom announcement). */
 export interface Announcement {
   text: string;
-  /** When it was posted (local wall-clock time). */
-  postedAt?: LocalDateTimeStr;
+  /** When it was posted: a date, or a local date-time when the source shows the time. */
+  postedAt?: DateOrDateTimeStr;
   url?: string;
   references?: Reference[];
 }

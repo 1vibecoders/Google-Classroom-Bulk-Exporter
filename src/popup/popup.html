@@ -84,10 +84,20 @@
       <div id="details" class="details" hidden></div>
     </section>
 
+    <section class="card" id="send" hidden aria-labelledby="send-title">
+      <div id="send-title" class="phase">Send to Academic Scheduler</div>
+      <div id="send-classes" class="line muted"></div>
+      <label class="site">Website address
+        <input id="send-site" type="url" placeholder="https://your-site.vercel.app" autocomplete="url" spellcheck="false">
+      </label>
+      <div class="buttons"><button id="send-btn" class="primary" type="button">Send</button></div>
+      <div id="send-status" class="line" role="status"></div>
+    </section>
+
     <section id="error" class="error" role="alert" hidden></section>
   </main>
 
-  <footer class="foot">Everything stays on your computer. Files are downloaded with your own Google account.</footer>
+  <footer class="foot">Everything stays on your computer unless you send it to the Academic Scheduler website. Files are downloaded with your own Google account.</footer>
   <script type="module" src="popup.js"></script>
 </body>
 </html>

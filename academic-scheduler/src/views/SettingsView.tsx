@@ -15,6 +15,7 @@ import { downloadText } from '../lib/download';
 import { validateDocument } from '../lib/validate';
 import { formatDateLong, formatDuration, isValidLocalDateTime, nowLocal } from '../lib/time';
 import { ClassroomSyncCard } from './ClassroomSyncCard';
+import { AiAnalysisCard } from './AiAnalysisCard';
 import { CommitmentsDescriptionForm } from './CommitmentsDescriptionForm';
 import { DeleteAllDialog } from './lists/DeleteAllDialog';
 import { SourceLine } from './lists/Provenance';
@@ -484,9 +485,9 @@ function About() {
         <div className="ls-about-point">
           <Icon name="info" />
           <div>
-            <strong>No AI in this website.</strong> It does not read or interpret your assignments, estimate workloads or make decisions with an AI model. Free
-            time, remaining work and “Plan unscheduled work” are fixed arithmetic on the data you entered or imported — the same input always gives the same
-            result.
+            <strong>Planning never uses AI.</strong> Free time, remaining work and “Plan unscheduled work” are fixed arithmetic on the data you entered or
+            imported — the same input always gives the same result. AI is used only to read Classroom announcements and instructions, on the online version
+            when it is set up (see “Reading announcements with AI”); what it finds is checked and either applied with Undo or shown in Review.
           </div>
         </div>
         <div className="ls-about-point">
@@ -548,6 +549,7 @@ export function SettingsView() {
         </div>
         <div className="stack">
           <ClassroomSyncCard />
+          <AiAnalysisCard />
           <DataPanel />
           <ScheduleInfo />
           <About />

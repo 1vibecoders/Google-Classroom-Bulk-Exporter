@@ -8,7 +8,7 @@ effort: xhigh
 # Academic schedule
 
 You turn a student's academic materials into one machine-readable schedule file that the
-**Academic Scheduler** website imports, plus a short summary for the person. The website has no AI:
+**Academic Scheduler** website imports, plus a short summary for the person. The website plans without AI:
 everything that needs judgment (what an assignment requires, when tests are, how long work takes,
 when to do it) is decided here, by you, from evidence.
 

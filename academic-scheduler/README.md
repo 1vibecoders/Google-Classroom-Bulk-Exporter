@@ -4,10 +4,12 @@ A calm, no-nonsense planner for students: classes, assignments, commitments, stu
 time and scheduled work, shown as a day timeline, a week grid and an assignment
 list. It answers one question — **"What am I supposed to do, and when?"**
 
-The website contains **no AI**. It never calls a language model, never reads or
-interprets documents, and never estimates workload. It displays, edits, stores and
-schedules structured data with fixed, predictable rules. It makes no network
-requests at all: everything stays in your browser.
+Planning on the website uses **no AI**: it displays, edits, stores and schedules
+structured data with fixed, predictable rules, and the offline version makes no
+network requests at all. The online version can optionally sync Google Classroom
+and [read announcements with AI](#reading-announcements-with-ai) for changed due
+dates and announced tests; those findings are checked, and applied with Undo or
+shown for your review.
 
 The thinking about *what* an assignment requires happens elsewhere, in the
 separate Claude [`/academic-schedule` skill](SCHEDULE_SKILL.md). The skill reads your
@@ -31,10 +33,12 @@ Live site: see [Deployment](#deployment) (the project is deployed on Vercel).
 - [Creating a schedule by hand](#creating-a-schedule-by-hand)
 - [Importing a schedule](#importing-a-schedule)
 - [Exporting](#exporting)
+- [Receiving classes from the browser extension](#receiving-classes-from-the-browser-extension)
 - [Using it with the /academic-schedule skill](#using-it-with-the-academic-schedule-skill)
 - [How planning works (no AI)](#how-planning-works-no-ai)
 - [Where your data lives](#where-your-data-lives)
 - [Google Classroom sync](#google-classroom-sync)
+- [Reading announcements with AI](#reading-announcements-with-ai)
 - [Installation and deployment](#installation-and-deployment)
 - [Development](#development)
 - [Project layout](#project-layout)
@@ -117,6 +121,22 @@ completed and which imported items you changed or deleted. Keep it as a backup,
 move it to another browser (import it there), or give it to `/academic-schedule` to
 update your plan.
 
+## Receiving classes from the browser extension
+
+In the Google Classroom Bulk Exporter popup, scan or export a class, then use
+**Send to Academic Scheduler** with this website's address. The website opens
+on Import and shows the changes to review, like a Classroom sync: the same IDs
+(so nothing is duplicated), the same protection of your own edits, and
+**Undo import**. Due dates are read as Classroom displays them; a date without
+a year that could belong to two years, or one that cannot be read, gets an
+issue on the assignment for you to check (it goes away when a later scan or
+sync is clear, unless you resolved or dismissed it). A scan never marks
+anything as removed, because a page may not show everything.
+
+The message format is versioned (`academic-scheduler/extension-import`,
+version 1). The website only reads messages from its own page, validates every
+field and answers with a receipt.
+
 ## Using it with the /academic-schedule skill
 
 1. Export your classes with the Google Classroom Bulk Exporter (one class, or
@@ -152,7 +172,8 @@ minus the time of sessions marked done.
   the server keeps your Google account id and email, an AES-256-GCM encrypted
   Google refresh token, a log of your syncs (counts only) and what it read from
   Classroom (courses, coursework, materials and announcements: titles, texts,
-  due dates, links).
+  due dates, links). With AI reading on, also the AI's findings per text, your
+  Review decisions, and a log of AI runs (counts and tokens, no content).
   Settings → Google Classroom sync → *Download server data* / *Delete server
   data* (deletion also revokes the website's Google access).
 - Clearing the browser's site data deletes it. **Export regularly** to keep a
@@ -196,6 +217,35 @@ you import, the usual rules protect your own edits, and **Undo import** works.
   Classroom, the sync says so; the browser extension and the /academic-schedule
   skill still work.
 
+## Reading announcements with AI
+
+Optional, on a deployment with the sync backend and an AI key (below). After each
+Classroom sync, and once a day in the background, the server sends new or changed
+announcements and assignment instructions to an AI model and asks only for
+scheduling facts: a changed due date of known work, a newly announced quiz, test or
+project, or a time estimate the text states. It never answers questions or does any
+part of the work (SPEC § 7), and texts are treated as data, not instructions.
+
+- **Checked, not trusted:** every finding must quote the text it comes from (the
+  quote is verified), name known work, and give a real, plausible date; anything
+  else is dropped. Each has a confidence per field and says whether the date was
+  stated or worked out from words like "Friday".
+- **Applied or reviewed:** sure, stated findings that fill a gap (work with no due
+  date, a new quiz, work with no estimate) are applied automatically with **Undo**
+  (Settings can turn this off). Everything else waits on the **Review** page with
+  the current and proposed value, the quote, and why it needs you: *Apply*, *Edit*,
+  *Reject* or *Later*. A date you set yourself, or a different due date that
+  Classroom gives, is never replaced without you; texts that disagree are shown,
+  not settled by whichever was read last. Decisions are remembered.
+- **Cost controls:** a text is sent again only when it changes (or the task or model
+  changes); texts without content are never sent; at most 20 AI requests per
+  person per 24 hours and 8 per run; tokens are logged as the provider reports them.
+- **What is sent** to the provider (Anthropic by default): the class name, its
+  assignments' titles and due dates, and the new or changed texts. Nothing is sent
+  while AI is not configured. The model is `claude-haiku-4-5-20251001` (the
+  lowest-cost Claude model) unless `AI_MODEL` says otherwise; another provider can
+  be added in `server/ai/` without touching the rest.
+
 ## Installation and deployment
 
 The website is a static site: any static host works, and it also runs from a
@@ -222,6 +272,13 @@ The site is deployed on **Vercel** from this repository (root directory
      Never commit them; they are only read by the server functions.
    - Without these variables the site works as before and the sync card says
      sync is not set up. For local testing of the API use `vercel dev`.
+4. Optional, for [reading announcements with AI](#reading-announcements-with-ai)
+   (needs step 3):
+   - Set `ANTHROPIC_API_KEY` (an Anthropic API key with credits; usage is
+     billed by Anthropic). Optional: `AI_MODEL` to use another Claude model.
+   - Set `CRON_SECRET` (any long random value) so the daily background check
+     (`vercel.json` → `crons`, 09:00 UTC) can run; without it that job refuses.
+   - Without `ANTHROPIC_API_KEY` nothing is sent to an AI and Review is hidden.
 
 Other hosts: run `npm run build` and upload the `dist/` folder (GitHub Pages,
 Netlify, any web server). Asset paths are relative, so it works under any path.

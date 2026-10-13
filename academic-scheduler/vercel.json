@@ -5,6 +5,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "cleanUrls": false,
+  "crons": [{ "path": "/api/cron/analyze", "schedule": "0 9 * * *" }],
   "headers": [
     {
       "source": "/(.*)",

@@ -28,6 +28,7 @@ import { planDownload } from '../engine/download-resolver.js';
 import * as store from './store.js';
 import { ensureContentScript, getTab, pingTab, sendToTab } from './tab-bridge.js';
 import { closeOffscreen, ensureOffscreen, pingOffscreen, sendToOffscreen } from './offscreen-bridge.js';
+import { rememberSnapshot } from './scheduler-bridge.js';
 
 const P = globalThis.GCX_PROTOCOL;
 const urls = globalThis.GCX.url;
@@ -410,6 +411,7 @@ async function nextStep(job, step, result) {
 async function onSnapshot(job, snapshot) {
   snapshot.optionsKey = optionsKey(job.options);
   await store.setSnapshot(snapshot);
+  await rememberSnapshot(snapshot);
   await store.setStepData({});
   const updated = await store.updateJob((j) => {
     if (j.id !== job.id || j.phase !== P.PHASE.DISCOVERING) return false;

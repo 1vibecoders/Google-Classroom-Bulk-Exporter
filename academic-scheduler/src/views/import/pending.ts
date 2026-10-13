@@ -22,6 +22,7 @@ export interface PendingImport {
 }
 
 let pending: PendingImport | null = null;
+const listeners = new Set<(value: PendingImport | null) => void>();
 
 export function getPendingImport(): PendingImport | null {
   return pending;
@@ -29,4 +30,11 @@ export function getPendingImport(): PendingImport | null {
 
 export function setPendingImport(value: PendingImport | null): void {
   pending = value;
+  for (const listener of listeners) listener(value);
+}
+
+/** Called on every change (an open Import page shows an import that arrives, e.g. from the extension). */
+export function onPendingImport(listener: (value: PendingImport | null) => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
 }

@@ -17,7 +17,7 @@ import { nowLocal } from '../lib/time';
 import { ChooseStep } from './import/ChooseStep';
 import { PreviewStep } from './import/PreviewStep';
 import { DoneStep, type ImportResult } from './import/DoneStep';
-import { getPendingImport, setPendingImport, type LoadedFile } from './import/pending';
+import { getPendingImport, onPendingImport, setPendingImport, type LoadedFile } from './import/pending';
 import { newSnapshotId, type Choices } from './import/logic';
 
 type Step = { name: 'choose' } | { name: 'preview'; loaded: LoadedFile } | { name: 'done'; loaded: LoadedFile; result: ImportResult };
@@ -40,6 +40,17 @@ export function ImportView() {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const focusKey = step.name === 'done' ? `done:${step.result.undone}` : step.name;
   const lastFocusKey = useRef(focusKey);
+
+  // An import that arrives while this page is open (from the extension) replaces what is shown.
+  useEffect(
+    () =>
+      onPendingImport((p) => {
+        if (!p) return;
+        setStep((s) => (s.name === 'preview' && s.loaded === p.loaded ? s : { name: 'preview', loaded: p.loaded }));
+        setChoices(p.choices);
+      }),
+    [],
+  );
 
   // Keep the preview (file + choices) while the person visits other pages.
   useEffect(() => {

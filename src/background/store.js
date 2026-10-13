@@ -14,6 +14,8 @@ export const KEYS = {
   STEP_DATA: 'gcx.stepData',
   SNAPSHOT: 'gcx.snapshot',
   OPTIONS: 'gcx.options',
+  SENDABLE: 'gcx.sendable',
+  SCHEDULER_SITE: 'gcx.schedulerSite',
 };
 
 let queue = Promise.resolve();
@@ -64,6 +66,20 @@ export async function getSnapshot() {
 
 export async function setSnapshot(snapshot) {
   await chrome.storage.session.set({ [KEYS.SNAPSHOT]: snapshot });
+}
+
+/** Class scans that can be sent to the Academic Scheduler (scheduler-bridge.js). */
+export async function getSendable() {
+  const data = await chrome.storage.session.get(KEYS.SENDABLE);
+  return data[KEYS.SENDABLE] || [];
+}
+
+export async function setSendable(list) {
+  await chrome.storage.session.set({ [KEYS.SENDABLE]: list });
+}
+
+export async function setSchedulerSite(origin) {
+  await chrome.storage.local.set({ [KEYS.SCHEDULER_SITE]: origin });
 }
 
 export async function getOptions() {

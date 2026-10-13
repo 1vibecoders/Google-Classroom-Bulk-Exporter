@@ -18,6 +18,11 @@ import { AssignmentsView } from './views/AssignmentsView';
 import { ClassesView } from './views/ClassesView';
 import { CommitmentsView } from './views/CommitmentsView';
 import { ImportView } from './views/ImportView';
+import { useExtensionImport } from './views/import/useExtensionImport';
+import { ReviewView } from './views/ReviewView';
+import { useAiAutoApply } from './views/review/useAiAutoApply';
+import { reviewItems } from './lib/ai/proposals';
+import { useAiStatus } from './state/aiStore';
 import { SettingsView } from './views/SettingsView';
 import type { AppState } from './state/reducer';
 
@@ -54,6 +59,10 @@ function Shell() {
   }, [route, requested.name]);
   const { notify, storageProblem } = useStore();
   const editors = useEditors();
+  useExtensionImport();
+  useAiAutoApply();
+  const ai = useAiStatus();
+  const toReview = ai?.configured ? reviewItems(doc, ai.proposals).length : 0;
 
   const exportNow = useCallback(() => {
     const result = createExport(doc, nowLocal());
@@ -87,6 +96,11 @@ function Shell() {
               {item.label}
             </a>
           ))}
+          {ai?.configured ? (
+            <a href={routeToHash({ name: 'review' })} aria-current={route.name === 'review' ? 'page' : undefined}>
+              Review{toReview ? <span className="badge"> {toReview}<span className="visually-hidden"> to review</span></span> : null}
+            </a>
+          ) : null}
         </nav>
         <div className="header-actions">
           <a className={`btn primary ${route.name === 'import' ? 'active' : ''}`} href={routeToHash({ name: 'import' })} aria-current={route.name === 'import' ? 'page' : undefined}>
@@ -147,6 +161,8 @@ function Page({ route }: { route: Route }) {
       return <ImportView />;
     case 'settings':
       return <SettingsView />;
+    case 'review':
+      return <ReviewView />;
     case 'welcome':
       return <OnboardingView />;
   }
