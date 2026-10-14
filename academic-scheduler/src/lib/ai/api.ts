@@ -21,8 +21,9 @@ export async function getAnalysis(): Promise<AnalysisStatus | null> {
   return result?.status === 200 ? (result.body as unknown as AnalysisStatus) : null;
 }
 
-export async function runAnalysis(timezone: string): Promise<(AnalysisStatus & { message?: string; busy?: boolean }) | { error: string }> {
-  const result = await call('/api/analysis', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ timezone }) });
+/** `setup`: the free first run after onboarding (used once; later it is an ordinary run). */
+export async function runAnalysis(timezone: string, setup = false): Promise<(AnalysisStatus & { message?: string; busy?: boolean; limited?: boolean }) | { error: string }> {
+  const result = await call('/api/analysis', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ timezone, ...(setup ? { setup: true } : {}) }) });
   if (!result) return { error: 'The analysis service could not be reached. Check your connection and try again.' };
   if (result.status === 200) return result.body as unknown as AnalysisStatus & { message?: string; busy?: boolean };
   return { error: String(result.body.message ?? 'The analysis failed.') };

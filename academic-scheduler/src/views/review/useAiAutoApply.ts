@@ -38,7 +38,13 @@ export function useAiAutoApply(): void {
     void Promise.all(applied.map((key) => recordDecision(key, 'applied'))).finally(() => {
       busy.current = false;
     });
-    notify(`Applied ${applied.length === 1 ? '1 change' : `${applied.length} changes`} read from Classroom announcements and instructions.`, {
+    const estimates = automatic(reviewItems(state.doc, status.proposals)).filter((i) => applied.includes(i.proposal.key) && i.proposal.kind === 'workload').length;
+    const facts = applied.length - estimates;
+    const said = [
+      facts ? `${facts === 1 ? '1 change' : `${facts} changes`} read from Classroom` : '',
+      estimates ? `AI time estimates for ${estimates === 1 ? '1 assignment' : `${estimates} assignments`}` : '',
+    ].filter(Boolean);
+    notify(`Applied ${said.join(' and ')}.${estimates ? ' Use “Plan unscheduled work” on Assignments to put the work in your free time.' : ''}`, {
       tone: 'success',
       action: {
         label: 'Undo',

@@ -5,7 +5,8 @@
 // (src/lib/ai/proposals.ts); nothing here is trusted as a fact on its own.
 import type { AssignmentType, Confidence, DateOrDateTimeStr, Id } from './types';
 
-export type ProposalKind = 'due_change' | 'new_assessment' | 'estimate';
+/** estimate: a time the text states; workload: the AI's own estimate (SPEC.md § 24.1), `excerpt` is its short basis. */
+export type ProposalKind = 'due_change' | 'new_assessment' | 'estimate' | 'workload';
 
 export interface AiProposal {
   /** Stable for the same evidence and value, so a decision is not asked again (§ 16.4). */
@@ -39,5 +40,9 @@ export interface AnalysisStatus {
   /** Sources waiting for analysis (new or changed since the last analysis). */
   pending: number;
   budget: { limit: number; used: number };
-  lastRun?: { at: string; analyzed: number; reused: number; failed: number; trigger: 'user' | 'background' };
+  /** Runs the person started that used the AI, in the last 24 hours; `nextAt` when none is left. */
+  runs?: { limit: number; used: number; nextAt?: string };
+  /** The free first run after setup has not been used yet. */
+  setupAvailable?: boolean;
+  lastRun?: { at: string; analyzed: number; reused: number; failed: number; trigger: 'user' | 'background' | 'setup' };
 }

@@ -19,7 +19,7 @@ test('sure findings are applied with Undo; others wait in Review until decided',
   });
   await loadExample(page);
 
-  await expect(page.getByText('Applied 1 change read from Classroom announcements and instructions.')).toBeVisible();
+  await expect(page.getByText('Applied 1 change read from Classroom.')).toBeVisible();
   await navTo(page, 'Assignments');
   await expect(page.getByText('Unit 3 quiz').first()).toBeVisible();
 

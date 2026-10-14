@@ -168,8 +168,8 @@ describe('onboarding wizard', () => {
     expect(currentStep()).toContain('Review');
     expect(text()).toContain('Swim practice Mon and Wed 4–6 PM.');
     expect(text()).toContain('1 window');
-    expect(button('Finish setup').disabled).toBe(false);
-    await click(button('Finish setup'));
+    expect(button('Finish and create my schedule').disabled).toBe(false);
+    await click(button('Finish and create my schedule'));
     expect(window.location.hash).toBe('#/day/2026-10-07');
     expect(localStorage.getItem('academic-scheduler:onboarding-step')).toBeNull();
   });
@@ -193,7 +193,7 @@ describe('onboarding wizard', () => {
     await mount(doc({ availability: [WINDOW] }), '#/welcome');
     expect(currentStep()).toContain('Review');
     expect(text()).toContain('Still required');
-    expect(button('Finish setup').disabled).toBe(true);
+    expect(button('Finish and create my schedule').disabled).toBe(true);
     await click(button('a description of your commitments'));
     expect(currentStep()).toContain('Commitments');
   });

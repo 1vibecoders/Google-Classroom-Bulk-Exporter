@@ -1,6 +1,7 @@
 // AI analysis routes (deployed by the files in api/).
 //   GET  /api/analysis          proposals, pending work, budget, last run (no AI call)
 //   POST /api/analysis          analyze what is pending → the same status
+//                               { timezone, setup?: true } (setup: the free first run after onboarding)
 //   POST /api/review            record a decision on a proposal { key, decision }
 //   GET  /api/cron/analyze      the daily background job (Vercel Cron, bearer CRON_SECRET)
 import { timingSafeEqual } from 'node:crypto';
@@ -30,12 +31,17 @@ export function postAnalysis(request: Request): Promise<Response> {
   return withContext(async (context) => {
     const user = await sessionUser(context, request);
     if (!user) return error(401, 'signed_out', 'Sign in with Google first.');
-    const { timezone } = await body(request);
+    const { timezone, setup } = await body(request);
     if (!isTimeZone(timezone)) return error(400, 'bad_timezone', 'The request did not include a valid time zone.');
     if (!context.ai) return error(503, 'ai_off', 'AI analysis is not set up on this server.');
     await context.db.query('UPDATE users SET timezone = $2 WHERE id = $1', [user.id, timezone]);
-    const outcome = await runAnalysis(context, user.id, timezone, 'user');
-    return json({ ...outcome.status, ...(outcome.message ? { message: outcome.message } : {}), ...(outcome.kind === 'busy' ? { busy: true } : {}) });
+    const outcome = await runAnalysis(context, user.id, timezone, setup === true ? 'setup' : 'user');
+    return json({
+      ...outcome.status,
+      ...(outcome.message ? { message: outcome.message } : {}),
+      ...(outcome.kind === 'busy' ? { busy: true } : {}),
+      ...(outcome.kind === 'limited' ? { limited: true } : {}),
+    });
   });
 }
 

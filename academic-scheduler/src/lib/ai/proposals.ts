@@ -68,14 +68,22 @@ export function reviewItems(doc: ScheduleDocument, proposals: AiProposal[]): Rev
   // Texts that disagree about the same work (§ 14.3): each waits for the person, never "the last one read wins".
   const values = new Map<string, Set<string>>();
   for (const p of proposals) if (p.assignmentId) values.set(`${p.kind}:${p.assignmentId}`, (values.get(`${p.kind}:${p.assignmentId}`) ?? new Set()).add(String(p.value)));
+  // A time the teacher states beats the AI's own estimate of the same work.
+  const stated = new Set(proposals.filter((p) => p.kind === 'estimate').map((p) => p.assignmentId));
   for (const p of proposals) {
     const className = classes.get(p.classId);
     // Not imported yet: it waits until the class and its work are in the schedule.
     if (!className) continue;
+    if (p.kind === 'workload' && stated.has(p.assignmentId)) continue;
     const reasons: string[] = [];
-    if (p.confidence.identity !== 'high') reasons.push(p.kind === 'new_assessment' ? 'Not sure this is a separate assessment.' : 'Not sure which assignment this is about.');
-    if (p.confidence.value !== 'high') reasons.push(p.kind === 'estimate' ? 'The time is uncertain.' : 'The date is uncertain.');
-    if (!p.explicit) reasons.push('Worked out from words like “Friday”, not stated as a date.');
+    if (p.kind === 'workload') {
+      // An estimate is never stated; only a low-confidence one waits for the person.
+      if (p.confidence.value === 'low') reasons.push('The AI had little to go on; check the time.');
+    } else {
+      if (p.confidence.identity !== 'high') reasons.push(p.kind === 'new_assessment' ? 'Not sure this is a separate assessment.' : 'Not sure which assignment this is about.');
+      if (p.confidence.value !== 'high') reasons.push(p.kind === 'estimate' ? 'The time is uncertain.' : 'The date is uncertain.');
+      if (!p.explicit) reasons.push('Worked out from words like “Friday”, not stated as a date.');
+    }
     if (p.assignmentId && (values.get(`${p.kind}:${p.assignmentId}`)?.size ?? 0) > 1) reasons.push('Other Classroom texts give a different value.');
     if (p.kind === 'new_assessment') {
       if (existingNew(doc, p)) continue;
@@ -101,7 +109,7 @@ export function reviewItems(doc: ScheduleDocument, proposals: AiProposal[]): Rev
 
 function sourceOf(p: AiProposal): Source {
   const what = { announcement: 'Announcement', coursework: 'Classroom instructions', document: 'Course document' }[p.source.kind];
-  const label = Array.from(`${what}: “${p.excerpt}”`).slice(0, 200).join('');
+  const label = Array.from(p.kind === 'workload' ? `AI workload estimate: ${p.excerpt}` : `${what}: “${p.excerpt}”`).slice(0, 200).join('');
   return { kind: 'google_classroom', ...(p.source.url ? { url: p.source.url } : {}), label };
 }
 
@@ -127,7 +135,7 @@ export function applyProposal(doc: ScheduleDocument, item: ReviewItem, byPerson:
       Object.assign(a, fitToDue(a, previous, next.scheduleBlocks, resolveSettings(next.settings).defaultDueTime));
     } else {
       a.estimatedMinutes = Number(value);
-      a.estimateBasis = Array.from(`Stated in Classroom: “${p.excerpt}”`).slice(0, 2000).join('');
+      a.estimateBasis = Array.from(p.kind === 'workload' ? `AI estimate: ${p.excerpt}` : `Stated in Classroom: “${p.excerpt}”`).slice(0, 2000).join('');
       a.estimateConfidence = p.confidence.value;
       delete a.estimateRange;
     }

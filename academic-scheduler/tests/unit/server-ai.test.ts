@@ -10,6 +10,7 @@ import { setTestContext, type Context } from '../../server/context';
 import { AiError, type AiProvider, type StructuredRequest } from '../../server/ai/provider';
 import { anthropicProvider } from '../../server/ai/anthropic';
 import { checkProposals, type ExtractInput } from '../../server/ai/extract';
+import { checkEstimates, roundMinutes } from '../../server/ai/estimate';
 import { AI_DAILY_CALLS, analysisStatus, recordDecision, runAnalysis } from '../../server/analysis';
 import { cronAnalyze, postReview } from '../../server/aiRoutes';
 import type { GoogleApi } from '../../server/google';
@@ -77,8 +78,12 @@ describe('checking the AI output', () => {
 
 let pg: PGlite;
 let db: Db;
+/** Fact-extraction requests; workload estimate requests are kept apart in estimateCalls. */
 let calls: StructuredRequest[];
+let estimateCalls: StructuredRequest[];
 let answer: (request: StructuredRequest) => unknown;
+/** 100 minutes for every listed item unless a test says otherwise. */
+let estimate = (work: Array<{ id: string }>): unknown => ({ estimates: work.map((w) => ({ id: w.id, minutes: 100, confidence: 'medium', basis: 'Short written work' })) });
 let failWith: AiError | null;
 let context: Context;
 
@@ -86,8 +91,9 @@ const fakeAi: AiProvider = {
   name: 'fake',
   model: 'fake-model',
   async structured(request) {
-    calls.push(request);
+    (request.task === 'estimate' ? estimateCalls : calls).push(request);
     if (failWith) throw failWith;
+    if (request.task === 'estimate') return { output: estimate(JSON.parse(request.input).work), model: 'fake-model', usage: { inputTokens: 100, outputTokens: 20 } };
     return { output: answer(request), model: 'fake-model', usage: { inputTokens: 100, outputTokens: 20 } };
   },
 };
@@ -105,6 +111,8 @@ beforeEach(async () => {
   db = pgliteDb(pg);
   await migrate(db);
   calls = [];
+  estimateCalls = [];
+  estimate = (work) => ({ estimates: work.map((w) => ({ id: w.id, minutes: 100, confidence: 'medium', basis: 'Short written work' })) });
   failWith = null;
   answer = (request) => {
     const input = JSON.parse(request.input) as { texts: Array<{ id: string; text: string }> };
@@ -138,7 +146,8 @@ describe('analysis runs', () => {
     const texts = JSON.parse(calls[0].input).texts as Array<{ id: string; kind: string; attachedTo?: string[] }>;
     expect(texts.find((t) => t.kind === 'document')).toEqual(expect.objectContaining({ id: 'doc_1234567890', attachedTo: ['gc-OTAx'] }));
     expect(texts.map((t) => t.id)).not.toContain('img_1234567890');
-    expect(result.status).toMatchObject({ pending: 0, lastRun: { analyzed: 3 } });
+    // 3 texts and 2 pieces of work to estimate.
+    expect(result.status).toMatchObject({ pending: 0, lastRun: { analyzed: 5 } });
   });
 
   it('analyzes new texts once and reuses the result while they are unchanged', async () => {
@@ -147,12 +156,14 @@ describe('analysis runs', () => {
     // Coursework without instructions never reaches the AI.
     expect(JSON.parse(calls[0].input).texts.map((t: { id: string }) => t.id).sort()).toEqual(['ODAx', 'OTAx']);
     expect(calls[0].system).toContain('Never answer questions, solve problems');
-    expect(first.status.proposals).toEqual([expect.objectContaining({ kind: 'due_change', assignmentId: 'gc-OTAx', value: '2026-10-16' })]);
-    expect(first.status).toMatchObject({ pending: 0, budget: { used: 1 }, lastRun: { analyzed: 2, reused: 0, failed: 0, trigger: 'user' } });
+    expect(first.status.proposals.filter((p) => p.kind !== 'workload')).toEqual([expect.objectContaining({ kind: 'due_change', assignmentId: 'gc-OTAx', value: '2026-10-16' })]);
+    // One extraction and one estimate request: 2 texts and 2 pieces of work.
+    expect(first.status).toMatchObject({ pending: 0, budget: { used: 2 }, lastRun: { analyzed: 4, reused: 0, failed: 0, trigger: 'user' } });
 
     const again = await runAnalysis(context, 'u1', TZ, 'user');
     expect(calls).toHaveLength(1);
-    expect(again.status.lastRun).toMatchObject({ analyzed: 0, reused: 2 });
+    expect(estimateCalls).toHaveLength(1);
+    expect(again.status.lastRun).toMatchObject({ analyzed: 0, reused: 4 });
 
     await record('announcement', 'ODAx', { text: 'The Othello essay is now due Friday. Bring a printed copy.', postedAt: '2026-10-07T08:00:00' });
     expect((await analysisStatus(context, 'u1')).pending).toBe(1);
@@ -163,13 +174,14 @@ describe('analysis runs', () => {
 
   it('hides decided proposals; a deferred one comes back after a week', async () => {
     const { status } = await runAnalysis(context, 'u1', TZ, 'user');
+    const facts = async () => (await analysisStatus(context, 'u1')).proposals.filter((p) => p.kind !== 'workload');
     const key = status.proposals[0].key;
     await recordDecision(db, 'u1', key, 'rejected');
-    expect((await analysisStatus(context, 'u1')).proposals).toEqual([]);
+    expect(await facts()).toEqual([]);
     await recordDecision(db, 'u1', key, 'deferred');
-    expect((await analysisStatus(context, 'u1')).proposals).toEqual([]);
+    expect(await facts()).toEqual([]);
     await db.query(`UPDATE ai_reviews SET decided_at = now() - interval '8 days'`);
-    expect((await analysisStatus(context, 'u1')).proposals).toHaveLength(1);
+    expect(await facts()).toHaveLength(1);
   });
 
   it('keeps to the daily budget and leaves the rest pending', async () => {
@@ -177,16 +189,82 @@ describe('analysis runs', () => {
     const outcome = await runAnalysis(context, 'u1', TZ, 'user');
     expect(calls).toHaveLength(0);
     expect(outcome.message).toContain('daily AI budget');
-    expect(outcome.status.pending).toBe(2);
+    expect(outcome.status.pending).toBe(4);
+  });
+
+  it('allows 3 planning runs per 24 hours that used the AI; runs with nothing new do not count', async () => {
+    const counted = async () => (await analysisStatus(context, 'u1')).runs;
+    await runAnalysis(context, 'u1', TZ, 'user');
+    await runAnalysis(context, 'u1', TZ, 'user');
+    expect(await counted()).toEqual({ limit: 3, used: 1 });
+    await db.query(`INSERT INTO ai_runs (user_id, trigger, status, counted) VALUES ('u1', 'user', 'ok', true), ('u1', 'user', 'ok', true)`);
+    await record('announcement', 'ODAx', { text: 'Changed again.', postedAt: '2026-10-08T08:00:00' });
+    const limited = await runAnalysis(context, 'u1', TZ, 'user');
+    expect(limited.kind).toBe('limited');
+    expect(limited.message).toMatch(/^You used your 3 AI planning runs for the last 24 hours\. The next one is available /);
+    expect(limited.status.runs).toMatchObject({ limit: 3, used: 3, nextAt: expect.any(String) });
+    expect(calls).toHaveLength(1);
+    // Older than 24 hours: available again.
+    await db.query(`UPDATE ai_runs SET started_at = now() - interval '25 hours'`);
+    expect((await runAnalysis(context, 'u1', TZ, 'user')).kind).toBe('ok');
+  });
+
+  it('gives the first setup run free, outside the run limit and the daily call budget, once', async () => {
+    await db.query(`INSERT INTO ai_runs (user_id, trigger, status, calls, counted) VALUES ('u1', 'user', 'ok', $1, true), ('u1', 'user', 'ok', 0, true), ('u1', 'user', 'ok', 0, true)`, [
+      AI_DAILY_CALLS,
+    ]);
+    expect((await analysisStatus(context, 'u1')).setupAvailable).toBe(true);
+    const setup = await runAnalysis(context, 'u1', TZ, 'setup');
+    expect(setup.kind).toBe('ok');
+    expect(calls.length + estimateCalls.length).toBe(2);
+    expect(setup.status).toMatchObject({ pending: 0, setupAvailable: false, runs: { used: 3 }, budget: { used: AI_DAILY_CALLS } });
+    // Used once: a second setup request is an ordinary run, and none is left.
+    expect((await runAnalysis(context, 'u1', TZ, 'setup')).kind).toBe('limited');
   });
 
   it('does not cache a failed call, so it is retried later', async () => {
     failWith = new AiError('down', 'unavailable', true);
     const outcome = await runAnalysis(context, 'u1', TZ, 'user');
     expect(outcome.message).toContain('could not be used right now');
-    expect(outcome.status).toMatchObject({ pending: 2, lastRun: { failed: 2 } });
+    // The estimates wait too: a run that failed does not go on to them.
+    expect(estimateCalls).toHaveLength(0);
+    expect(outcome.status).toMatchObject({ pending: 4, lastRun: { failed: 2 } });
     failWith = null;
     expect((await runAnalysis(context, 'u1', TZ, 'background')).status.pending).toBe(0);
+  });
+
+  it('estimates the work once from its instructions and documents, rounded, and again only when they change', async () => {
+    await record('document', 'doc_1234567890', { title: 'Essay rubric', status: 'ok', text: 'Four pages, MLA format.', parents: [{ kind: 'coursework', sourceId: 'OTAx' }], via: 'drive' });
+    await record('coursework', 'OTAz', { title: 'Done already', turnedIn: true });
+    const { status } = await runAnalysis(context, 'u1', TZ, 'user');
+    const work = JSON.parse(estimateCalls[0].input).work as Array<{ id: string; instructions?: string; documents?: string[] }>;
+    // Turned-in work is not estimated.
+    expect(work.map((w) => w.id)).toEqual(['gc-OTAx', 'gc-OTAy']);
+    expect(work[0]).toMatchObject({ instructions: 'Write four pages.', documents: ['Essay rubric: Four pages, MLA format.'] });
+    expect(estimateCalls[0].system).toContain('Never answer questions, solve problems or write any part of the work');
+    expect(status.proposals.filter((p) => p.kind === 'workload')).toEqual([
+      expect.objectContaining({ assignmentId: 'gc-OTAx', value: 105, explicit: false, excerpt: 'Short written work', confidence: { identity: 'high', value: 'medium' } }),
+      expect.objectContaining({ assignmentId: 'gc-OTAy', value: 105 }),
+    ]);
+    await runAnalysis(context, 'u1', TZ, 'user');
+    expect(estimateCalls).toHaveLength(1);
+    await record('coursework', 'OTAy', { title: 'Vocab quiz', description: 'Learn 40 words.' });
+    expect((await analysisStatus(context, 'u1')).pending).toBe(2);
+    await runAnalysis(context, 'u1', TZ, 'user');
+    expect(JSON.parse(estimateCalls[1].input).work.map((w: { id: string }) => w.id)).toEqual(['gc-OTAy']);
+  });
+
+  it('drops estimates for unknown work, impossible times and missing fields', () => {
+    const input = { classId: 'gc-class-MTEx', className: 'English 10', work: [{ id: 'gc-OTAx', title: 'Essay' }, { id: 'gc-OTAy', title: 'Quiz' }] };
+    const e = (fields: Record<string, unknown>) => ({ id: 'gc-OTAx', minutes: 50, confidence: 'low', basis: 'Title only', ...fields });
+    const { proposals, rejected } = checkEstimates(
+      { estimates: [e({}), e({}), e({ id: 'gc-nope' }), e({ id: 'gc-OTAy', minutes: 0 }), e({ id: 'gc-OTAy', minutes: 5000 }), e({ id: 'gc-OTAy', confidence: 'sure' }), e({ id: 'gc-OTAy', basis: ' ' })] },
+      input,
+    );
+    expect(proposals).toEqual([expect.objectContaining({ kind: 'workload', assignmentId: 'gc-OTAx', value: 45, source: { kind: 'coursework', id: 'OTAx' } })]);
+    expect(rejected).toBe(6);
+    expect([7, 50, 119, 125, 140, 600].map(roundMinutes)).toEqual([15, 45, 120, 120, 150, 600]);
+    expect(checkEstimates('nonsense', input)).toEqual({ proposals: [], rejected: 0 });
   });
 
   it('refuses a second run while one is running, and reports when AI is off', async () => {

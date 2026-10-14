@@ -4,6 +4,9 @@
 // optional steps with sensible defaults. Every answer is saved in the schedule
 // as soon as it is given, and the current step in this browser, so the wizard
 // resumes after a refresh. The app shows this page until both answers exist.
+// Finishing builds the first schedule (lib/ai/firstSchedule.ts): with AI set
+// up, the free setup run reads and estimates everything brought in; the
+// fixed-rule planner then places the work, undoable in one step.
 import { useState } from 'react';
 import '../styles/import.css';
 import '../styles/lists.css';
@@ -15,6 +18,11 @@ import { navigate, routeToHash } from '../router';
 import { resolveSettings } from '../model/constants';
 import { describePlannerRules } from '../lib/planner';
 import { onboardingNeeds, type OnboardingNeed } from '../lib/onboarding';
+import { firstSchedule } from '../lib/ai/firstSchedule';
+import { recordDecision } from '../lib/ai/api';
+import { nowLocal } from '../lib/time';
+import { setAiStatus, useAiStatus } from '../state/aiStore';
+import { newSnapshotId } from './import/logic';
 import { ClassroomSyncCard } from './ClassroomSyncCard';
 import { CommitmentsDescriptionForm } from './CommitmentsDescriptionForm';
 import { EventRow, WindowRow } from './CommitmentsView';
@@ -43,7 +51,10 @@ function writeStep(n: number | null): void {
 }
 
 export function OnboardingView() {
-  const { state, notify } = useStore();
+  const { state, dispatch, notify } = useStore();
+  const ai = useAiStatus();
+  const [building, setBuilding] = useState(false);
+  const freeAi = !!ai?.configured && ai.setupAvailable !== false;
   const doc = state.doc;
   const editors = useEditors();
   const today = useToday();
@@ -63,10 +74,32 @@ export function OnboardingView() {
     else go(1);
   };
 
-  const finish = () => {
-    if (needs.length) return;
+  const finish = async () => {
+    if (needs.length || building) return;
+    setBuilding(true);
+    const built = await firstSchedule(doc, freeAi, Intl.DateTimeFormat().resolvedOptions().timeZone);
+    setBuilding(false);
     writeStep(null);
-    notify('Setup complete. You can change any of this later in Settings and Commitments.', { tone: 'success' });
+    if (built.status) setAiStatus(built.status);
+    const parts = ['Setup complete.'];
+    if (built.sessions) parts.push(`Planned ${built.sessions} work ${built.sessions === 1 ? 'session' : 'sessions'} in your free study time.`);
+    if (built.estimated) parts.push(`The AI estimated the time for ${built.estimated} ${built.estimated === 1 ? 'assignment' : 'assignments'}; you can edit any estimate.`);
+    if (built.problem) parts.push(`AI could not be used: ${built.problem}`);
+    if (built.doc !== doc) {
+      const snapshotId = newSnapshotId();
+      dispatch({ type: 'replaceDocument', doc: built.doc, label: 'Your first schedule', now: nowLocal(), snapshotId });
+      for (const key of built.applied) void recordDecision(key, 'applied');
+      notify(parts.join(' '), {
+        tone: built.problem ? 'warning' : 'success',
+        action: {
+          label: 'Undo',
+          run: () => {
+            dispatch({ type: 'undo', snapshotId });
+            for (const key of built.applied) void recordDecision(key, 'rejected');
+          },
+        },
+      });
+    } else notify(`${parts.join(' ')} You can change any of this later in Settings and Commitments.`, { tone: built.problem ? 'warning' : 'success' });
     navigate({ name: 'day', date: today });
   };
 
@@ -190,7 +223,7 @@ export function OnboardingView() {
                 <Icon name="upload" /> Import a schedule file
               </a>
             </div>
-            <ClassroomSyncCard />
+            <ClassroomSyncCard analyze={false} />
             <div className="row">
               <button type="button" className="btn ghost" onClick={() => go(2)}>
                 Back
@@ -216,6 +249,12 @@ export function OnboardingView() {
               <dd>{doc.events.length ? `${doc.events.length}` : 'None yet (optional)'}</dd>
               <dt>Classes</dt>
               <dd>{doc.classes.length ? `${doc.classes.length}` : 'None yet (optional)'}</dd>
+              <dt>Your first schedule</dt>
+              <dd>
+                {freeAi
+                  ? 'Finishing reads your classes, announcements and documents with AI (free this once, not counted toward the 3 daily planning runs), estimates how long each assignment takes, and plans the work into your free study time.'
+                  : 'Finishing plans the work that has a time estimate into your free study time.'}
+              </dd>
               <dt>How work will be planned</dt>
               <dd>
                 <ul>
@@ -246,8 +285,8 @@ export function OnboardingView() {
               <button type="button" className="btn ghost" onClick={() => go(3)}>
                 Back
               </button>
-              <button type="button" className="btn primary" onClick={finish} disabled={needs.length > 0}>
-                Finish setup
+              <button type="button" className="btn primary" onClick={() => void finish()} disabled={needs.length > 0 || building}>
+                {building ? 'Creating your schedule…' : 'Finish and create my schedule'}
               </button>
             </div>
           </div>

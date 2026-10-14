@@ -36,7 +36,7 @@ test('first-run setup requires study time and a commitments description, then op
   await page.getByRole('button', { name: 'Next' }).click();
   await page.getByRole('button', { name: 'Next' }).click();
   await expect(page.getByText('Swim practice Mon and Wed 4–6 PM. Library job Saturday mornings.')).toBeVisible();
-  await page.getByRole('button', { name: 'Finish setup' }).click();
+  await page.getByRole('button', { name: 'Finish and create my schedule' }).click();
   await expect(page).toHaveURL(/#\/day\/2026-10-07$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Wednesday, October 7' })).toBeVisible();
 

@@ -255,9 +255,21 @@ part of the work (SPEC § 7), and texts are treated as data, not instructions.
   *Reject* or *Later*. A date you set yourself, or a different due date that
   Classroom gives, is never replaced without you; texts that disagree are shown,
   not settled by whichever was read last. Decisions are remembered.
-- **Cost controls:** a text is sent again only when it changes (or the task or model
-  changes); texts without content are never sent; at most 20 AI requests per
-  person per 24 hours and 8 per run; tokens are logged as the provider reports them.
+- **Workload estimates:** the AI also estimates how long each piece of work not yet
+  turned in takes, from its title, points, instructions and attached documents
+  (rounded to 15 minutes below 2 hours, 30 above; labelled *AI estimate* with a
+  confidence). Estimates fill only missing times (a time the teacher states wins,
+  a low-confidence guess waits in Review); *Plan unscheduled work* then places the
+  work with its fixed rules. The AI never builds the calendar itself (SPEC § 23).
+- **First schedule:** finishing the setup runs the AI once for free on everything
+  brought in, applies the safe findings and estimates, and plans the work into
+  your free study time, undoable in one step.
+- **Cost controls:** 3 planning runs per person per rolling 24 hours (like syncs),
+  counted only when a run used the AI; the free setup run and the daily background
+  check do not count. A text is sent again only when it changes (or the task or
+  model changes); texts without content are never sent; at most 20 AI requests per
+  person per 24 hours and 8 per run (20 for the setup run); tokens are logged as
+  the provider reports them.
 - **What is sent** to the provider (Anthropic if `ANTHROPIC_API_KEY` is set,
   otherwise Gemini if `GEMINI_API_KEY` is set; `AI_PROVIDER` picks one when both
   are): the class name, its assignments' titles and due dates, and the new or

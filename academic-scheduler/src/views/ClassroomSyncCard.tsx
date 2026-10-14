@@ -27,7 +27,8 @@ function allowanceText(a: SyncAllowance): string {
   return `No syncs left: the next one is available ${next}.`;
 }
 
-export function ClassroomSyncCard() {
+/** `analyze`: read the new data with AI after a sync (off during setup, where finishing does it for free). */
+export function ClassroomSyncCard({ analyze = true }: { analyze?: boolean } = {}) {
   const { state, notify } = useStore();
   const confirm = useConfirm();
   const [view, setView] = useState<State>({ kind: 'loading' });
@@ -65,7 +66,7 @@ export function ClassroomSyncCard() {
     }
     setAllowance(result.allowance);
     // New Classroom data: read what changed with AI in the background (SPEC.md § 17.1); findings appear in Review.
-    if (getAiStatus()?.configured) void runAnalysis(Intl.DateTimeFormat().resolvedOptions().timeZone).then((r) => 'error' in r || setAiStatus(r));
+    if (analyze && getAiStatus()?.configured) void runAnalysis(Intl.DateTimeFormat().resolvedOptions().timeZone).then((r) => 'error' in r || setAiStatus(r));
     const failed = openBatchPreview(state.doc, result.batch, SYNC_FILE_NAME);
     if (failed) {
       setProblem(failed);

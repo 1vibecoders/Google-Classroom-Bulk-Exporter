@@ -30,6 +30,7 @@ function heading(item: ReviewItem): string {
 }
 
 function sourceLine(p: AiProposal, year: number): string {
+  if (p.kind === 'workload') return 'The AI estimated this from the assignment’s title, points, instructions and documents:';
   const what = { announcement: 'An announcement', coursework: 'The assignment’s instructions', document: 'A course document' }[p.source.kind];
   return p.source.postedAt ? `${what} (${formatWhen(p.source.postedAt, year)}) says:` : `${what} say${p.source.kind === 'coursework' ? '' : 's'}:`;
 }
@@ -84,7 +85,7 @@ function ReviewCard({ item, year, onDone }: { item: ReviewItem; year: number; on
         </dl>
         <div>
           <div className="small">{sourceLine(p, year)}</div>
-          <blockquote className="ls-text small">“{p.excerpt}”</blockquote>
+          <blockquote className="ls-text small">{p.kind === 'workload' ? p.excerpt : `“${p.excerpt}”`}</blockquote>
           {href ? (
             <a className="small" href={href} target="_blank" rel="noopener noreferrer">
               Open in Classroom<span className="visually-hidden"> (opens in a new tab)</span>
@@ -104,7 +105,7 @@ function ReviewCard({ item, year, onDone }: { item: ReviewItem; year: number; on
         ) : null}
         <div className="small muted">
           Confidence — {item.field === 'new' ? 'that it is new' : 'which work'}: {CONFIDENCE_WORDS[p.confidence.identity]}, {item.field === 'estimate' ? 'time' : 'date'}:{' '}
-          {CONFIDENCE_WORDS[p.confidence.value]}. {p.explicit ? 'Stated in the text.' : 'Worked out, not stated.'}
+          {CONFIDENCE_WORDS[p.confidence.value]}. {p.kind === 'workload' ? 'An estimate, not stated by the teacher.' : p.explicit ? 'Stated in the text.' : 'Worked out, not stated.'}
         </div>
         {editing ? (
           <div className="row">

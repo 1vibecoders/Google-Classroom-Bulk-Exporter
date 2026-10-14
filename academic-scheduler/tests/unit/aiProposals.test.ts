@@ -104,6 +104,25 @@ describe('AI proposals against the schedule', () => {
     expect(reviewItems(example(), [estimate])[0].reasons).toEqual(['There is already an estimate.']);
   });
 
+  it('fills missing times with the AI’s own estimates, labelled as such; a stated time wins and a weak guess waits', () => {
+    const doc = example();
+    doc.assignments.find((a) => a.id === 'gc-NzAwMDAwMDAwMDAz')!.estimatedMinutes = undefined;
+    const guess = proposal({ kind: 'workload', assignmentId: 'gc-NzAwMDAwMDAwMDAz', value: 45, explicit: false, excerpt: 'One-page worksheet', confidence: { identity: 'high', value: 'medium' } });
+    const [item] = automatic(reviewItems(doc, [guess]));
+    const result = applyProposal(doc, item, false);
+    if (!('doc' in result)) throw new Error(result.error);
+    expect(result.doc.assignments.find((a) => a.id === 'gc-NzAwMDAwMDAwMDAz')).toMatchObject({
+      estimatedMinutes: 45,
+      estimateBasis: 'AI estimate: One-page worksheet',
+      estimateConfidence: 'medium',
+    });
+    const stated = proposal({ key: 'j'.repeat(32), kind: 'estimate', assignmentId: 'gc-NzAwMDAwMDAwMDAz', value: 30, excerpt: 'about 30 minutes' });
+    expect(reviewItems(doc, [guess, stated]).map((i) => i.proposal.kind)).toEqual(['estimate']);
+    const weak = { ...guess, confidence: { identity: 'high' as const, value: 'low' as const } };
+    expect(automatic(reviewItems(doc, [weak]))).toEqual([]);
+    expect(reviewItems(doc, [weak])[0].reasons).toEqual(['The AI had little to go on; check the time.']);
+  });
+
   it('moves planned steps to fit an earlier due date and flags the plan, and waits for work not imported yet', () => {
     const doc = example();
     // The essay has planned steps and sessions after this date.

@@ -38,7 +38,7 @@ export function AiAnalysisCard() {
         ) : (
           <>
             <p className="small">
-              After each sync, an AI reads new or changed announcements, assignment instructions and course documents for changed due dates, announced quizzes and tests, and stated
+              After each sync, an AI reads new or changed announcements, assignment instructions and course documents for changed due dates, announced quizzes and tests, estimates how long each assignment takes, and notes stated
               time estimates. It never does your work. Findings go to <a href={routeToHash({ name: 'review' })}>Review</a>.
             </p>
             <label className="small">
@@ -58,10 +58,13 @@ export function AiAnalysisCard() {
                 ? `Last read ${new Date(last.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}${last.trigger === 'background' ? ' (daily background check)' : ''}: ${last.analyzed} read, ${last.reused} unchanged and reused${last.failed ? `, ${last.failed} could not be read` : ''}.`
                 : 'Nothing read yet.'}{' '}
               {status.pending ? `${status.pending} new or changed texts are waiting. ` : ''}
-              {status.budget.used} of {status.budget.limit} AI requests used in the last 24 hours.
+              {status.runs ? `${status.runs.used} of ${status.runs.limit} planning runs used in the last 24 hours` : ''}
+              {status.runs?.nextAt ? ` (next one ${new Date(status.runs.nextAt).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })})` : ''}
+              {status.runs ? '; ' : ''}
+              {status.budget.used} of {status.budget.limit} AI requests used.
             </p>
             <div className="row">
-              <button type="button" className="btn" onClick={() => void analyze()} disabled={busy}>
+              <button type="button" className="btn" onClick={() => void analyze()} disabled={busy || (!!status.runs && status.runs.used >= status.runs.limit)}>
                 {busy ? 'Reading…' : 'Read new announcements now'}
               </button>
             </div>
