@@ -129,6 +129,27 @@ describe('the first schedule', () => {
     expect(built).toMatchObject({ review: 1, dueChanges: 1 });
   });
 
+  it('reads on while the server says there is more, and plans once everything was read', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-12T08:00:00') });
+    const doc = example();
+    const grammar = doc.assignments.find((a) => a.id === GRAMMAR)!;
+    grammar.estimatedMinutes = undefined;
+    grammar.sourceState = 'present';
+    const bodies: Array<Record<string, unknown>> = [];
+    vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+      bodies.push(body);
+      const done = bodies.length === 3;
+      return new Response(JSON.stringify({ configured: true, proposals: done ? [ESTIMATE] : [], pending: done ? 0 : 5, budget: { limit: 60, used: bodies.length }, ...(done ? {} : { more: true }) }), {
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    const built = await firstSchedule(doc, true, 'America/New_York');
+    expect(bodies.map((b) => b.continue === true)).toEqual([false, true, true]);
+    expect(built.applied).toEqual([ESTIMATE.key]);
+    expect(built.problem).toBeUndefined();
+  });
+
   it('plans without AI when it is not set up, and says why when the AI fails', async () => {
     const doc = example();
     expect((await firstSchedule(doc, false, 'America/New_York')).status).toBeNull();

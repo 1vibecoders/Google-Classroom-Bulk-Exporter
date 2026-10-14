@@ -66,13 +66,13 @@ export interface AnalysisStatus {
   runs?: { limit: number; used: number; nextAt?: string };
   /** The free first run after setup has not been used yet. */
   setupAvailable?: boolean;
-  lastRun?: { at: string; analyzed: number; reused: number; failed: number; trigger: 'user' | 'background' | 'setup'; error?: string };
+  lastRun?: { at: string; analyzed: number; reused: number; failed: number; trigger: 'user' | 'background' | 'setup' | 'continue'; error?: string };
   /** Tokens as the AI provider reported them: the last 24 hours, and the last 10 runs. */
   usage?: {
     day: { calls: number; inputTokens: number; outputTokens: number };
     runs: Array<{
       at: string;
-      trigger: 'user' | 'background' | 'setup';
+      trigger: 'user' | 'background' | 'setup' | 'continue';
       status: string;
       calls: number;
       inputTokens: number;

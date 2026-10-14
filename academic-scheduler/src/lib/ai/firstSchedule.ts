@@ -8,7 +8,10 @@ import type { AnalysisStatus } from '../../model/aiProposal';
 import type { ScheduleDocument } from '../../model/types';
 import { DEFAULT_HORIZON_DAYS, planUnscheduledWork } from '../planner';
 import { nowLocal, todayLocal } from '../time';
-import { runAnalysis } from './api';
+import { continueAnalysis, runAnalysis } from './api';
+
+/** As many as the server allows per chain (server/analysis.ts MAX_CONTINUATIONS). */
+const MAX_CONTINUATIONS = 8;
 import { applyCommitments } from './commitments';
 import { uploadSources } from './sources';
 import { applyProposal, automatic, reviewItems } from './proposals';
@@ -42,10 +45,19 @@ export async function firstSchedule(doc: ScheduleDocument, useAi: boolean, timez
   let review = 0;
   let dueChanges = 0;
   if (useAi) {
-    const result = await runAnalysis(timezone, true, doc.settings?.commitmentsDescription, uploadSources(doc));
+    let result = await runAnalysis(timezone, true, doc.settings?.commitmentsDescription, uploadSources(doc));
+    // A big import is read in several requests, like /academic-schedule reads every file: plan only once all of it was read.
+    for (let i = 0; !('error' in result) && result.more && i < MAX_CONTINUATIONS; i++) {
+      const next = await continueAnalysis(timezone);
+      if ('error' in next) {
+        problem = `Not everything could be read: ${next.error}`;
+        break;
+      }
+      result = { ...next, commitments: next.commitments ?? result.commitments };
+    }
     if ('error' in result) problem = result.error;
     else {
-      if (result.message) problem = result.message;
+      if (result.message) problem = problem ? `${problem} ${result.message}` : result.message;
       // Commitments first, so the planner keeps them free.
       if (result.commitments) ({ doc: work, added: events, questions } = applyCommitments(work, result.commitments, todayLocal()));
       for (const item of automatic(reviewItems(work, result.proposals))) {

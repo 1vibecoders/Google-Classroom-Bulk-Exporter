@@ -3,7 +3,8 @@
 //   POST /api/analysis          analyze what is pending → the same status
 //                               { timezone, setup?: true, commitments?: string, sources?: {...} } (setup: the free first run
 //                               after onboarding; commitments: the person's description, read into events;
-//                               sources: imported classes, work and announcements, see uploadedSources.ts)
+//                               sources: imported classes, work and announcements, see uploadedSources.ts;
+//                               continue: true reads on after a run that ran out of time, `more` in the answer)
 //   POST /api/review            record a decision on a proposal { key, decision }
 //   GET  /api/cron/analyze      the daily background job (Vercel Cron, bearer CRON_SECRET)
 import { timingSafeEqual } from 'node:crypto';
@@ -35,7 +36,7 @@ export function postAnalysis(request: Request): Promise<Response> {
   return withContext(async (context) => {
     const user = await sessionUser(context, request);
     if (!user) return error(401, 'signed_out', 'Sign in with Google first.');
-    const { timezone, setup, commitments, sources } = await body(request);
+    const { timezone, setup, commitments, sources, continue: again } = await body(request);
     if (!isTimeZone(timezone)) return error(400, 'bad_timezone', 'The request did not include a valid time zone.');
     if (commitments !== undefined && (typeof commitments !== 'string' || commitments.length > MAX_COMMITMENTS_TEXT)) {
       return error(400, 'bad_commitments', 'The description of your commitments could not be read.');
@@ -45,13 +46,14 @@ export function postAnalysis(request: Request): Promise<Response> {
     if (!context.ai) return error(503, 'ai_off', 'AI analysis is not set up on this server.');
     await context.db.query('UPDATE users SET timezone = $2 WHERE id = $1', [user.id, timezone]);
     await storeUploadedSources(context.db, user.id, uploaded);
-    const outcome = await runAnalysis(context, user.id, timezone, setup === true ? 'setup' : 'user', commitments as string | undefined);
+    const outcome = await runAnalysis(context, user.id, timezone, again === true ? 'continue' : setup === true ? 'setup' : 'user', commitments as string | undefined);
     return json({
       ...outcome.status,
       ...(outcome.message ? { message: outcome.message } : {}),
       ...(outcome.kind === 'busy' ? { busy: true } : {}),
       ...(outcome.kind === 'limited' ? { limited: true } : {}),
       ...(outcome.commitments ? { commitments: outcome.commitments } : {}),
+      ...(outcome.more ? { more: true } : {}),
     });
   });
 }

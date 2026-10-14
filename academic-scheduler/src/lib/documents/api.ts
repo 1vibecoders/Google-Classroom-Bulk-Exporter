@@ -6,8 +6,9 @@ import type { CourseDocument } from '../../model/courseDocument';
 import type { ReadDocument } from './fromExtension';
 import { localDocuments, saveLocalDocuments } from './local';
 
-/** Vercel Functions accept request bodies up to 4.5 MB. */
+/** Vercel Functions accept request bodies up to 4.5 MB; the server takes at most 40 documents per request (documentRoutes.ts). */
 const MAX_UPLOAD_CHARS = 3_000_000;
+const MAX_UPLOAD_COUNT = 40;
 
 async function get(path: string): Promise<Record<string, unknown> | null> {
   try {
@@ -56,7 +57,8 @@ export async function storeDocuments(list: ReadDocument[]): Promise<'server' | '
   let chars = 0;
   for (const item of list) {
     const size = (item.text?.length ?? 0) + 1000;
-    if (chars + size > MAX_UPLOAD_CHARS && batches[batches.length - 1].length) {
+    const current = batches[batches.length - 1];
+    if ((chars + size > MAX_UPLOAD_CHARS && current.length) || current.length >= MAX_UPLOAD_COUNT) {
       batches.push([]);
       chars = 0;
     }

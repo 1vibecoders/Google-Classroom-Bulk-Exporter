@@ -17,6 +17,12 @@
 // RUN_LIMIT or the daily call budget, and may use up to SETUP_MAX_CALLS calls so
 // it can read everything that was brought in. The daily background job is not
 // counted either.
+//
+// One request stops starting calls after RUN_SECONDS (the function's time
+// limit); a big import is then read on by 'continue' requests the website sends
+// right after (`more` in the outcome). A continuation belongs to the run it
+// continues: it is not counted, and the whole chain shares that run's call cap
+// and budget (setup: free, up to SETUP_MAX_CALLS).
 // Proposals the person decided (ai_reviews) are not returned again.
 //
 // The person's description of their commitments (sent by the website with a
@@ -32,21 +38,26 @@ import type { Context } from './context.js';
 import type { Db } from './db.js';
 import { localNow } from './sync.js';
 
-export const AI_DAILY_CALLS = 20;
-export const MAX_CALLS_PER_RUN = 8;
+export const AI_DAILY_CALLS = 60;
+export const MAX_CALLS_PER_RUN = 40;
 export const RUN_LIMIT = 3;
-export const SETUP_MAX_CALLS = 20;
-const MAX_SOURCES_PER_CALL = 12;
-const MAX_CHARS_PER_CALL = 24000;
+export const SETUP_MAX_CALLS = 60;
+const MAX_SOURCES_PER_CALL = 20;
+const MAX_CHARS_PER_CALL = 60000;
 const RUNNING_MINUTES = 5;
-/** Requests in flight at once (one per class at a time is typical); bounded for the provider's per-minute limits. */
-const PARALLEL_CALLS = 3;
+/** Requests in flight at once; bounded for the provider's per-minute limits. */
+const PARALLEL_CALLS = 5;
 const DOCUMENT_AI_CHARS = 20000;
 /** Workload estimates: items per call, and how much instruction and document text each item brings. */
-const MAX_WORK_PER_CALL = 15;
+const MAX_WORK_PER_CALL = 20;
 const WORK_TEXT_CHARS = 1500;
+/** No new call starts after this, so one that just started (60 s timeout, retries) ends within the 300 seconds api/analysis.ts allows. */
+export const RUN_SECONDS = 200;
+/** A continuation must follow its run within this, and a chain has at most MAX_CONTINUATIONS. */
+const CONTINUE_MINUTES = 15;
+const MAX_CONTINUATIONS = 8;
 
-type Trigger = 'user' | 'background' | 'setup';
+type Trigger = 'user' | 'background' | 'setup' | 'continue';
 
 type UsageRow = {
   started_at: unknown;
@@ -252,22 +263,49 @@ export async function analysisStatus(context: Context, userId: string): Promise<
   };
 }
 
-export type AnalysisOutcome = { kind: 'ok' | 'busy' | 'off' | 'limited'; status: AnalysisStatus; message?: string; commitments?: CommitmentsResult };
+export type AnalysisOutcome = { kind: 'ok' | 'busy' | 'off' | 'limited'; status: AnalysisStatus; message?: string; commitments?: CommitmentsResult; more?: boolean };
+
+/** The run a continuation continues (its trigger), the calls the chain used, and how many continuations it has; null when there is none. */
+async function chainOf(db: Db, userId: string): Promise<{ base: 'setup' | 'user'; calls: number; continuations: number } | null> {
+  const rows = await db.query<{ trigger: Trigger; calls: number | string }>(
+    `SELECT trigger, calls FROM ai_runs WHERE user_id = $1 AND trigger <> 'background' AND status <> 'running'
+       AND started_at > now() - interval '${CONTINUE_MINUTES} minutes' ORDER BY started_at DESC LIMIT ${MAX_CONTINUATIONS + 1}`,
+    [userId],
+  );
+  let calls = 0;
+  for (const [i, r] of rows.entries()) {
+    calls += Number(r.calls);
+    if (r.trigger === 'setup' || r.trigger === 'user') return { base: r.trigger, calls, continuations: i };
+  }
+  return null;
+}
 
 /** Analyze what is pending, within the budget; `commitmentsText`: the person's description of their commitments. */
 export async function runAnalysis(context: Context, userId: string, timezone: string, trigger: Trigger, commitmentsText?: string): Promise<AnalysisOutcome> {
   const { db, ai } = context;
   if (!ai) return { kind: 'off', status: await analysisStatus(context, userId) };
-  if (trigger !== 'background') {
+  const startedAt = Date.now();
+  let callCap = trigger === 'setup' ? SETUP_MAX_CALLS : MAX_CALLS_PER_RUN;
+  /** The chain's budget: a continuation of the free setup run is free too. */
+  let free = trigger === 'setup';
+  if (trigger === 'continue') {
+    const chain = await chainOf(db, userId);
+    if (!chain || chain.continuations >= MAX_CONTINUATIONS) return { kind: 'limited', status: await analysisStatus(context, userId), message: 'There is no recent planning run to continue.' };
+    free = chain.base === 'setup';
+    callCap = Math.max(0, (free ? SETUP_MAX_CALLS : MAX_CALLS_PER_RUN) - chain.calls);
+  } else if (trigger !== 'background') {
     const allowance = await runAllowance(db, userId);
     // The free setup run is used once; later setup requests are ordinary runs.
-    if (trigger === 'setup' && !allowance.setupAvailable) trigger = 'user';
+    if (trigger === 'setup' && !allowance.setupAvailable) {
+      trigger = 'user';
+      free = false;
+      callCap = MAX_CALLS_PER_RUN;
+    }
     if (trigger === 'user' && allowance.used >= RUN_LIMIT) {
       const when = new Date(allowance.nextAt!).toLocaleString('en-US', { timeZone: timezone, weekday: 'short', hour: 'numeric', minute: '2-digit' });
       return { kind: 'limited', status: await analysisStatus(context, userId), message: `You used your ${RUN_LIMIT} AI planning runs for the last 24 hours. The next one is available ${when}.` };
     }
   }
-  const callCap = trigger === 'setup' ? SETUP_MAX_CALLS : MAX_CALLS_PER_RUN;
   const reserved = await db.query<{ id: number | string }>(
     `INSERT INTO ai_runs (user_id, trigger, status)
      SELECT $1, $2, 'running'
@@ -283,6 +321,7 @@ export async function runAnalysis(context: Context, userId: string, timezone: st
   const models = new Set<string>();
   let status = 'ok';
   let commitments: CommitmentsResult | undefined;
+  let more = false;
   try {
     const { records, cache } = await load(db, userId);
     const today = localNow(timezone).slice(0, 10);
@@ -310,18 +349,22 @@ export async function runAnalysis(context: Context, userId: string, timezone: st
     }
     let used = await callsUsed(db, userId);
     let stopped = false;
-    const dailyLeft = () => (trigger === 'setup' ? Infinity : AI_DAILY_CALLS - used);
+    const dailyLeft = () => (free ? Infinity : AI_DAILY_CALLS - used);
     /** The jobs that fit the run's cap and the daily budget; says so when the budget cuts them short. */
     const affordable = <T>(jobs: T[]): T[] => {
       const room = Math.max(0, Math.min(callCap - tally.calls, dailyLeft()));
       if (jobs.length > room && dailyLeft() <= room) message = 'The daily AI budget is used up; the rest is analyzed later.';
       return jobs.slice(0, room);
     };
-    /** Runs the jobs, up to PARALLEL_CALLS at a time; the first AI failure stops the ones not yet sent. */
+    /** Runs the jobs, up to PARALLEL_CALLS at a time; the first AI failure stops the ones not yet sent, and so does the time limit. */
     const runAll = async <T extends { size: number }>(jobs: T[], call: (job: T) => Promise<void>) => {
       let next = 0;
       const lane = async () => {
         while (next < jobs.length && !stopped) {
+          if (Date.now() - startedAt > RUN_SECONDS * 1000) {
+            more = true;
+            return;
+          }
           const job = jobs[next++];
           tally.calls++;
           used++;
@@ -366,7 +409,43 @@ export async function runAnalysis(context: Context, userId: string, timezone: st
         extractJobs.push({ size: chunk.length, courseId, chunk });
       }
     }
-    await runAll(affordable(extractJobs), async (job) => {
+    // Then workload estimates for work that has none yet or whose text changed.
+    type EstimateJob = { size: number; courseId: string; chunk: Array<{ record: Record_; item: WorkItem; hash: string }>; estimate: true };
+    const estimateJobs: EstimateJob[] = [];
+    for (const [courseId, items] of workItems(records)) {
+      const pending = items.filter((w) => {
+        const current = isCurrent(cache.get(`workload:${w.record.source_id}`), w.hash, ai.model, ESTIMATE_TASK_VERSION);
+        if (current) tally.reused++;
+        return !current;
+      });
+      for (let i = 0; i < pending.length; i += MAX_WORK_PER_CALL) estimateJobs.push({ size: Math.min(MAX_WORK_PER_CALL, pending.length - i), courseId, chunk: pending.slice(i, i + MAX_WORK_PER_CALL), estimate: true });
+    }
+    // Facts and estimates take turns, so both progress when the cap or the time limit cuts the run short.
+    const jobs: Array<(typeof extractJobs)[number] | EstimateJob> = [];
+    for (let i = 0; i < Math.max(extractJobs.length, estimateJobs.length); i++) {
+      if (extractJobs[i]) jobs.push(extractJobs[i]);
+      if (estimateJobs[i]) jobs.push(estimateJobs[i]);
+    }
+    await runAll(affordable(jobs), async (job) => {
+      if ('estimate' in job) {
+        const { courseId, chunk } = job;
+        const input = { classId: `gc-class-${courseId}`, className: classNames.get(courseId) ?? 'Class', work: chunk.map((c) => c.item) };
+        // Room for steps: up to 8 per item.
+        const result = await ai.structured({ task: 'estimate', system: ESTIMATE_SYSTEM, input: estimateInput(input), schema: ESTIMATE_SCHEMA, maxOutputTokens: 8000 });
+        models.add(result.model);
+        tally.inputTokens += result.usage.inputTokens;
+        tally.outputTokens += result.usage.outputTokens;
+        const { proposals, rejected } = checkEstimates(result.output, input);
+        tally.rejected += rejected;
+        await saveResults(
+          db,
+          userId,
+          ESTIMATE_TASK_VERSION,
+          ai.model,
+          chunk.map((c) => ({ kind: 'workload', source_id: c.record.source_id, course_id: courseId, content_hash: c.hash, proposals: proposals.filter((p) => p.assignmentId === c.item.id) })),
+        );
+        return;
+      }
       if ('commitments' in job) {
         const input = { today, weekday: new Date(`${today}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' }), text: job.commitments };
         const result = await ai.structured({ task: 'commitments', system: COMMITMENTS_SYSTEM, input: commitmentsInput(input), schema: COMMITMENTS_SCHEMA, maxOutputTokens: 2000 });
@@ -390,7 +469,7 @@ export async function runAnalysis(context: Context, userId: string, timezone: st
         known: known.get(courseId) ?? [],
         sources: chunk.map((c) => ({ ...c.text, text: Array.from(c.text.text).slice(0, MAX_CHARS_PER_CALL).join('') })),
       };
-      const result = await ai.structured({ task: 'extract', system: SYSTEM, input: promptInput(input), schema: SCHEMA, maxOutputTokens: 2000 });
+      const result = await ai.structured({ task: 'extract', system: SYSTEM, input: promptInput(input), schema: SCHEMA, maxOutputTokens: 4000 });
       models.add(result.model);
       tally.inputTokens += result.usage.inputTokens;
       tally.outputTokens += result.usage.outputTokens;
@@ -405,38 +484,6 @@ export async function runAnalysis(context: Context, userId: string, timezone: st
       );
     });
 
-    // Then workload estimates for work that has none yet or whose text changed.
-    if (status === 'ok') {
-      const estimateJobs: Array<{ size: number; courseId: string; chunk: Array<{ record: Record_; item: WorkItem; hash: string }> }> = [];
-      for (const [courseId, items] of workItems(records)) {
-        const pending = items.filter((w) => {
-          const current = isCurrent(cache.get(`workload:${w.record.source_id}`), w.hash, ai.model, ESTIMATE_TASK_VERSION);
-          if (current) tally.reused++;
-          return !current;
-        });
-        for (let i = 0; i < pending.length; i += MAX_WORK_PER_CALL) {
-          const chunk = pending.slice(i, i + MAX_WORK_PER_CALL);
-          estimateJobs.push({ size: chunk.length, courseId, chunk });
-        }
-      }
-      await runAll(affordable(estimateJobs), async ({ courseId, chunk }) => {
-        const input = { classId: `gc-class-${courseId}`, className: classNames.get(courseId) ?? 'Class', work: chunk.map((c) => c.item) };
-        // Room for steps: up to 8 per item.
-        const result = await ai.structured({ task: 'estimate', system: ESTIMATE_SYSTEM, input: estimateInput(input), schema: ESTIMATE_SCHEMA, maxOutputTokens: 4000 });
-        models.add(result.model);
-        tally.inputTokens += result.usage.inputTokens;
-        tally.outputTokens += result.usage.outputTokens;
-        const { proposals, rejected } = checkEstimates(result.output, input);
-        tally.rejected += rejected;
-        await saveResults(
-          db,
-          userId,
-          ESTIMATE_TASK_VERSION,
-          ai.model,
-          chunk.map((c) => ({ kind: 'workload', source_id: c.record.source_id, course_id: courseId, content_hash: c.hash, proposals: proposals.filter((p) => p.assignmentId === c.item.id) })),
-        );
-      });
-    }
   } catch (err) {
     status = 'failed';
     throw err;
@@ -460,7 +507,7 @@ export async function runAnalysis(context: Context, userId: string, timezone: st
     );
     console.log(JSON.stringify({ event: 'ai_run', run: runId, trigger, status, ...tally }));
   }
-  return { kind: 'ok', status: await analysisStatus(context, userId), ...(message ? { message } : {}), ...(commitments ? { commitments } : {}) };
+  return { kind: 'ok', status: await analysisStatus(context, userId), ...(message ? { message } : {}), ...(commitments ? { commitments } : {}), ...(more && status === 'ok' ? { more: true } : {}) };
 }
 
 async function saveResults(

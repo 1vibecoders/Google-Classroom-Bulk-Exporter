@@ -22,7 +22,8 @@ export async function getAnalysis(): Promise<AnalysisStatus | null> {
   return result?.status === 200 ? (result.body as unknown as AnalysisStatus) : null;
 }
 
-export type RunResult = AnalysisStatus & { message?: string; busy?: boolean; limited?: boolean; commitments?: CommitmentsResult };
+/** `more`: the run ran out of time with texts left; `continueAnalysis` reads on. */
+export type RunResult = AnalysisStatus & { message?: string; busy?: boolean; limited?: boolean; commitments?: CommitmentsResult; more?: boolean };
 
 /**
  * `setup`: the free first run after onboarding (used once; later it is an ordinary run). `commitments`: the person's description, read into events.
@@ -34,6 +35,14 @@ export async function runAnalysis(timezone: string, setup = false, commitments?:
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ timezone, ...(setup ? { setup: true } : {}), ...(commitments?.trim() ? { commitments } : {}), ...(sources?.classes.length ? { sources } : {}) }),
   });
+  if (!result) return { error: 'The analysis service could not be reached. Check your connection and try again.' };
+  if (result.status === 200) return result.body as unknown as RunResult;
+  return { error: String(result.body.message ?? 'The analysis failed.') };
+}
+
+/** Reads on after a run that answered `more` (not counted as a new planning run). */
+export async function continueAnalysis(timezone: string): Promise<RunResult | { error: string }> {
+  const result = await call('/api/analysis', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ timezone, continue: true }) });
   if (!result) return { error: 'The analysis service could not be reached. Check your connection and try again.' };
   if (result.status === 200) return result.body as unknown as RunResult;
   return { error: String(result.body.message ?? 'The analysis failed.') };

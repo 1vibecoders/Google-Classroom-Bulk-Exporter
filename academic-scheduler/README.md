@@ -278,9 +278,15 @@ part of the work (SPEC § 7), and texts are treated as data, not instructions.
 - **Cost controls:** 3 planning runs per person per rolling 24 hours (like syncs),
   counted only when a run used the AI; the free setup run and the daily background
   check do not count. A text is sent again only when it changes (or the task or
-  model changes); texts without content are never sent; at most 20 AI requests per
-  person per 24 hours and 8 per run (20 for the setup run); tokens are logged as
-  the provider reports them.
+  model changes); texts without content are never sent; at most 60 AI requests per
+  person per 24 hours and 40 per run (60 for the free setup run, outside the daily
+  budget); tokens are logged as the provider reports them.
+- **Big imports** are read completely, like `/academic-schedule` reads every file:
+  one request stops starting AI calls after 200 seconds, and the website reads on
+  in continuations of the same run (not counted as new runs, within that run's
+  cap) before it plans. Facts and workload estimates are read side by side, so
+  the work always gets estimates. Course documents sent from the extension are
+  stored in requests of at most 40, so the AI reads all of them.
 - **What is sent** to the provider (Anthropic if `ANTHROPIC_API_KEY` is set,
   otherwise Gemini if `GEMINI_API_KEY` is set; `AI_PROVIDER` picks one when both
   are): the class name, its assignments' titles and due dates, the new or

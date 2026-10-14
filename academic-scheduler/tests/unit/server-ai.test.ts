@@ -4,7 +4,7 @@
 // budget, failures that are retried later, decisions that hide proposals, the
 // Anthropic client's structured output and retries, and the routes.
 import { PGlite } from '@electric-sql/pglite';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { migrate, type Db } from '../../server/db';
 import { setTestContext, type Context } from '../../server/context';
 import { AiError, type AiProvider, type StructuredRequest } from '../../server/ai/provider';
@@ -280,11 +280,33 @@ describe('analysis runs', () => {
     expect(outcome.message).toBe('The AI service is down. The rest is analyzed later.');
     // The reason is kept with the run, so Settings can show it later.
     expect(outcome.status.lastRun?.error).toBe('The AI service is down.');
-    // The estimates wait too: a run that failed does not go on to them.
-    expect(estimateCalls).toHaveLength(0);
-    expect(outcome.status).toMatchObject({ pending: 4, lastRun: { failed: 2 } });
+    // Calls already in flight fail with it; nothing is cached, so everything is still waiting.
+    expect(outcome.status.pending).toBe(4);
     failWith = null;
     expect((await runAnalysis(context, 'u1', TZ, 'background')).status.pending).toBe(0);
+  });
+
+  it('stops starting calls at the time limit and reads on in uncounted continuations of the same run', async () => {
+    const now = vi.spyOn(Date, 'now');
+    let clock = 0;
+    now.mockImplementation(() => clock);
+    answer = () => {
+      clock = 241_000; // past RUN_SECONDS once the first call is answered
+      return { proposals: [] };
+    };
+    const first = await runAnalysis(context, 'u1', TZ, 'user');
+    expect(first.more).toBe(true);
+    expect(first.status.pending).toBeGreaterThan(0);
+    clock = 0;
+    answer = () => ({ proposals: [] });
+    const rest = await runAnalysis(context, 'u1', TZ, 'continue');
+    expect(rest.more).toBeUndefined();
+    expect(rest.status.pending).toBe(0);
+    // Only the run the person started counts toward the 3 planning runs.
+    expect(rest.status.runs?.used).toBe(1);
+    now.mockRestore();
+    await db.query('DELETE FROM ai_runs');
+    expect(await runAnalysis(context, 'u1', TZ, 'continue')).toMatchObject({ kind: 'limited', message: 'There is no recent planning run to continue.' });
   });
 
   it('estimates the work once from its instructions and documents, rounded, and again only when they change', async () => {

@@ -3,7 +3,7 @@
 // (SPEC.md § 18). Refreshed with the analysis status.
 import type { AnalysisStatus } from '../model/aiProposal';
 
-const TRIGGERS = { user: 'You', background: 'Daily check', setup: 'Setup (free)' } as const;
+const TRIGGERS = { user: 'You', background: 'Daily check', setup: 'Setup (free)', continue: 'Continued' } as const;
 const n = (value: number) => value.toLocaleString('en-US');
 
 export function AiUsage({ usage }: { usage: NonNullable<AnalysisStatus['usage']> }) {
