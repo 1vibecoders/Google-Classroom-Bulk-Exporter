@@ -10,6 +10,7 @@ import { DEFAULT_HORIZON_DAYS, planUnscheduledWork } from '../planner';
 import { nowLocal, todayLocal } from '../time';
 import { runAnalysis } from './api';
 import { applyCommitments } from './commitments';
+import { uploadSources } from './sources';
 import { applyProposal, automatic, reviewItems } from './proposals';
 
 export interface FirstSchedule {
@@ -21,6 +22,9 @@ export interface FirstSchedule {
   /** Events read from the person's description of their commitments, and questions about it. */
   events: number;
   questions: number;
+  /** Findings that wait in Review (never applied on their own, § 16.4), and how many of them change a due date. */
+  review: number;
+  dueChanges: number;
   /** The analysis status to show next, without the applied proposals; null when AI was not used. */
   status: AnalysisStatus | null;
   /** Why AI could not be used, when it was set up but failed. */
@@ -35,8 +39,10 @@ export async function firstSchedule(doc: ScheduleDocument, useAi: boolean, timez
   let problem: string | undefined;
   let events = 0;
   let questions = 0;
+  let review = 0;
+  let dueChanges = 0;
   if (useAi) {
-    const result = await runAnalysis(timezone, true, doc.settings?.commitmentsDescription);
+    const result = await runAnalysis(timezone, true, doc.settings?.commitmentsDescription, uploadSources(doc));
     if ('error' in result) problem = result.error;
     else {
       if (result.message) problem = result.message;
@@ -50,9 +56,12 @@ export async function firstSchedule(doc: ScheduleDocument, useAi: boolean, timez
         if (item.proposal.kind === 'workload') estimated++;
       }
       status = { ...result, proposals: result.proposals.filter((p) => !applied.includes(p.key)) };
+      const waiting = reviewItems(work, status.proposals);
+      review = waiting.length;
+      dueChanges = waiting.filter((i) => i.field === 'due').length;
     }
   }
   const plan = planUnscheduledWork(work, { from: nowLocal(), horizonDays: DEFAULT_HORIZON_DAYS });
   if (plan.blocks.length) work = { ...work, scheduleBlocks: [...work.scheduleBlocks, ...plan.blocks] };
-  return { doc: work, applied, estimated, sessions: plan.blocks.length, events, questions, status, ...(problem ? { problem } : {}) };
+  return { doc: work, applied, estimated, sessions: plan.blocks.length, events, questions, review, dueChanges, status, ...(problem ? { problem } : {}) };
 }

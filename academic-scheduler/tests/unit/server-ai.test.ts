@@ -14,6 +14,7 @@ import { checkEstimates, roundMinutes } from '../../server/ai/estimate';
 import { checkCommitments } from '../../server/ai/commitments';
 import { AI_DAILY_CALLS, analysisStatus, recordDecision, runAnalysis } from '../../server/analysis';
 import { cronAnalyze, postReview } from '../../server/aiRoutes';
+import { storeUploadedSources, uploadedSources } from '../../server/uploadedSources';
 import type { GoogleApi } from '../../server/google';
 
 const TZ = 'America/New_York';
@@ -374,6 +375,33 @@ describe('analysis runs', () => {
     expect(rejected).toBe(7);
     expect(result.key).toMatch(/^[0-9a-f]{32}$/);
     expect(checkCommitments('nonsense', input).result).toMatchObject({ events: [], questions: [] });
+  });
+
+  it('reads classes imported from the extension, but never replaces or doubles what a sync stored', async () => {
+    const records = uploadedSources({
+      classes: [
+        { id: 'gc-class-MTEx', name: 'Renamed', announcements: [{ text: 'A copy of a synced post', postedAt: '2026-10-07' }] },
+        { id: 'gc-class-OTk5', name: 'History', announcements: [{ text: 'The Rome essay is now due Friday.', postedAt: '2026-10-07T08:00:00' }] },
+      ],
+      work: [
+        { id: 'gc-OTAx', classId: 'gc-class-MTEx', title: 'Changed' },
+        { id: 'gc-UjE', classId: 'gc-class-OTk5', title: 'Rome essay', due: '2026-10-09T23:59:00' },
+      ],
+    });
+    await storeUploadedSources(db, 'u1', records!);
+    await runAnalysis(context, 'u1', TZ, 'user');
+    const inputs = calls.map((c) => JSON.parse(c.input) as { class: string; KNOWN: Array<{ id: string; title: string }>; texts: Array<{ text: string }> });
+    const history = inputs.find((i) => i.class === 'History')!;
+    expect(history.KNOWN).toEqual([{ id: 'gc-UjE', title: 'Rome essay', due: '2026-10-09T23:59:00' }]);
+    expect(history.texts.map((t) => t.text)).toEqual(['The Rome essay is now due Friday.']);
+    const english = inputs.find((i) => i.class === 'English 10')!;
+    expect(english.KNOWN.find((k) => k.id === 'gc-OTAx')!.title).toBe('Othello essay');
+    expect(english.texts.map((t) => t.text)).not.toContain('A copy of a synced post');
+    // Anything off rejects the upload.
+    expect(uploadedSources({ classes: [{ id: 'not-a-class', name: 'A' }], work: [] })).toBeNull();
+    expect(uploadedSources({ classes: [], work: [{ id: 'gc-UjE', classId: 'gc-class-OTk5', title: 'No class sent' }] })).toBeNull();
+    expect(uploadedSources({ classes: [{ id: 'gc-class-OTk5', name: 'H', announcements: [{ text: 'x'.repeat(5001) }] }], work: [] })).toBeNull();
+    expect(uploadedSources({ classes: [{ id: 'gc-class-OTk5', name: 'H' }], work: [{ id: 'gc-UjE', classId: 'gc-class-OTk5', title: 'T', url: 'javascript:alert(1)' }] })).toBeNull();
   });
 
   it('reads the commitments description in the same run, once, and again only when it changes', async () => {

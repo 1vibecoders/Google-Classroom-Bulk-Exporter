@@ -235,10 +235,20 @@ export function OnboardingView() {
               <dt>Your first schedule</dt>
               <dd>
                 {freeAi
-                  ? 'Finishing reads your classes, announcements, documents and your description of your commitments with AI (free this once, not counted toward the 3 daily planning runs), adds those commitments to the calendar, estimates how long each assignment takes (with steps for bigger work), and plans the work into your free study time.'
+                  ? 'Finishing reads your classes (also those sent from the browser extension), announcements, documents and your description of your commitments with AI (free this once, not counted toward the 3 daily planning runs), adds those commitments to the calendar, estimates how long each assignment takes (with steps for bigger work), and plans the work into your free study time.'
                   : paidAi
                     ? 'Planning with AI reads your classes, announcements, documents and your description of your commitments, adds those commitments to the calendar, estimates the work and plans it into your free study time. It counts as one of the 3 daily planning runs (the free one is used).'
                     : 'Finishing plans the work that has a time estimate into your free study time.'}
+                {!ai ? (
+                  <>
+                    {' '}
+                    To have the AI read your classes (also those sent from the browser extension) and build it for you, free once,{' '}
+                    <button type="button" className="btn small" onClick={() => go(3)}>
+                      sign in with Google
+                    </button>{' '}
+                    under Classes and data first.
+                  </>
+                ) : null}
               </dd>
               <dt>How work will be planned</dt>
               <dd>

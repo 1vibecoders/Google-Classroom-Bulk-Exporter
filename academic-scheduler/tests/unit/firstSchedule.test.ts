@@ -45,7 +45,11 @@ describe('the first schedule', () => {
       });
     });
     const built = await firstSchedule(doc, true, 'America/New_York');
-    expect(sent).toEqual([{ timezone: 'America/New_York', setup: true, commitments: doc.settings!.commitmentsDescription }]);
+    expect(sent).toEqual([{ timezone: 'America/New_York', setup: true, commitments: doc.settings!.commitmentsDescription, sources: expect.any(Object) }]);
+    // The imported classes and open work go along, so the AI reads them without a Google sync.
+    const sources = (sent[0] as { sources: { classes: Array<{ id: string }>; work: Array<{ id: string }> } }).sources;
+    expect(sources.classes.map((c) => c.id)).toContain('gc-class-NjI3ODk0MjE0NTQ5');
+    expect(sources.work.map((w) => w.id)).toContain(GRAMMAR);
     expect(built.applied).toEqual([ESTIMATE.key]);
     expect(built.estimated).toBe(1);
     expect(built.doc.assignments.find((a) => a.id === GRAMMAR)).toMatchObject({ estimatedMinutes: 45, estimateBasis: 'AI estimate: One worksheet of comma exercises' });
@@ -101,6 +105,28 @@ describe('the first schedule', () => {
       if (day === 2 || day === 4) expect(b.end.slice(11, 16) <= '15:30' || b.start.slice(11, 16) >= '17:00').toBe(true);
     }
     expect(validateDocument(built.doc, { today: '2026-10-14' }).errors).toEqual([]);
+  });
+
+  it('leaves an announced reschedule of work Classroom already dates in Review, and counts it', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-14T08:00:00') });
+    const doc = example();
+    const moved: AiProposal = {
+      ...ESTIMATE,
+      key: 'd'.repeat(32),
+      kind: 'due_change',
+      source: { kind: 'announcement', id: 'ODAx' },
+      excerpt: 'The Othello essay is now due Monday',
+      assignmentId: 'gc-NzAwMDAwMDAwMDAx',
+      value: '2026-10-19T23:59:00',
+      confidence: { identity: 'high', value: 'high' },
+    };
+    vi.stubGlobal('fetch', async () =>
+      new Response(JSON.stringify({ configured: true, proposals: [moved], pending: 0, budget: { limit: 20, used: 1 } }), { headers: { 'content-type': 'application/json' } }),
+    );
+    const built = await firstSchedule(doc, true, 'America/New_York');
+    expect(built.applied).toEqual([]);
+    expect(built.doc.assignments.find((a) => a.id === 'gc-NzAwMDAwMDAwMDAx')!.due).toBe('2026-10-16T23:59:00');
+    expect(built).toMatchObject({ review: 1, dueChanges: 1 });
   });
 
   it('plans without AI when it is not set up, and says why when the AI fails', async () => {

@@ -115,7 +115,10 @@ async function load(db: Db, userId: string) {
     ),
     db.query<Extraction>('SELECT kind, source_id, content_hash, task_version, model, proposals FROM ai_extractions WHERE user_id = $1', [userId]),
   ]);
-  return { records, cache: new Map(extractions.map((e) => [`${e.kind}:${e.source_id}`, e])) };
+  // A synced class lists its own announcements; copies imported from the extension would be read twice.
+  const synced = new Set(records.filter((r) => r.kind === 'course' && r.data.via !== 'extension').map((r) => r.source_id));
+  const read = records.filter((r) => !(r.kind === 'announcement' && r.data.via === 'extension' && synced.has(r.course_id)));
+  return { records: read, cache: new Map(extractions.map((e) => [`${e.kind}:${e.source_id}`, e])) };
 }
 
 function isCurrent(e: Extraction | undefined, hash: string, model: string, version = EXTRACT_TASK_VERSION): boolean {

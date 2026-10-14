@@ -2,6 +2,7 @@
 // backend, signed out, or with AI not set up, `getAnalysis` returns null and
 // the rest of the website works as before.
 import type { AnalysisStatus, CommitmentsResult } from '../../model/aiProposal';
+import type { UploadSources } from './sources';
 
 export type Decision = 'applied' | 'rejected' | 'deferred';
 
@@ -23,12 +24,15 @@ export async function getAnalysis(): Promise<AnalysisStatus | null> {
 
 export type RunResult = AnalysisStatus & { message?: string; busy?: boolean; limited?: boolean; commitments?: CommitmentsResult };
 
-/** `setup`: the free first run after onboarding (used once; later it is an ordinary run). `commitments`: the person's description, read into events. */
-export async function runAnalysis(timezone: string, setup = false, commitments?: string): Promise<RunResult | { error: string }> {
+/**
+ * `setup`: the free first run after onboarding (used once; later it is an ordinary run). `commitments`: the person's description, read into events.
+ * `sources`: the imported classes and work (lib/ai/sources.ts), so the AI reads them without a Google sync.
+ */
+export async function runAnalysis(timezone: string, setup = false, commitments?: string, sources?: UploadSources): Promise<RunResult | { error: string }> {
   const result = await call('/api/analysis', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ timezone, ...(setup ? { setup: true } : {}), ...(commitments?.trim() ? { commitments } : {}) }),
+    body: JSON.stringify({ timezone, ...(setup ? { setup: true } : {}), ...(commitments?.trim() ? { commitments } : {}), ...(sources?.classes.length ? { sources } : {}) }),
   });
   if (!result) return { error: 'The analysis service could not be reached. Check your connection and try again.' };
   if (result.status === 200) return result.body as unknown as RunResult;
