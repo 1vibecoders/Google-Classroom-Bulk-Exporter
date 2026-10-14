@@ -16,7 +16,7 @@ export interface Context {
   config: Config;
   db: Db;
   google: GoogleApi;
-  /** Null when AI analysis is not set up (no ANTHROPIC_API_KEY). */
+  /** Null when AI analysis is not set up (no ANTHROPIC_API_KEY or GEMINI_API_KEY). */
   ai: AiProvider | null;
   /** Vercel sends it as a bearer token to the daily job (CRON_SECRET); unset means no background job. */
   cronSecret?: string;

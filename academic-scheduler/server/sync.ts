@@ -131,13 +131,14 @@ export function localNow(timezone: string, now = new Date()): string {
   return localDateTime(now, timezone);
 }
 
+/** Local date-time in whole minutes: the schedule format has no seconds. */
 function localDateTime(moment: Date, timezone: string): string {
   const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+    new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
       .formatToParts(moment)
       .map((p) => [p.type, p.value]),
   );
-  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:00`;
 }
 
 /** Classroom due dates and times are in UTC; the schedule uses the person's local time. */

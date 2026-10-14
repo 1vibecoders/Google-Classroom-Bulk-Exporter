@@ -12,11 +12,13 @@
 // unclearly gets an issue for the person to review (§ 14.2); the issue goes
 // once the source is clear, unless the person already resolved or dismissed
 // it. Everything else (estimates,
-// tasks, priority, notes, blocks) stays as it is. A value Classroom does not
+// tasks, priority, notes, blocks) stays as it is, except step dates later than
+// a due date that moved earlier (fitToDue.ts). A value Classroom does not
 // give (e.g. no due date) never clears one the schedule already has.
-import { schemaVersionFor } from '../../model/constants';
+import { resolveSettings, schemaVersionFor } from '../../model/constants';
 import type { ImportBatch, ImportedLink } from '../../model/importBatch';
 import type { Announcement, Assignment, Issue, Reference, ScheduleDocument, SchoolClass, Source } from '../../model/types';
+import { fitToDue } from './fitToDue';
 
 export const SYNC_FILE_NAME = 'Google Classroom sync';
 
@@ -118,10 +120,11 @@ export function mergeBatch(current: ScheduleDocument, batch: ImportBatch): Sched
     // Listed again after being missing. A teacher's "withdrawn" is a statement, not a listing, so it stays.
     if (cur?.sourceState === 'missing') next.sourceState = 'present';
     if (item.turnedIn && next.status !== 'done' && next.status !== 'cancelled') next.status = 'done';
+    const fitted = cur?.due !== next.due ? fitToDue(next, cur?.due, doc.scheduleBlocks, resolveSettings(doc.settings).defaultDueTime) : next;
     if (i === undefined) {
       asgIndex.set(item.id, doc.assignments.length);
-      doc.assignments.push(next);
-    } else doc.assignments[i] = next;
+      doc.assignments.push(fitted);
+    } else doc.assignments[i] = fitted;
   }
 
   // "Now" for the preview is when Classroom was read; keep the person's title and sources.

@@ -87,6 +87,20 @@ describe('merging a Classroom sync batch', () => {
     expect(after.events).toEqual(current.events);
   });
 
+  it('takes a due date that moved before the planned work, fits the steps and flags the plan instead of refusing the sync', () => {
+    const current = example();
+    const moved = UNCHANGED.map((i) => (i.sourceId === 'NzAwMDAwMDAwMDAx' ? { ...i, due: '2026-10-13T23:59:00' } : i));
+    const { incoming } = plan(current, batch(moved));
+    const essay = incoming.assignments.find((a) => a.id === 'gc-NzAwMDAwMDAwMDAx')!;
+    expect(essay.due).toBe('2026-10-13T23:59:00');
+    const issue = essay.issues!.find((i) => i.id === 'gc-NzAwMDAwMDAwMDAx-due-earlier')!;
+    expect(issue).toMatchObject({ kind: 'conflict', field: 'due' });
+    expect(issue.message).toMatch(/^The due date moved earlier, from 2026-10-16T23:59:00 to 2026-10-13T23:59:00: \d+ planned dates? (was|were) moved to fit; \d+ planned sessions? ends? after the new date\./);
+    // Same sync again: the same notice, nothing new to review.
+    const { incoming: again } = plan(incoming, batch(moved));
+    expect(again.assignments.find((a) => a.id === essay.id)!.issues).toEqual(essay.issues);
+  });
+
   it('never clears a due date Classroom does not give, and brings back work that returns', () => {
     const current = example();
     const gone = applyImport(current, ...(() => {

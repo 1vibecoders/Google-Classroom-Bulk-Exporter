@@ -234,7 +234,8 @@ you import, the usual rules protect your own edits, and **Undo import** works.
 
 ## Reading announcements with AI
 
-Optional, on a deployment with the sync backend and an AI key (below). After each
+Optional, on a deployment with the sync backend and an AI key (below): Anthropic,
+or Google Gemini, which has a free tier. After each
 Classroom sync, and once a day in the background, the server sends new or changed
 announcements, assignment instructions and course documents (the first 20,000
 characters of each; a document says which assignment it is attached to) to an AI
@@ -257,11 +258,22 @@ part of the work (SPEC § 7), and texts are treated as data, not instructions.
 - **Cost controls:** a text is sent again only when it changes (or the task or model
   changes); texts without content are never sent; at most 20 AI requests per
   person per 24 hours and 8 per run; tokens are logged as the provider reports them.
-- **What is sent** to the provider (Anthropic by default): the class name, its
-  assignments' titles and due dates, and the new or changed texts. Nothing is sent
-  while AI is not configured. The model is `claude-haiku-4-5-20251001` (the
-  lowest-cost Claude model) unless `AI_MODEL` says otherwise; another provider can
-  be added in `server/ai/` without touching the rest.
+- **What is sent** to the provider (Anthropic if `ANTHROPIC_API_KEY` is set,
+  otherwise Gemini if `GEMINI_API_KEY` is set; `AI_PROVIDER` picks one when both
+  are): the class name, its assignments' titles and due dates, and the new or
+  changed texts. Nothing is sent while AI is not configured. The model is
+  `claude-haiku-4-5-20251001` (the lowest-cost Claude model) or
+  `gemini-3.8-flash` (a free-tier Flash model) unless `AI_MODEL` says otherwise;
+  another provider can be added in `server/ai/` without touching the rest.
+- **Gemini free tier and privacy:** under the
+  [Gemini API terms](https://ai.google.dev/gemini-api/terms), Google uses what is
+  sent to the free (unpaid) tier and the responses "to provide, improve, and
+  develop Google products and services", human reviewers may read it, and the
+  terms say not to submit sensitive, confidential or personal information to it.
+  On the paid tier Google does not use prompts or responses to improve its
+  products. The terms also require users of the API to be 18 or older. Announcements
+  and documents can contain names and other personal details: for real student
+  data, use a paid Gemini tier or Anthropic.
 
 ## Installation and deployment
 
@@ -295,11 +307,15 @@ The site is deployed on **Vercel** from this repository (root directory
      sync is not set up. For local testing of the API use `vercel dev`.
 4. Optional, for [reading announcements with AI](#reading-announcements-with-ai)
    (needs step 3):
-   - Set `ANTHROPIC_API_KEY` (an Anthropic API key with credits; usage is
-     billed by Anthropic). Optional: `AI_MODEL` to use another Claude model.
+   - Either set `ANTHROPIC_API_KEY` (an Anthropic API key with credits; usage
+     is billed by Anthropic), or, for the free option, create a Gemini API key
+     at <https://aistudio.google.com/apikey> and set `GEMINI_API_KEY` (read the
+     free-tier privacy note above first). Optional: `AI_PROVIDER` (`anthropic`
+     or `gemini`) when both keys are set, and `AI_MODEL` to use another model of
+     the chosen provider.
    - Set `CRON_SECRET` (any long random value) so the daily background check
      (`vercel.json` → `crons`, 09:00 UTC) can run; without it that job refuses.
-   - Without `ANTHROPIC_API_KEY` nothing is sent to an AI and Review is hidden.
+   - Without either key nothing is sent to an AI and Review is hidden.
 
 Other hosts: run `npm run build` and upload the `dist/` folder (GitHub Pages,
 Netlify, any web server). Asset paths are relative, so it works under any path.

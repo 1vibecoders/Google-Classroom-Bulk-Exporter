@@ -13,6 +13,8 @@
 // - Every result is validated as a whole schedule before it is used.
 import type { AiProposal } from '../../model/aiProposal';
 import type { Assignment, AssignmentType, ScheduleDocument, Source } from '../../model/types';
+import { resolveSettings } from '../../model/constants';
+import { fitToDue } from '../sync/fitToDue';
 import { todayLocal } from '../time';
 import { validateDocument } from '../validate';
 
@@ -119,8 +121,11 @@ export function applyProposal(doc: ScheduleDocument, item: ReviewItem, byPerson:
     const a = next.assignments.find((x) => x.id === item.assignment!.id);
     if (!a) return { error: 'The assignment is no longer in your schedule.' };
     const field = item.field === 'due' ? 'due' : 'estimatedMinutes';
-    if (item.field === 'due') a.due = String(value);
-    else {
+    if (item.field === 'due') {
+      const previous = a.due;
+      a.due = String(value);
+      Object.assign(a, fitToDue(a, previous, next.scheduleBlocks, resolveSettings(next.settings).defaultDueTime));
+    } else {
       a.estimatedMinutes = Number(value);
       a.estimateBasis = Array.from(`Stated in Classroom: “${p.excerpt}”`).slice(0, 2000).join('');
       a.estimateConfidence = p.confidence.value;

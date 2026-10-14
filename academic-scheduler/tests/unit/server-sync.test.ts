@@ -20,7 +20,9 @@ import {
   type StudentSubmission,
   type Topic,
 } from '../../server/google';
-import { allowance, classroomId, hasScopes, localDue, reserveSync, runSync } from '../../server/sync';
+import { allowance, classroomId, hasScopes, localDue, localNow, reserveSync, runSync } from '../../server/sync';
+import { mergeBatch } from '../../src/lib/sync/mergeBatch';
+import { validateDocument } from '../../src/lib/validate';
 import { callback, deleteAccount, login, me, sync } from '../../server/routes';
 import { getDocuments, postDocuments } from '../../server/documentRoutes';
 import { createSession } from '../../server/http';
@@ -322,6 +324,20 @@ describe('change detection and the knowledge base', () => {
     if (outcome.kind !== 'ok') throw new Error(outcome.kind);
     expect(outcome.batch.counts.missing).toBe(0);
     expect(outcome.batch.warnings.join(' ')).toContain('no longer among your active Google Classroom courses');
+  });
+});
+
+describe('the batch is a valid schedule', () => {
+  it('writes local times in whole minutes, so the merged schedule passes the format checks', async () => {
+    expect(localNow(TZ, new Date('2026-10-13T20:02:53Z'))).toBe('2026-10-13T16:02:00');
+    classroom.announcements = { '111': [{ id: '801', text: 'Quiz moved.', creationTime: '2026-10-06T12:15:42.123Z' }] };
+    const outcome = await runSync(context, user, TZ);
+    if (outcome.kind !== 'ok') throw new Error(outcome.kind);
+    const merged = mergeBatch(
+      { schemaVersion: '1.1', settings: { commitmentsDescription: 'None' }, classes: [], assignments: [], events: [], availability: [], scheduleBlocks: [] },
+      outcome.batch,
+    );
+    expect(validateDocument(merged, { today: '2026-10-12' }).errors).toEqual([]);
   });
 });
 

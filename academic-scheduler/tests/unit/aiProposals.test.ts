@@ -104,11 +104,18 @@ describe('AI proposals against the schedule', () => {
     expect(reviewItems(example(), [estimate])[0].reasons).toEqual(['There is already an estimate.']);
   });
 
-  it('refuses a change that would make the schedule invalid, and waits for work not imported yet', () => {
+  it('moves planned steps to fit an earlier due date and flags the plan, and waits for work not imported yet', () => {
     const doc = example();
-    // The essay has planned steps after this date.
-    const [early] = reviewItems(doc, [proposal({ assignmentId: 'gc-NzAwMDAwMDAwMDAx', value: '2026-10-08' })]);
-    expect(applyProposal(doc, early, true)).toMatchObject({ error: expect.stringContaining('invalid') });
+    // The essay has planned steps and sessions after this date.
+    const [early] = reviewItems(doc, [proposal({ assignmentId: 'gc-NzAwMDAwMDAwMDAx', value: '2026-10-13T23:59:00' })]);
+    const result = applyProposal(doc, early, true);
+    if (!('doc' in result)) throw new Error(result.error);
+    const essay = result.doc.assignments.find((a) => a.id === 'gc-NzAwMDAwMDAwMDAx')!;
+    expect(essay.due).toBe('2026-10-13T23:59:00');
+    expect(essay.tasks!.filter((t) => t.status !== 'done').every((t) => !t.due || t.due <= '2026-10-13T23:59:00')).toBe(true);
+    expect(essay.issues).toContainEqual(
+      expect.objectContaining({ id: 'gc-NzAwMDAwMDAwMDAx-due-earlier', kind: 'conflict', message: expect.stringContaining('from 2026-10-16T23:59:00 to 2026-10-13T23:59:00') }),
+    );
     expect(reviewItems(doc, [proposal({ assignmentId: 'gc-unknown' }), proposal({ classId: 'gc-class-other', kind: 'new_assessment', title: 'X' })])).toEqual([]);
   });
 });
