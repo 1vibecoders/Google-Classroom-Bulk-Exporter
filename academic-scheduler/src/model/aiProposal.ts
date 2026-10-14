@@ -45,4 +45,18 @@ export interface AnalysisStatus {
   /** The free first run after setup has not been used yet. */
   setupAvailable?: boolean;
   lastRun?: { at: string; analyzed: number; reused: number; failed: number; trigger: 'user' | 'background' | 'setup'; error?: string };
+  /** Tokens as the AI provider reported them: the last 24 hours, and the last 10 runs. */
+  usage?: {
+    day: { calls: number; inputTokens: number; outputTokens: number };
+    runs: Array<{
+      at: string;
+      trigger: 'user' | 'background' | 'setup';
+      status: string;
+      calls: number;
+      inputTokens: number;
+      outputTokens: number;
+      models?: string;
+      error?: string;
+    }>;
+  };
 }

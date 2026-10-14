@@ -7,6 +7,7 @@ import { getAutoApply, setAiStatus, setAutoApply, useAiStatus } from '../state/a
 import { useStore } from '../state/store';
 import { routeToHash } from '../router';
 import { useFirstSchedule } from './useFirstSchedule';
+import { AiUsage } from './AiUsage';
 
 export function AiAnalysisCard() {
   const { notify } = useStore();
@@ -79,6 +80,7 @@ export function AiAnalysisCard() {
                 {busy ? 'Reading…' : 'Read new announcements now'}
               </button>
             </div>
+            {status.usage ? <AiUsage usage={status.usage} /> : null}
             <p className="small muted">
               Sent to the AI provider ({status.model}): the class name, the titles and due dates of its assignments, and the text of new or changed announcements,
               instructions and course documents (the first 20,000 characters of each). Nothing else, and only when there is something new to read.

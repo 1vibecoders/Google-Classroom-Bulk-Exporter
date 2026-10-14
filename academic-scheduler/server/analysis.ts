@@ -43,6 +43,17 @@ const WORK_TEXT_CHARS = 1500;
 
 type Trigger = 'user' | 'background' | 'setup';
 
+type UsageRow = {
+  started_at: unknown;
+  trigger: Trigger;
+  status: string;
+  calls: number | string;
+  input_tokens: number | string;
+  output_tokens: number | string;
+  models: string | null;
+  error: string | null;
+};
+
 type Record_ = {
   kind: string;
   source_id: string;
@@ -162,7 +173,7 @@ async function runAllowance(db: Db, userId: string): Promise<{ limit: number; us
 export async function analysisStatus(context: Context, userId: string): Promise<AnalysisStatus> {
   const { db, ai } = context;
   if (!ai) return { configured: false, proposals: [], pending: 0, budget: { limit: AI_DAILY_CALLS, used: 0 } };
-  const [{ records, cache }, used, decided, runs, allowance] = await Promise.all([
+  const [{ records, cache }, used, decided, runs, allowance, recent, day] = await Promise.all([
     load(db, userId),
     callsUsed(db, userId),
     db.query<{ key: string; decision: string; decided_at: unknown }>('SELECT key, decision, decided_at FROM ai_reviews WHERE user_id = $1', [userId]),
@@ -171,6 +182,15 @@ export async function analysisStatus(context: Context, userId: string): Promise<
       [userId],
     ),
     runAllowance(db, userId),
+    db.query<UsageRow>(
+      `SELECT started_at, trigger, status, calls, input_tokens, output_tokens, models, error FROM ai_runs WHERE user_id = $1 AND status <> 'running' ORDER BY started_at DESC LIMIT 10`,
+      [userId],
+    ),
+    db.query<{ calls: number | string; input_tokens: number | string; output_tokens: number | string }>(
+      `SELECT coalesce(sum(calls), 0) AS calls, coalesce(sum(input_tokens), 0) AS input_tokens, coalesce(sum(output_tokens), 0) AS output_tokens
+       FROM ai_runs WHERE user_id = $1 AND started_at > now() - interval '24 hours'`,
+      [userId],
+    ),
   ]);
   // A deferred proposal comes back after a week.
   const weekAgo = Date.now() - 7 * 24 * 3600 * 1000;
@@ -206,6 +226,20 @@ export async function analysisStatus(context: Context, userId: string): Promise<
     budget: { limit: AI_DAILY_CALLS, used },
     runs: { limit: allowance.limit, used: allowance.used, ...(allowance.nextAt ? { nextAt: allowance.nextAt } : {}) },
     setupAvailable: allowance.setupAvailable,
+    // Tokens exactly as the provider reported them; no cost estimate (SPEC.md § 18).
+    usage: {
+      day: { calls: Number(day[0]?.calls ?? 0), inputTokens: Number(day[0]?.input_tokens ?? 0), outputTokens: Number(day[0]?.output_tokens ?? 0) },
+      runs: recent.map((r) => ({
+        at: new Date(String(r.started_at)).toISOString(),
+        trigger: r.trigger,
+        status: r.status,
+        calls: Number(r.calls),
+        inputTokens: Number(r.input_tokens),
+        outputTokens: Number(r.output_tokens),
+        ...(r.models ? { models: r.models } : {}),
+        ...(r.error ? { error: r.error } : {}),
+      })),
+    },
     ...(last ? { lastRun: { at: new Date(String(last.started_at)).toISOString(), analyzed: last.analyzed, reused: last.reused, failed: last.failed, trigger: last.trigger, ...(last.error ? { error: last.error } : {}) } } : {}),
   };
 }
@@ -238,6 +272,7 @@ export async function runAnalysis(context: Context, userId: string, timezone: st
   const tally = { calls: 0, inputTokens: 0, outputTokens: 0, analyzed: 0, reused: 0, failed: 0, rejected: 0 };
   let message: string | undefined;
   let lastError: string | null = null;
+  const models = new Set<string>();
   let status = 'ok';
   try {
     const { records, cache } = await load(db, userId);
@@ -322,6 +357,7 @@ export async function runAnalysis(context: Context, userId: string, timezone: st
         sources: chunk.map((c) => ({ ...c.text, text: Array.from(c.text.text).slice(0, MAX_CHARS_PER_CALL).join('') })),
       };
       const result = await ai.structured({ task: 'extract', system: SYSTEM, input: promptInput(input), schema: SCHEMA, maxOutputTokens: 2000 });
+      models.add(result.model);
       tally.inputTokens += result.usage.inputTokens;
       tally.outputTokens += result.usage.outputTokens;
       const { proposals, rejected } = checkProposals(result.output, input);
@@ -352,6 +388,7 @@ export async function runAnalysis(context: Context, userId: string, timezone: st
       await runAll(affordable(estimateJobs), async ({ courseId, chunk }) => {
         const input = { classId: `gc-class-${courseId}`, className: classNames.get(courseId) ?? 'Class', work: chunk.map((c) => c.item) };
         const result = await ai.structured({ task: 'estimate', system: ESTIMATE_SYSTEM, input: estimateInput(input), schema: ESTIMATE_SCHEMA, maxOutputTokens: 2000 });
+        models.add(result.model);
         tally.inputTokens += result.usage.inputTokens;
         tally.outputTokens += result.usage.outputTokens;
         const { proposals, rejected } = checkEstimates(result.output, input);
@@ -370,8 +407,21 @@ export async function runAnalysis(context: Context, userId: string, timezone: st
     throw err;
   } finally {
     await db.query(
-      `UPDATE ai_runs SET status = $2, calls = $3, input_tokens = $4, output_tokens = $5, analyzed = $6, reused = $7, failed = $8, rejected = $9, counted = $10, error = $11 WHERE id = $1`,
-      [runId, status, tally.calls, tally.inputTokens, tally.outputTokens, tally.analyzed, tally.reused, tally.failed, tally.rejected, trigger === 'user' && tally.calls > 0, lastError],
+      `UPDATE ai_runs SET status = $2, calls = $3, input_tokens = $4, output_tokens = $5, analyzed = $6, reused = $7, failed = $8, rejected = $9, counted = $10, error = $11, models = $12 WHERE id = $1`,
+      [
+        runId,
+        status,
+        tally.calls,
+        tally.inputTokens,
+        tally.outputTokens,
+        tally.analyzed,
+        tally.reused,
+        tally.failed,
+        tally.rejected,
+        trigger === 'user' && tally.calls > 0,
+        lastError,
+        models.size ? [...models].join(', ') : null,
+      ],
     );
     console.log(JSON.stringify({ event: 'ai_run', run: runId, trigger, status, ...tally }));
   }

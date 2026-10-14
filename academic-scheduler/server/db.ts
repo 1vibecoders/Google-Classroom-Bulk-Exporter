@@ -93,6 +93,8 @@ export const SCHEMA: string[] = [
   `ALTER TABLE ai_runs ADD COLUMN IF NOT EXISTS counted boolean NOT NULL DEFAULT false`,
   // Why the run's AI requests failed (fixed messages plus the provider's error text; never a key).
   `ALTER TABLE ai_runs ADD COLUMN IF NOT EXISTS error text`,
+  // The model(s) that answered, as the provider reported them (a fallback model shows up here).
+  `ALTER TABLE ai_runs ADD COLUMN IF NOT EXISTS models text`,
   // The person's decisions on proposals (§ 16.4), so a decided proposal does not come back.
   `CREATE TABLE IF NOT EXISTS ai_reviews (
     user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,

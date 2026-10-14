@@ -11,7 +11,19 @@ const MOVE = { ...BASE, key: 'b'.repeat(32), kind: 'due_change', assignmentId: '
 test('sure findings are applied with Undo; others wait in Review until decided', async ({ page }) => {
   const decisions: unknown[] = [];
   await page.route('**/api/analysis', (route) =>
-    route.fulfill({ json: { configured: true, model: 'claude-haiku-4-5-20251001', proposals: [QUIZ, MOVE], pending: 0, budget: { limit: 20, used: 1 } } }),
+    route.fulfill({
+      json: {
+        configured: true,
+        model: 'claude-haiku-4-5-20251001',
+        proposals: [QUIZ, MOVE],
+        pending: 0,
+        budget: { limit: 20, used: 1 },
+        usage: {
+          day: { calls: 2, inputTokens: 12000, outputTokens: 900 },
+          runs: [{ at: '2026-10-07T13:00:00.000Z', trigger: 'setup', status: 'ok', calls: 2, inputTokens: 12000, outputTokens: 900, models: 'claude-haiku-4-5-20251001' }],
+        },
+      },
+    }),
   );
   await page.route('**/api/review', (route) => {
     decisions.push(route.request().postDataJSON());
@@ -33,6 +45,11 @@ test('sure findings are applied with Undo; others wait in Review until decided',
   await expect(page.getByText('Applied: Due date of “Grammar worksheet 3: Commas”.')).toBeVisible();
   await expect(card).toBeHidden();
   await expect(page.getByText('Everything the AI found is applied or decided.')).toBeVisible();
+
+  // Settings shows the tokens the provider reported.
+  await page.goto('/#/settings');
+  await page.getByText('Token usage: 12,900 tokens in the last 24 hours (12,000 in, 900 out, 2 requests)').click();
+  await expect(page.getByRole('table', { name: 'The last 1 AI runs' })).toContainText('Setup (free)');
   expect(decisions).toEqual([
     { key: QUIZ.key, decision: 'applied' },
     { key: MOVE.key, decision: 'applied' },

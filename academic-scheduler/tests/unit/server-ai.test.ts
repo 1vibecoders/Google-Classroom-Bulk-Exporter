@@ -150,6 +150,20 @@ describe('analysis runs', () => {
     expect(result.status).toMatchObject({ pending: 0, lastRun: { analyzed: 5 } });
   });
 
+  it('reports token usage as the provider gave it, for the last 24 hours and per run', async () => {
+    const { status } = await runAnalysis(context, 'u1', TZ, 'user');
+    // One extraction and one estimate request, 100 tokens in and 20 out each (the fake provider's report).
+    expect(status.usage?.day).toEqual({ calls: 2, inputTokens: 200, outputTokens: 40 });
+    expect(status.usage?.runs).toEqual([
+      { at: expect.any(String), trigger: 'user', status: 'ok', calls: 2, inputTokens: 200, outputTokens: 40, models: 'fake-model' },
+    ]);
+    failWith = new AiError('The AI service is overloaded (HTTP 503).', 'unavailable', true);
+    await record('announcement', 'ODAx', { text: 'Changed.', postedAt: '2026-10-08T08:00:00' });
+    const failed = await runAnalysis(context, 'u1', TZ, 'user');
+    expect(failed.status.usage?.runs[0]).toMatchObject({ status: 'partial', calls: 1, inputTokens: 0, error: 'The AI service is overloaded (HTTP 503).' });
+    expect(failed.status.usage?.runs[0].models).toBeUndefined();
+  });
+
   it('analyzes new texts once and reuses the result while they are unchanged', async () => {
     const first = await runAnalysis(context, 'u1', TZ, 'user');
     expect(calls).toHaveLength(1);
