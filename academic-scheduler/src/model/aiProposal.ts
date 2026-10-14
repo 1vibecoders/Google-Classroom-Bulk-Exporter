@@ -3,7 +3,7 @@
 // verbatim excerpt, says whether the value was stated or inferred, and has a
 // confidence per field (§ 16.2). The website decides what to apply
 // (src/lib/ai/proposals.ts); nothing here is trusted as a fact on its own.
-import type { AssignmentType, Confidence, DateOrDateTimeStr, Id } from './types';
+import type { AssignmentType, Confidence, DateOrDateTimeStr, DateStr, EventCategory, Id, TimeStr, Weekday } from './types';
 
 /** estimate: a time the text states; workload: the AI's own estimate (SPEC.md § 24.1), `excerpt` is its short basis. */
 export type ProposalKind = 'due_change' | 'new_assessment' | 'estimate' | 'workload';
@@ -30,6 +30,28 @@ export interface AiProposal {
   confidence: { identity: Confidence; value: Confidence };
   /** The model's short reason when it is unsure. */
   note?: string;
+  /** workload: ordered steps of multi-step work (become tasks); their minutes add up to `value`. */
+  steps?: Array<{ title: string; minutes: number }>;
+  /** new_assessment: the AI's estimate of the preparation time (minutes). */
+  prepMinutes?: number;
+}
+
+/** A commitment the AI read from the person's own description (settings.commitmentsDescription). */
+export interface CommitmentEvent {
+  title: string;
+  category: EventCategory;
+  /** Weekly: these days; otherwise one `date`. */
+  daysOfWeek?: Weekday[];
+  date?: DateStr;
+  startTime: TimeStr;
+  endTime: TimeStr;
+}
+
+export interface CommitmentsResult {
+  key: string;
+  events: CommitmentEvent[];
+  /** What the description leaves vague, as questions for the person. */
+  questions: string[];
 }
 
 export interface AnalysisStatus {

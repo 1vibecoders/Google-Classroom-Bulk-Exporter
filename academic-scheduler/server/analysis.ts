@@ -18,8 +18,13 @@
 // it can read everything that was brought in. The daily background job is not
 // counted either.
 // Proposals the person decided (ai_reviews) are not returned again.
+//
+// The person's description of their commitments (sent by the website with a
+// run) is read into events by one more call, cached by its text like any
+// source; the result is returned with that run only (the website adds it).
 import { createHash } from 'node:crypto';
-import type { AiProposal, AnalysisStatus } from '../src/model/aiProposal.js';
+import type { AiProposal, AnalysisStatus, CommitmentsResult } from '../src/model/aiProposal.js';
+import { COMMITMENTS_SCHEMA, COMMITMENTS_SYSTEM, COMMITMENTS_TASK_VERSION, checkCommitments, commitmentsInput } from './ai/commitments.js';
 import { AiError } from './ai/provider.js';
 import { ESTIMATE_SCHEMA, ESTIMATE_SYSTEM, ESTIMATE_TASK_VERSION, checkEstimates, estimateInput, type WorkItem } from './ai/estimate.js';
 import { EXTRACT_TASK_VERSION, SCHEMA, SYSTEM, checkProposals, promptInput, type ExtractInput, type KnownWork, type SourceText } from './ai/extract.js';
@@ -244,10 +249,10 @@ export async function analysisStatus(context: Context, userId: string): Promise<
   };
 }
 
-export type AnalysisOutcome = { kind: 'ok' | 'busy' | 'off' | 'limited'; status: AnalysisStatus; message?: string };
+export type AnalysisOutcome = { kind: 'ok' | 'busy' | 'off' | 'limited'; status: AnalysisStatus; message?: string; commitments?: CommitmentsResult };
 
-/** Analyze what is pending, within the budget. */
-export async function runAnalysis(context: Context, userId: string, timezone: string, trigger: Trigger): Promise<AnalysisOutcome> {
+/** Analyze what is pending, within the budget; `commitmentsText`: the person's description of their commitments. */
+export async function runAnalysis(context: Context, userId: string, timezone: string, trigger: Trigger, commitmentsText?: string): Promise<AnalysisOutcome> {
   const { db, ai } = context;
   if (!ai) return { kind: 'off', status: await analysisStatus(context, userId) };
   if (trigger !== 'background') {
@@ -274,6 +279,7 @@ export async function runAnalysis(context: Context, userId: string, timezone: st
   let lastError: string | null = null;
   const models = new Set<string>();
   let status = 'ok';
+  let commitments: CommitmentsResult | undefined;
   try {
     const { records, cache } = await load(db, userId);
     const today = localNow(timezone).slice(0, 10);
@@ -333,8 +339,18 @@ export async function runAnalysis(context: Context, userId: string, timezone: st
       await Promise.all(Array.from({ length: Math.min(PARALLEL_CALLS, jobs.length) }, lane));
     };
 
+    // The commitments description, unless it was read before as it is now.
+    const description = commitmentsText?.trim() ?? '';
+    const descriptionHash = createHash('sha256').update(description).digest('hex');
+    const readBefore = cache.get('commitments:description');
+    if (description && isCurrent(readBefore, descriptionHash, ai.model, COMMITMENTS_TASK_VERSION)) {
+      commitments = readBefore!.proposals as unknown as CommitmentsResult;
+      tally.reused++;
+    }
+
     // Facts first: pending texts per class, newest first, in calls of bounded size.
-    const extractJobs: Array<{ size: number; courseId: string; chunk: Array<{ record: Record_; text: SourceText; hash: string }> }> = [];
+    type ExtractJob = { size: number; courseId: string; chunk: Array<{ record: Record_; text: SourceText; hash: string }> };
+    const extractJobs: Array<ExtractJob | { size: 1; commitments: string }> = description && !commitments ? [{ size: 1, commitments: description }] : [];
     for (const [courseId, items] of byCourse) {
       items.sort((a, b) => (b.text.postedAt ?? '').localeCompare(a.text.postedAt ?? ''));
       for (let i = 0; i < items.length; ) {
@@ -347,7 +363,22 @@ export async function runAnalysis(context: Context, userId: string, timezone: st
         extractJobs.push({ size: chunk.length, courseId, chunk });
       }
     }
-    await runAll(affordable(extractJobs), async ({ courseId, chunk }) => {
+    await runAll(affordable(extractJobs), async (job) => {
+      if ('commitments' in job) {
+        const input = { today, weekday: new Date(`${today}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' }), text: job.commitments };
+        const result = await ai.structured({ task: 'commitments', system: COMMITMENTS_SYSTEM, input: commitmentsInput(input), schema: COMMITMENTS_SCHEMA, maxOutputTokens: 2000 });
+        models.add(result.model);
+        tally.inputTokens += result.usage.inputTokens;
+        tally.outputTokens += result.usage.outputTokens;
+        const checked = checkCommitments(result.output, input);
+        tally.rejected += checked.rejected;
+        commitments = checked.result;
+        await saveResults(db, userId, COMMITMENTS_TASK_VERSION, ai.model, [
+          { kind: 'commitments', source_id: 'description', course_id: '', content_hash: descriptionHash, proposals: checked.result as unknown as AiProposal[] },
+        ]);
+        return;
+      }
+      const { courseId, chunk } = job;
       const input: ExtractInput = {
         today,
         timezone,
@@ -387,7 +418,8 @@ export async function runAnalysis(context: Context, userId: string, timezone: st
       }
       await runAll(affordable(estimateJobs), async ({ courseId, chunk }) => {
         const input = { classId: `gc-class-${courseId}`, className: classNames.get(courseId) ?? 'Class', work: chunk.map((c) => c.item) };
-        const result = await ai.structured({ task: 'estimate', system: ESTIMATE_SYSTEM, input: estimateInput(input), schema: ESTIMATE_SCHEMA, maxOutputTokens: 2000 });
+        // Room for steps: up to 8 per item.
+        const result = await ai.structured({ task: 'estimate', system: ESTIMATE_SYSTEM, input: estimateInput(input), schema: ESTIMATE_SCHEMA, maxOutputTokens: 4000 });
         models.add(result.model);
         tally.inputTokens += result.usage.inputTokens;
         tally.outputTokens += result.usage.outputTokens;
@@ -425,7 +457,7 @@ export async function runAnalysis(context: Context, userId: string, timezone: st
     );
     console.log(JSON.stringify({ event: 'ai_run', run: runId, trigger, status, ...tally }));
   }
-  return { kind: 'ok', status: await analysisStatus(context, userId), ...(message ? { message } : {}) };
+  return { kind: 'ok', status: await analysisStatus(context, userId), ...(message ? { message } : {}), ...(commitments ? { commitments } : {}) };
 }
 
 async function saveResults(

@@ -261,9 +261,20 @@ part of the work (SPEC § 7), and texts are treated as data, not instructions.
   confidence). Estimates fill only missing times (a time the teacher states wins,
   a low-confidence guess waits in Review); *Plan unscheduled work* then places the
   work with its fixed rules. The AI never builds the calendar itself (SPEC § 23).
+  Multi-step work (essays, projects, big test preparation) also gets 2–8 ordered
+  steps, which become its subtasks, so each planned session says which step to
+  do. A newly announced quiz or test gets an AI estimate of its preparation time,
+  so study time is planned before it.
+- **Your commitments:** when you plan your schedule, the AI reads your own
+  description of your commitments (from the setup) and adds what it states
+  clearly (days and times) as busy events, labelled as coming from your
+  description; anything vague ("I work some weekends") becomes an open question
+  instead of a guess. An event you already have, or deleted, is not added again.
+  Like `/academic-schedule`, but done live on the website.
 - **First schedule:** finishing the setup runs the AI once for free on everything
-  brought in, applies the safe findings and estimates, and plans the work into
-  your free study time, undoable in one step.
+  brought in and your commitments, applies the safe findings and estimates, and
+  plans the work into your free study time, undoable in one step. Later,
+  *Plan my schedule with AI* in Settings does the same as one of the 3 daily runs.
 - **Cost controls:** 3 planning runs per person per rolling 24 hours (like syncs),
   counted only when a run used the AI; the free setup run and the daily background
   check do not count. A text is sent again only when it changes (or the task or
@@ -272,9 +283,10 @@ part of the work (SPEC § 7), and texts are treated as data, not instructions.
   the provider reports them.
 - **What is sent** to the provider (Anthropic if `ANTHROPIC_API_KEY` is set,
   otherwise Gemini if `GEMINI_API_KEY` is set; `AI_PROVIDER` picks one when both
-  are): the class name, its assignments' titles and due dates, and the new or
-  changed texts. Nothing is sent while AI is not configured. The model is
-  `claude-haiku-4-5-20251001` (the lowest-cost Claude model) or
+  are): the class name, its assignments' titles and due dates, the new or
+  changed texts, and (when you plan your schedule) your description of your
+  commitments. Nothing is sent while AI is not configured. The model is
+  `claude-haiku-5-5` (the lowest-cost Claude model) or
   `gemini-3.8-flash` (a free-tier Flash model, asked to think at a low level)
   unless `AI_MODEL` says otherwise; when Gemini stays overloaded or
   rate-limited after its retries, the same request goes once to

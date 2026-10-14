@@ -8,7 +8,7 @@
 //   GEMINI_API_KEY     turns it on with Google Gemini (free tier) when there is
 //                      no ANTHROPIC_API_KEY
 //   AI_PROVIDER        optional, `anthropic` or `gemini`: which key to use when both are set
-//   AI_MODEL           optional; defaults: claude-haiku-4-5-20251001 (the
+//   AI_MODEL           optional; defaults: claude-haiku-5-5 (the
 //                      lowest-cost Claude model, § 15) and gemini-3.8-flash
 //                      (a free-tier Flash model)
 //   AI_FALLBACK_MODEL  optional, Gemini only: the model tried when the main one
@@ -18,7 +18,7 @@
 import { anthropicProvider } from './anthropic.js';
 import { geminiProvider } from './gemini.js';
 
-export const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
+export const DEFAULT_MODEL = 'claude-haiku-5-5';
 export const GEMINI_DEFAULT_MODEL = 'gemini-3.8-flash';
 export const GEMINI_FALLBACK_MODEL = 'gemini-3.5-flash-lite';
 

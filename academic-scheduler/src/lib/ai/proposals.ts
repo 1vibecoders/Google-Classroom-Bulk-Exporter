@@ -124,7 +124,17 @@ export function applyProposal(doc: ScheduleDocument, item: ReviewItem, byPerson:
     const id = newAssessmentId(p);
     const type = p.type ?? 'other';
     const dateField = ASSESSMENT_DATE_TYPES.includes(type) ? 'assessmentDate' : 'due';
-    next.assignments.push({ id, title: p.title ?? 'Assessment', classId: p.classId, type, origin: 'generated', [dateField]: String(value), source: sourceOf(p) });
+    next.assignments.push({
+      id,
+      title: p.title ?? 'Assessment',
+      classId: p.classId,
+      type,
+      origin: 'generated',
+      [dateField]: String(value),
+      source: sourceOf(p),
+      // The AI's preparation estimate, so the planner spreads study time before the date.
+      ...(p.prepMinutes ? { estimatedMinutes: p.prepMinutes, estimateConfidence: 'low' as const, estimateBasis: 'AI estimate of the preparation time' } : {}),
+    });
   } else {
     const a = next.assignments.find((x) => x.id === item.assignment!.id);
     if (!a) return { error: 'The assignment is no longer in your schedule.' };
@@ -138,6 +148,16 @@ export function applyProposal(doc: ScheduleDocument, item: ReviewItem, byPerson:
       a.estimateBasis = Array.from(p.kind === 'workload' ? `AI estimate: ${p.excerpt}` : `Stated in Classroom: “${p.excerpt}”`).slice(0, 2000).join('');
       a.estimateConfidence = p.confidence.value;
       delete a.estimateRange;
+      // Multi-step work (SKILL.md Step 8): the AI's steps become tasks, so each session says what to do.
+      if (p.steps && Number(value) === p.value && !a.tasks?.length && !personOwns(a, 'tasks')) {
+        a.tasks = p.steps.map((s, i) => ({
+          id: `${a.id}-s${i + 1}`,
+          title: s.title,
+          estimatedMinutes: s.minutes,
+          origin: 'generated' as const,
+          ...(i ? { dependsOn: [`${a.id}-s${i}`] } : {}),
+        }));
+      }
     }
     if (byPerson && a.origin !== 'user' && !a.overrides?.includes(field)) a.overrides = [...(a.overrides ?? []), field];
     a.sources = [...(a.sources ?? []), sourceOf(p)].slice(-20);

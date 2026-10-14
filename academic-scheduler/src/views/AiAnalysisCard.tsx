@@ -67,14 +67,20 @@ export function AiAnalysisCard() {
               {status.runs ? '; ' : ''}
               {status.budget.used} of {status.budget.limit} AI requests used.
             </p>
-            {status.setupAvailable ? (
-              <div className="row">
-                <button type="button" className="btn primary" onClick={() => void first.build(true, 'Schedule built.')} disabled={first.building || busy}>
-                  {first.building ? 'Building your schedule…' : 'Build my schedule with AI (free, once)'}
-                </button>
-                <span className="small muted">Reads everything synced, estimates the work and plans it. Not counted toward the 3 daily runs.</span>
-              </div>
-            ) : null}
+            <div className="row">
+              <button
+                type="button"
+                className="btn primary"
+                onClick={() => void first.build(true, 'Schedule built.')}
+                disabled={first.building || busy || (!status.setupAvailable && !!status.runs && status.runs.used >= status.runs.limit)}
+              >
+                {first.building ? 'Building your schedule…' : status.setupAvailable ? 'Build my schedule with AI (free, once)' : 'Plan my schedule with AI'}
+              </button>
+              <span className="small muted">
+                Reads everything synced and your description of your commitments, adds those commitments to the calendar, estimates the work (with steps for bigger
+                work) and plans it in your free time. {status.setupAvailable ? 'Not counted toward the 3 daily runs.' : 'Counts as one of the 3 daily runs.'}
+              </span>
+            </div>
             <div className="row">
               <button type="button" className="btn" onClick={() => void analyze()} disabled={busy || first.building || (!!status.runs && status.runs.used >= status.runs.limit)}>
                 {busy ? 'Reading…' : 'Read new announcements now'}
@@ -82,8 +88,9 @@ export function AiAnalysisCard() {
             </div>
             {status.usage ? <AiUsage usage={status.usage} /> : null}
             <p className="small muted">
-              Sent to the AI provider ({status.model}): the class name, the titles and due dates of its assignments, and the text of new or changed announcements,
-              instructions and course documents (the first 20,000 characters of each). Nothing else, and only when there is something new to read.
+              Sent to the AI provider ({status.model}): the class name, the titles and due dates of its assignments, the text of new or changed announcements,
+              instructions and course documents (the first 20,000 characters of each), and, when you plan your schedule, your description of your commitments.
+              Nothing else, and only when there is something new to read.
             </p>
           </>
         )}

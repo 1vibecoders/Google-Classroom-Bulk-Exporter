@@ -21,6 +21,8 @@ export function useFirstSchedule(): { building: boolean; build: (useAi: boolean,
     setBuilding(false);
     if (built.status) setAiStatus(built.status);
     const parts = [lead];
+    if (built.events) parts.push(`Added ${built.events} ${built.events === 1 ? 'commitment' : 'commitments'} from your description to the calendar.`);
+    if (built.questions) parts.push(`${built.questions === 1 ? 'One part' : `${built.questions} parts`} of your description need more detail; see the open questions.`);
     if (built.sessions) parts.push(`Planned ${built.sessions} work ${built.sessions === 1 ? 'session' : 'sessions'} in your free study time.`);
     if (built.estimated) parts.push(`The AI estimated the time for ${built.estimated} ${built.estimated === 1 ? 'assignment' : 'assignments'}; you can edit any estimate.`);
     if (built.problem) parts.push(`AI could not be used: ${built.problem} You can try the free AI run again from Settings.`);

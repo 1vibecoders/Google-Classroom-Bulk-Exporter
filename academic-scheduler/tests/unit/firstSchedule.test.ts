@@ -45,7 +45,7 @@ describe('the first schedule', () => {
       });
     });
     const built = await firstSchedule(doc, true, 'America/New_York');
-    expect(sent).toEqual([{ timezone: 'America/New_York', setup: true }]);
+    expect(sent).toEqual([{ timezone: 'America/New_York', setup: true, commitments: doc.settings!.commitmentsDescription }]);
     expect(built.applied).toEqual([ESTIMATE.key]);
     expect(built.estimated).toBe(1);
     expect(built.doc.assignments.find((a) => a.id === GRAMMAR)).toMatchObject({ estimatedMinutes: 45, estimateBasis: 'AI estimate: One worksheet of comma exercises' });
@@ -53,6 +53,54 @@ describe('the first schedule', () => {
     expect(built.doc.scheduleBlocks.filter((b) => b.assignmentId === GRAMMAR && b.origin === 'planner').length).toBeGreaterThan(0);
     expect(built.status?.proposals).toEqual([]);
     expect(validateDocument(built.doc, { today: '2026-10-12' }).errors).toEqual([]);
+  });
+
+  it('adds the commitments read from the description, turns steps into tasks and plans around both', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-14T08:00:00') });
+    const doc = example();
+    const grammar = doc.assignments.find((a) => a.id === GRAMMAR)!;
+    grammar.estimatedMinutes = undefined;
+    grammar.estimateRange = undefined;
+    grammar.tasks = undefined;
+    grammar.sourceState = 'present';
+    const withSteps: AiProposal = { ...ESTIMATE, value: 90, steps: [{ title: 'Review comma rules', minutes: 30 }, { title: 'Do the exercises', minutes: 60 }] };
+    const commitments = {
+      key: 'c'.repeat(32),
+      events: [
+        { title: 'Robotics club', category: 'activity', daysOfWeek: ['tue', 'thu'], startTime: '15:30', endTime: '17:00' },
+        // Already in the schedule: not added twice.
+        { title: 'Fencing', category: 'activity', daysOfWeek: ['mon'], startTime: '16:00', endTime: '18:00' },
+      ],
+      questions: ['Which days and hours do you work at the café?'],
+    };
+    vi.stubGlobal('fetch', async () =>
+      new Response(JSON.stringify({ configured: true, proposals: [withSteps], pending: 0, budget: { limit: 20, used: 2 }, commitments }), {
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const built = await firstSchedule(doc, true, 'America/New_York');
+    expect(built.events).toBe(1);
+    expect(built.questions).toBe(1);
+    expect(built.doc.events.find((e) => e.id === 'cm-robotics-club')).toMatchObject({
+      origin: 'generated',
+      busy: true,
+      recurrence: { frequency: 'weekly', daysOfWeek: ['tue', 'thu'], startDate: '2026-10-12' },
+      source: { kind: 'user' },
+    });
+    expect(built.doc.events.filter((e) => e.title === 'Fencing')).toHaveLength(1);
+    expect(built.doc.issues?.some((i) => i.kind === 'missing_information' && i.message.includes('café'))).toBe(true);
+    expect(built.doc.assignments.find((a) => a.id === GRAMMAR)!.tasks).toEqual([
+      { id: `${GRAMMAR}-s1`, title: 'Review comma rules', estimatedMinutes: 30, origin: 'generated' },
+      { id: `${GRAMMAR}-s2`, title: 'Do the exercises', estimatedMinutes: 60, origin: 'generated', dependsOn: [`${GRAMMAR}-s1`] },
+    ]);
+    const sessions = built.doc.scheduleBlocks.filter((b) => b.assignmentId === GRAMMAR && b.origin === 'planner');
+    expect(sessions.some((b) => b.taskId === `${GRAMMAR}-s1`)).toBe(true);
+    // Nothing planned over robotics club (Tue/Thu 15:30–17:00).
+    for (const b of built.doc.scheduleBlocks.filter((x) => x.origin === 'planner')) {
+      const day = new Date(`${b.start.slice(0, 10)}T12:00:00`).getDay();
+      if (day === 2 || day === 4) expect(b.end.slice(11, 16) <= '15:30' || b.start.slice(11, 16) >= '17:00').toBe(true);
+    }
+    expect(validateDocument(built.doc, { today: '2026-10-14' }).errors).toEqual([]);
   });
 
   it('plans without AI when it is not set up, and says why when the AI fails', async () => {
