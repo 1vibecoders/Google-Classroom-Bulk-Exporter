@@ -34,6 +34,8 @@ export const SETUP_MAX_CALLS = 20;
 const MAX_SOURCES_PER_CALL = 12;
 const MAX_CHARS_PER_CALL = 24000;
 const RUNNING_MINUTES = 5;
+/** Requests in flight at once (one per class at a time is typical); bounded for the provider's per-minute limits. */
+const PARALLEL_CALLS = 3;
 const DOCUMENT_AI_CHARS = 20000;
 /** Workload estimates: items per call, and how much instruction and document text each item brings. */
 const MAX_WORK_PER_CALL = 15;
@@ -149,7 +151,8 @@ async function runAllowance(db: Db, userId: string): Promise<{ limit: number; us
       `SELECT started_at FROM ai_runs WHERE user_id = $1 AND counted AND started_at > now() - interval '24 hours' ORDER BY started_at`,
       [userId],
     ),
-    db.query(`SELECT 1 FROM ai_runs WHERE user_id = $1 AND trigger = 'setup' AND status IN ('ok', 'partial') LIMIT 1`, [userId]),
+    // Only a setup run that finished without an AI failure uses up the free run.
+    db.query(`SELECT 1 FROM ai_runs WHERE user_id = $1 AND trigger = 'setup' AND status = 'ok' LIMIT 1`, [userId]),
   ]);
   const nextAt = counted.length >= RUN_LIMIT ? new Date(new Date(String(counted[0].started_at)).getTime() + 24 * 3600 * 1000).toISOString() : undefined;
   return { limit: RUN_LIMIT, used: counted.length, ...(nextAt ? { nextAt } : {}), setupAvailable: setup.length === 0 };
@@ -163,8 +166,8 @@ export async function analysisStatus(context: Context, userId: string): Promise<
     load(db, userId),
     callsUsed(db, userId),
     db.query<{ key: string; decision: string; decided_at: unknown }>('SELECT key, decision, decided_at FROM ai_reviews WHERE user_id = $1', [userId]),
-    db.query<{ started_at: unknown; analyzed: number; reused: number; failed: number; trigger: Trigger }>(
-      `SELECT started_at, analyzed, reused, failed, trigger FROM ai_runs WHERE user_id = $1 AND status <> 'running' ORDER BY started_at DESC LIMIT 1`,
+    db.query<{ started_at: unknown; analyzed: number; reused: number; failed: number; trigger: Trigger; error: string | null }>(
+      `SELECT started_at, analyzed, reused, failed, trigger, error FROM ai_runs WHERE user_id = $1 AND status <> 'running' ORDER BY started_at DESC LIMIT 1`,
       [userId],
     ),
     runAllowance(db, userId),
@@ -203,7 +206,7 @@ export async function analysisStatus(context: Context, userId: string): Promise<
     budget: { limit: AI_DAILY_CALLS, used },
     runs: { limit: allowance.limit, used: allowance.used, ...(allowance.nextAt ? { nextAt: allowance.nextAt } : {}) },
     setupAvailable: allowance.setupAvailable,
-    ...(last ? { lastRun: { at: new Date(String(last.started_at)).toISOString(), analyzed: last.analyzed, reused: last.reused, failed: last.failed, trigger: last.trigger } } : {}),
+    ...(last ? { lastRun: { at: new Date(String(last.started_at)).toISOString(), analyzed: last.analyzed, reused: last.reused, failed: last.failed, trigger: last.trigger, ...(last.error ? { error: last.error } : {}) } } : {}),
   };
 }
 
@@ -234,6 +237,7 @@ export async function runAnalysis(context: Context, userId: string, timezone: st
   const runId = Number(reserved[0].id);
   const tally = { calls: 0, inputTokens: 0, outputTokens: 0, analyzed: 0, reused: 0, failed: 0, rejected: 0 };
   let message: string | undefined;
+  let lastError: string | null = null;
   let status = 'ok';
   try {
     const { records, cache } = await load(db, userId);
@@ -261,102 +265,113 @@ export async function runAnalysis(context: Context, userId: string, timezone: st
       byCourse.set(record.course_id, list);
     }
     let used = await callsUsed(db, userId);
-    outer: for (const [courseId, items] of byCourse) {
+    let stopped = false;
+    const dailyLeft = () => (trigger === 'setup' ? Infinity : AI_DAILY_CALLS - used);
+    /** The jobs that fit the run's cap and the daily budget; says so when the budget cuts them short. */
+    const affordable = <T>(jobs: T[]): T[] => {
+      const room = Math.max(0, Math.min(callCap - tally.calls, dailyLeft()));
+      if (jobs.length > room && dailyLeft() <= room) message = 'The daily AI budget is used up; the rest is analyzed later.';
+      return jobs.slice(0, room);
+    };
+    /** Runs the jobs, up to PARALLEL_CALLS at a time; the first AI failure stops the ones not yet sent. */
+    const runAll = async <T extends { size: number }>(jobs: T[], call: (job: T) => Promise<void>) => {
+      let next = 0;
+      const lane = async () => {
+        while (next < jobs.length && !stopped) {
+          const job = jobs[next++];
+          tally.calls++;
+          used++;
+          try {
+            await call(job);
+            tally.analyzed += job.size;
+          } catch (err) {
+            if (!(err instanceof AiError)) throw err;
+            tally.failed += job.size;
+            status = 'partial';
+            stopped = true;
+            message = `${err.message}${err.transient ? ' The rest is analyzed later.' : ''}`;
+            lastError = err.message;
+            console.error(JSON.stringify({ event: 'ai_failed', run: runId, kind: err.kind, message: err.message }));
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(PARALLEL_CALLS, jobs.length) }, lane));
+    };
+
+    // Facts first: pending texts per class, newest first, in calls of bounded size.
+    const extractJobs: Array<{ size: number; courseId: string; chunk: Array<{ record: Record_; text: SourceText; hash: string }> }> = [];
+    for (const [courseId, items] of byCourse) {
       items.sort((a, b) => (b.text.postedAt ?? '').localeCompare(a.text.postedAt ?? ''));
       for (let i = 0; i < items.length; ) {
-        if ((trigger !== 'setup' && used >= AI_DAILY_CALLS) || tally.calls >= callCap) {
-          message = trigger !== 'setup' && used >= AI_DAILY_CALLS ? 'The daily AI budget is used up; the rest is analyzed later.' : undefined;
-          break outer;
-        }
         const chunk: typeof items = [];
         let chars = 0;
         while (i < items.length && chunk.length < MAX_SOURCES_PER_CALL && (chunk.length === 0 || chars + items[i].text.text.length <= MAX_CHARS_PER_CALL)) {
           chars += items[i].text.text.length;
           chunk.push(items[i++]);
         }
-        const input: ExtractInput = {
-          today,
-          timezone,
-          classId: `gc-class-${courseId}`,
-          className: classNames.get(courseId) ?? 'Class',
-          known: known.get(courseId) ?? [],
-          sources: chunk.map((c) => ({ ...c.text, text: Array.from(c.text.text).slice(0, MAX_CHARS_PER_CALL).join('') })),
-        };
-        tally.calls++;
-        used++;
-        try {
-          const result = await ai.structured({ task: 'extract', system: SYSTEM, input: promptInput(input), schema: SCHEMA, maxOutputTokens: 2000 });
-          tally.inputTokens += result.usage.inputTokens;
-          tally.outputTokens += result.usage.outputTokens;
-          const { proposals, rejected } = checkProposals(result.output, input);
-          tally.rejected += rejected;
-          const rows = chunk.map((c) => ({
-            kind: c.record.kind,
-            source_id: c.record.source_id,
-            course_id: courseId,
-            content_hash: c.hash,
-            proposals: proposals.filter((p) => p.source.id === c.record.source_id),
-          }));
-          await saveResults(db, userId, EXTRACT_TASK_VERSION, ai.model, rows);
-          tally.analyzed += chunk.length;
-        } catch (err) {
-          if (!(err instanceof AiError)) throw err;
-          tally.failed += chunk.length;
-          status = 'partial';
-          message = err.kind === 'config' ? 'AI analysis is not set up correctly on the server.' : 'The AI service could not be used right now; the rest is analyzed later.';
-          console.error(JSON.stringify({ event: 'ai_failed', run: runId, kind: err.kind }));
-          break outer;
-        }
+        extractJobs.push({ size: chunk.length, courseId, chunk });
       }
     }
+    await runAll(affordable(extractJobs), async ({ courseId, chunk }) => {
+      const input: ExtractInput = {
+        today,
+        timezone,
+        classId: `gc-class-${courseId}`,
+        className: classNames.get(courseId) ?? 'Class',
+        known: known.get(courseId) ?? [],
+        sources: chunk.map((c) => ({ ...c.text, text: Array.from(c.text.text).slice(0, MAX_CHARS_PER_CALL).join('') })),
+      };
+      const result = await ai.structured({ task: 'extract', system: SYSTEM, input: promptInput(input), schema: SCHEMA, maxOutputTokens: 2000 });
+      tally.inputTokens += result.usage.inputTokens;
+      tally.outputTokens += result.usage.outputTokens;
+      const { proposals, rejected } = checkProposals(result.output, input);
+      tally.rejected += rejected;
+      await saveResults(
+        db,
+        userId,
+        EXTRACT_TASK_VERSION,
+        ai.model,
+        chunk.map((c) => ({ kind: c.record.kind, source_id: c.record.source_id, course_id: courseId, content_hash: c.hash, proposals: proposals.filter((p) => p.source.id === c.record.source_id) })),
+      );
+    });
 
-    // Workload estimates for work that has none yet or whose text changed, after the facts above.
-    estimates: for (const [courseId, items] of status === 'ok' ? workItems(records) : []) {
-      const pending = items.filter((w) => {
-        const current = isCurrent(cache.get(`workload:${w.record.source_id}`), w.hash, ai.model, ESTIMATE_TASK_VERSION);
-        if (current) tally.reused++;
-        return !current;
-      });
-      for (let i = 0; i < pending.length; i += MAX_WORK_PER_CALL) {
-        if ((trigger !== 'setup' && used >= AI_DAILY_CALLS) || tally.calls >= callCap) {
-          message = trigger !== 'setup' && used >= AI_DAILY_CALLS ? 'The daily AI budget is used up; the rest is analyzed later.' : undefined;
-          break estimates;
-        }
-        const chunk = pending.slice(i, i + MAX_WORK_PER_CALL);
-        const input = { classId: `gc-class-${courseId}`, className: classNames.get(courseId) ?? 'Class', work: chunk.map((c) => c.item) };
-        tally.calls++;
-        used++;
-        try {
-          const result = await ai.structured({ task: 'estimate', system: ESTIMATE_SYSTEM, input: estimateInput(input), schema: ESTIMATE_SCHEMA, maxOutputTokens: 2000 });
-          tally.inputTokens += result.usage.inputTokens;
-          tally.outputTokens += result.usage.outputTokens;
-          const { proposals, rejected } = checkEstimates(result.output, input);
-          tally.rejected += rejected;
-          await saveResults(
-            db,
-            userId,
-            ESTIMATE_TASK_VERSION,
-            ai.model,
-            chunk.map((c) => ({ kind: 'workload', source_id: c.record.source_id, course_id: courseId, content_hash: c.hash, proposals: proposals.filter((p) => p.assignmentId === c.item.id) })),
-          );
-          tally.analyzed += chunk.length;
-        } catch (err) {
-          if (!(err instanceof AiError)) throw err;
-          tally.failed += chunk.length;
-          status = 'partial';
-          message = err.kind === 'config' ? 'AI analysis is not set up correctly on the server.' : 'The AI service could not be used right now; the rest is analyzed later.';
-          console.error(JSON.stringify({ event: 'ai_failed', run: runId, kind: err.kind }));
-          break estimates;
+    // Then workload estimates for work that has none yet or whose text changed.
+    if (status === 'ok') {
+      const estimateJobs: Array<{ size: number; courseId: string; chunk: Array<{ record: Record_; item: WorkItem; hash: string }> }> = [];
+      for (const [courseId, items] of workItems(records)) {
+        const pending = items.filter((w) => {
+          const current = isCurrent(cache.get(`workload:${w.record.source_id}`), w.hash, ai.model, ESTIMATE_TASK_VERSION);
+          if (current) tally.reused++;
+          return !current;
+        });
+        for (let i = 0; i < pending.length; i += MAX_WORK_PER_CALL) {
+          const chunk = pending.slice(i, i + MAX_WORK_PER_CALL);
+          estimateJobs.push({ size: chunk.length, courseId, chunk });
         }
       }
+      await runAll(affordable(estimateJobs), async ({ courseId, chunk }) => {
+        const input = { classId: `gc-class-${courseId}`, className: classNames.get(courseId) ?? 'Class', work: chunk.map((c) => c.item) };
+        const result = await ai.structured({ task: 'estimate', system: ESTIMATE_SYSTEM, input: estimateInput(input), schema: ESTIMATE_SCHEMA, maxOutputTokens: 2000 });
+        tally.inputTokens += result.usage.inputTokens;
+        tally.outputTokens += result.usage.outputTokens;
+        const { proposals, rejected } = checkEstimates(result.output, input);
+        tally.rejected += rejected;
+        await saveResults(
+          db,
+          userId,
+          ESTIMATE_TASK_VERSION,
+          ai.model,
+          chunk.map((c) => ({ kind: 'workload', source_id: c.record.source_id, course_id: courseId, content_hash: c.hash, proposals: proposals.filter((p) => p.assignmentId === c.item.id) })),
+        );
+      });
     }
   } catch (err) {
     status = 'failed';
     throw err;
   } finally {
     await db.query(
-      `UPDATE ai_runs SET status = $2, calls = $3, input_tokens = $4, output_tokens = $5, analyzed = $6, reused = $7, failed = $8, rejected = $9, counted = $10 WHERE id = $1`,
-      [runId, status, tally.calls, tally.inputTokens, tally.outputTokens, tally.analyzed, tally.reused, tally.failed, tally.rejected, trigger === 'user' && tally.calls > 0],
+      `UPDATE ai_runs SET status = $2, calls = $3, input_tokens = $4, output_tokens = $5, analyzed = $6, reused = $7, failed = $8, rejected = $9, counted = $10, error = $11 WHERE id = $1`,
+      [runId, status, tally.calls, tally.inputTokens, tally.outputTokens, tally.analyzed, tally.reused, tally.failed, tally.rejected, trigger === 'user' && tally.calls > 0, lastError],
     );
     console.log(JSON.stringify({ event: 'ai_run', run: runId, trigger, status, ...tally }));
   }

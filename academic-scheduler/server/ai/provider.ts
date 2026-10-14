@@ -11,12 +11,16 @@
 //   AI_MODEL           optional; defaults: claude-haiku-4-5-20251001 (the
 //                      lowest-cost Claude model, § 15) and gemini-3.8-flash
 //                      (a free-tier Flash model)
+//   AI_FALLBACK_MODEL  optional, Gemini only: the model tried when the main one
+//                      stays overloaded or rate-limited; default
+//                      gemini-3.5-flash-lite (free tier, lighter); empty for none
 // Output is never trusted because it parses: the caller validates every field.
 import { anthropicProvider } from './anthropic.js';
 import { geminiProvider } from './gemini.js';
 
 export const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
 export const GEMINI_DEFAULT_MODEL = 'gemini-3.8-flash';
+export const GEMINI_FALLBACK_MODEL = 'gemini-3.5-flash-lite';
 
 export interface StructuredRequest {
   /** Short name of the task, for logs (never content). */
@@ -61,7 +65,10 @@ export function providerFromEnv(env: Record<string, string | undefined>, fetchIm
     return env.ANTHROPIC_API_KEY ? anthropicProvider({ apiKey: env.ANTHROPIC_API_KEY, model: env.AI_MODEL || DEFAULT_MODEL, fetch: fetchImpl }) : null;
   }
   if (choice === 'gemini') {
-    return env.GEMINI_API_KEY ? geminiProvider({ apiKey: env.GEMINI_API_KEY, model: env.AI_MODEL || GEMINI_DEFAULT_MODEL, fetch: fetchImpl }) : null;
+    if (!env.GEMINI_API_KEY) return null;
+    // An empty AI_FALLBACK_MODEL turns the fallback off.
+    const fallbackModel = (env.AI_FALLBACK_MODEL ?? GEMINI_FALLBACK_MODEL) || undefined;
+    return geminiProvider({ apiKey: env.GEMINI_API_KEY, model: env.AI_MODEL || GEMINI_DEFAULT_MODEL, fallbackModel, fetch: fetchImpl });
   }
   console.error('AI_PROVIDER must be "anthropic" or "gemini"; AI analysis is off.');
   return null;

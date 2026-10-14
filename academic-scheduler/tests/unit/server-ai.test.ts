@@ -222,10 +222,48 @@ describe('analysis runs', () => {
     expect((await runAnalysis(context, 'u1', TZ, 'setup')).kind).toBe('limited');
   });
 
+  it('keeps the free setup run when it failed, so it can be tried again', async () => {
+    failWith = new AiError('The AI service is overloaded (HTTP 503).', 'unavailable', true);
+    const failed = await runAnalysis(context, 'u1', TZ, 'setup');
+    expect(failed.status).toMatchObject({ setupAvailable: true, runs: { used: 0 }, lastRun: { trigger: 'setup', error: 'The AI service is overloaded (HTTP 503).' } });
+    failWith = null;
+    expect((await runAnalysis(context, 'u1', TZ, 'setup')).status).toMatchObject({ setupAvailable: false, pending: 0 });
+  });
+
+  it('sends the requests of different classes at the same time', async () => {
+    await record('course', 'MjIy', { name: 'Biology' }, 'MjIy');
+    await record('announcement', 'QmlvMQ', { text: 'Lab on Friday.', postedAt: '2026-10-07T08:00:00' }, 'MjIy');
+    await record('course', 'MzMz', { name: 'History' }, 'MzMz');
+    await record('announcement', 'SGlzMQ', { text: 'Essay next week.', postedAt: '2026-10-07T08:00:00' }, 'MzMz');
+    let inFlight = 0;
+    let most = 0;
+    const answerBefore = answer;
+    answer = (request) => {
+      inFlight++;
+      most = Math.max(most, inFlight);
+      return answerBefore(request);
+    };
+    const slowAi: typeof fakeAi = {
+      ...fakeAi,
+      async structured(request) {
+        const result = fakeAi.structured(request);
+        await new Promise((r) => setTimeout(r, 30));
+        inFlight = Math.max(0, inFlight - 1);
+        return result;
+      },
+    };
+    const outcome = await runAnalysis({ ...context, ai: slowAi }, 'u1', TZ, 'user');
+    expect(calls).toHaveLength(3);
+    expect(most).toBeGreaterThan(1);
+    expect(outcome.status.pending).toBe(0);
+  });
+
   it('does not cache a failed call, so it is retried later', async () => {
-    failWith = new AiError('down', 'unavailable', true);
+    failWith = new AiError('The AI service is down.', 'unavailable', true);
     const outcome = await runAnalysis(context, 'u1', TZ, 'user');
-    expect(outcome.message).toContain('could not be used right now');
+    expect(outcome.message).toBe('The AI service is down. The rest is analyzed later.');
+    // The reason is kept with the run, so Settings can show it later.
+    expect(outcome.status.lastRun?.error).toBe('The AI service is down.');
     // The estimates wait too: a run that failed does not go on to them.
     expect(estimateCalls).toHaveLength(0);
     expect(outcome.status).toMatchObject({ pending: 4, lastRun: { failed: 2 } });

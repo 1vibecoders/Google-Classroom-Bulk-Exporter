@@ -1,0 +1,48 @@
+// Builds the first schedule (lib/ai/firstSchedule.ts) and commits it as one
+// undoable change with a notice: at the end of setup, and from Settings while
+// the free AI run is still available (for example after it failed).
+import { useState } from 'react';
+import { firstSchedule } from '../lib/ai/firstSchedule';
+import { recordDecision } from '../lib/ai/api';
+import { nowLocal } from '../lib/time';
+import { setAiStatus } from '../state/aiStore';
+import { useStore } from '../state/store';
+import { newSnapshotId } from './import/logic';
+
+export function useFirstSchedule(): { building: boolean; build: (useAi: boolean, lead: string) => Promise<void> } {
+  const { state, dispatch, notify } = useStore();
+  const [building, setBuilding] = useState(false);
+
+  const build = async (useAi: boolean, lead: string) => {
+    if (building) return;
+    setBuilding(true);
+    const doc = state.doc;
+    const built = await firstSchedule(doc, useAi, Intl.DateTimeFormat().resolvedOptions().timeZone);
+    setBuilding(false);
+    if (built.status) setAiStatus(built.status);
+    const parts = [lead];
+    if (built.sessions) parts.push(`Planned ${built.sessions} work ${built.sessions === 1 ? 'session' : 'sessions'} in your free study time.`);
+    if (built.estimated) parts.push(`The AI estimated the time for ${built.estimated} ${built.estimated === 1 ? 'assignment' : 'assignments'}; you can edit any estimate.`);
+    if (built.problem) parts.push(`AI could not be used: ${built.problem} You can try the free AI run again from Settings.`);
+    const tone = built.problem ? 'warning' : 'success';
+    if (built.doc === doc) {
+      notify(parts.join(' '), { tone });
+      return;
+    }
+    const snapshotId = newSnapshotId();
+    dispatch({ type: 'replaceDocument', doc: built.doc, label: 'Your first schedule', now: nowLocal(), snapshotId });
+    for (const key of built.applied) void recordDecision(key, 'applied');
+    notify(parts.join(' '), {
+      tone,
+      action: {
+        label: 'Undo',
+        run: () => {
+          dispatch({ type: 'undo', snapshotId });
+          for (const key of built.applied) void recordDecision(key, 'rejected');
+        },
+      },
+    });
+  };
+
+  return { building, build };
+}

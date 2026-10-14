@@ -6,12 +6,14 @@ import { runAnalysis } from '../lib/ai/api';
 import { getAutoApply, setAiStatus, setAutoApply, useAiStatus } from '../state/aiStore';
 import { useStore } from '../state/store';
 import { routeToHash } from '../router';
+import { useFirstSchedule } from './useFirstSchedule';
 
 export function AiAnalysisCard() {
   const { notify } = useStore();
   const status = useAiStatus();
   const [auto, setAuto] = useState(getAutoApply);
   const [busy, setBusy] = useState(false);
+  const first = useFirstSchedule();
 
   const analyze = async () => {
     setBusy(true);
@@ -57,14 +59,23 @@ export function AiAnalysisCard() {
               {last
                 ? `Last read ${new Date(last.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}${last.trigger === 'background' ? ' (daily background check)' : ''}: ${last.analyzed} read, ${last.reused} unchanged and reused${last.failed ? `, ${last.failed} could not be read` : ''}.`
                 : 'Nothing read yet.'}{' '}
+              {last?.error ? `It stopped: ${last.error} ` : ''}
               {status.pending ? `${status.pending} new or changed texts are waiting. ` : ''}
               {status.runs ? `${status.runs.used} of ${status.runs.limit} planning runs used in the last 24 hours` : ''}
               {status.runs?.nextAt ? ` (next one ${new Date(status.runs.nextAt).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })})` : ''}
               {status.runs ? '; ' : ''}
               {status.budget.used} of {status.budget.limit} AI requests used.
             </p>
+            {status.setupAvailable ? (
+              <div className="row">
+                <button type="button" className="btn primary" onClick={() => void first.build(true, 'Schedule built.')} disabled={first.building || busy}>
+                  {first.building ? 'Building your schedule…' : 'Build my schedule with AI (free, once)'}
+                </button>
+                <span className="small muted">Reads everything synced, estimates the work and plans it. Not counted toward the 3 daily runs.</span>
+              </div>
+            ) : null}
             <div className="row">
-              <button type="button" className="btn" onClick={() => void analyze()} disabled={busy || (!!status.runs && status.runs.used >= status.runs.limit)}>
+              <button type="button" className="btn" onClick={() => void analyze()} disabled={busy || first.building || (!!status.runs && status.runs.used >= status.runs.limit)}>
                 {busy ? 'Reading…' : 'Read new announcements now'}
               </button>
             </div>

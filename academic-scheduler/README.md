@@ -275,7 +275,10 @@ part of the work (SPEC § 7), and texts are treated as data, not instructions.
   are): the class name, its assignments' titles and due dates, and the new or
   changed texts. Nothing is sent while AI is not configured. The model is
   `claude-haiku-4-5-20251001` (the lowest-cost Claude model) or
-  `gemini-3.8-flash` (a free-tier Flash model) unless `AI_MODEL` says otherwise;
+  `gemini-3.8-flash` (a free-tier Flash model, asked to think at a low level)
+  unless `AI_MODEL` says otherwise; when Gemini stays overloaded or
+  rate-limited after its retries, the same request goes once to
+  `gemini-3.5-flash-lite` (`AI_FALLBACK_MODEL` changes it, empty turns it off);
   another provider can be added in `server/ai/` without touching the rest.
 - **Gemini free tier and privacy:** under the
   [Gemini API terms](https://ai.google.dev/gemini-api/terms), Google uses what is
@@ -323,8 +326,9 @@ The site is deployed on **Vercel** from this repository (root directory
      is billed by Anthropic), or, for the free option, create a Gemini API key
      at <https://aistudio.google.com/apikey> and set `GEMINI_API_KEY` (read the
      free-tier privacy note above first). Optional: `AI_PROVIDER` (`anthropic`
-     or `gemini`) when both keys are set, and `AI_MODEL` to use another model of
-     the chosen provider.
+     or `gemini`) when both keys are set, `AI_MODEL` to use another model of
+     the chosen provider, and `AI_FALLBACK_MODEL` (Gemini only) for the model
+     tried when the main one is overloaded.
    - Set `CRON_SECRET` (any long random value) so the daily background check
      (`vercel.json` → `crons`, 09:00 UTC) can run; without it that job refuses.
    - Without either key nothing is sent to an AI and Review is hidden.

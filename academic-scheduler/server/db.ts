@@ -91,6 +91,8 @@ export const SCHEMA: string[] = [
   `CREATE INDEX IF NOT EXISTS ai_runs_user_started ON ai_runs (user_id, started_at)`,
   // Runs the person started that used the AI count toward RUN_LIMIT (server/analysis.ts).
   `ALTER TABLE ai_runs ADD COLUMN IF NOT EXISTS counted boolean NOT NULL DEFAULT false`,
+  // Why the run's AI requests failed (fixed messages plus the provider's error text; never a key).
+  `ALTER TABLE ai_runs ADD COLUMN IF NOT EXISTS error text`,
   // The person's decisions on proposals (§ 16.4), so a decided proposal does not come back.
   `CREATE TABLE IF NOT EXISTS ai_reviews (
     user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,

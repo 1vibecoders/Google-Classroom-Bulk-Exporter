@@ -18,11 +18,8 @@ import { navigate, routeToHash } from '../router';
 import { resolveSettings } from '../model/constants';
 import { describePlannerRules } from '../lib/planner';
 import { markSetupInProgress, onboardingNeeds, type OnboardingNeed } from '../lib/onboarding';
-import { firstSchedule } from '../lib/ai/firstSchedule';
-import { recordDecision } from '../lib/ai/api';
-import { nowLocal } from '../lib/time';
-import { setAiStatus, useAiStatus } from '../state/aiStore';
-import { newSnapshotId } from './import/logic';
+import { useAiStatus } from '../state/aiStore';
+import { useFirstSchedule } from './useFirstSchedule';
 import { ClassroomSyncCard } from './ClassroomSyncCard';
 import { CommitmentsDescriptionForm } from './CommitmentsDescriptionForm';
 import { EventRow, WindowRow } from './CommitmentsView';
@@ -51,9 +48,9 @@ function writeStep(n: number | null): void {
 }
 
 export function OnboardingView() {
-  const { state, dispatch, notify } = useStore();
+  const { state } = useStore();
   const ai = useAiStatus();
-  const [building, setBuilding] = useState(false);
+  const { building, build } = useFirstSchedule();
   const freeAi = !!ai?.configured && ai.setupAvailable !== false;
   const doc = state.doc;
   const editors = useEditors();
@@ -80,31 +77,9 @@ export function OnboardingView() {
 
   const finish = async () => {
     if (needs.length || building) return;
-    setBuilding(true);
-    const built = await firstSchedule(doc, freeAi, Intl.DateTimeFormat().resolvedOptions().timeZone);
-    setBuilding(false);
+    await build(freeAi, 'Setup complete.');
     writeStep(null);
     markSetupInProgress(false);
-    if (built.status) setAiStatus(built.status);
-    const parts = ['Setup complete.'];
-    if (built.sessions) parts.push(`Planned ${built.sessions} work ${built.sessions === 1 ? 'session' : 'sessions'} in your free study time.`);
-    if (built.estimated) parts.push(`The AI estimated the time for ${built.estimated} ${built.estimated === 1 ? 'assignment' : 'assignments'}; you can edit any estimate.`);
-    if (built.problem) parts.push(`AI could not be used: ${built.problem}`);
-    if (built.doc !== doc) {
-      const snapshotId = newSnapshotId();
-      dispatch({ type: 'replaceDocument', doc: built.doc, label: 'Your first schedule', now: nowLocal(), snapshotId });
-      for (const key of built.applied) void recordDecision(key, 'applied');
-      notify(parts.join(' '), {
-        tone: built.problem ? 'warning' : 'success',
-        action: {
-          label: 'Undo',
-          run: () => {
-            dispatch({ type: 'undo', snapshotId });
-            for (const key of built.applied) void recordDecision(key, 'rejected');
-          },
-        },
-      });
-    } else notify(`${parts.join(' ')} You can change any of this later in Settings and Commitments.`, { tone: built.problem ? 'warning' : 'success' });
     navigate({ name: 'day', date: today });
   };
 

@@ -44,5 +44,5 @@ export interface AnalysisStatus {
   runs?: { limit: number; used: number; nextAt?: string };
   /** The free first run after setup has not been used yet. */
   setupAvailable?: boolean;
-  lastRun?: { at: string; analyzed: number; reused: number; failed: number; trigger: 'user' | 'background' | 'setup' };
+  lastRun?: { at: string; analyzed: number; reused: number; failed: number; trigger: 'user' | 'background' | 'setup'; error?: string };
 }
