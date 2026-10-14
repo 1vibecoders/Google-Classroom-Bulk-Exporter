@@ -130,6 +130,31 @@ describe('onboarding wizard', () => {
     expect(text()).not.toContain('Set up your schedule');
   });
 
+  it('stays in setup until Finish, also after Google sign-in returns to Settings', async () => {
+    const answered = doc({ schemaVersion: '1.1', availability: [WINDOW], settings: { commitmentsDescription: 'None' } });
+    localStorage.setItem('academic-scheduler:onboarding-step', '3');
+    await mount(answered, '#/welcome');
+    expect(currentStep()).toContain('Classes and data');
+    act(() => root!.unmount());
+    container.remove();
+
+    // Both answers exist, but setup was not finished: other pages lead back to it.
+    await mount(answered, '#/day/2026-10-07');
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(window.location.hash).toBe('#/welcome');
+    act(() => root!.unmount());
+    container.remove();
+
+    // Google's sign-in returns to Settings: back to the wizard, with the result for its sync card.
+    await mount(answered, '#/settings?google=connected');
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(window.location.hash).toBe('#/welcome?google=connected');
+  });
+
   it('does not continue without study time, and opens the study-time editor', async () => {
     await mount(doc());
     await click(button('Next'));

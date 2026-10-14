@@ -7,7 +7,7 @@
 // Finishing builds the first schedule (lib/ai/firstSchedule.ts): with AI set
 // up, the free setup run reads and estimates everything brought in; the
 // fixed-rule planner then places the work, undoable in one step.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import '../styles/import.css';
 import '../styles/lists.css';
 import { useStore } from '../state/store';
@@ -17,7 +17,7 @@ import { useToday } from '../ui/hooks';
 import { navigate, routeToHash } from '../router';
 import { resolveSettings } from '../model/constants';
 import { describePlannerRules } from '../lib/planner';
-import { onboardingNeeds, type OnboardingNeed } from '../lib/onboarding';
+import { markSetupInProgress, onboardingNeeds, type OnboardingNeed } from '../lib/onboarding';
 import { firstSchedule } from '../lib/ai/firstSchedule';
 import { recordDecision } from '../lib/ai/api';
 import { nowLocal } from '../lib/time';
@@ -62,6 +62,10 @@ export function OnboardingView() {
   const [step, setStepState] = useState(readStep);
   const [problem, setProblem] = useState<string | null>(null);
   const needs = onboardingNeeds(doc);
+  // From "Classes and data" on (Google sign-in, sync, import), leaving the wizard leads back to it until Finish.
+  useEffect(() => {
+    if (step >= 3) markSetupInProgress(true);
+  }, [step]);
 
   const go = (n: number) => {
     setProblem(null);
@@ -80,6 +84,7 @@ export function OnboardingView() {
     const built = await firstSchedule(doc, freeAi, Intl.DateTimeFormat().resolvedOptions().timeZone);
     setBuilding(false);
     writeStep(null);
+    markSetupInProgress(false);
     if (built.status) setAiStatus(built.status);
     const parts = ['Setup complete.'];
     if (built.sessions) parts.push(`Planned ${built.sessions} work ${built.sessions === 1 ? 'session' : 'sessions'} in your free study time.`);

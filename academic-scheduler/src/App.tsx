@@ -7,7 +7,7 @@ import { EditorProvider, useEditors } from './editors/EditorHost';
 import { Icon } from './ui/Icon';
 import { Menu } from './ui/Menu';
 import { navigate, routeToHash, useRoute, type Route } from './router';
-import { onboardingNeeds } from './lib/onboarding';
+import { onboardingNeeds, setupInProgress } from './lib/onboarding';
 import { OnboardingView } from './views/OnboardingView';
 import { createExport, rememberExportId } from './lib/exportSchedule';
 import { downloadText } from './lib/download';
@@ -52,11 +52,15 @@ const SETUP_ROUTES: Route['name'][] = ['welcome', 'import', 'settings'];
 function Shell() {
   const requested = useRoute();
   const doc = useDoc();
-  const needsSetup = onboardingNeeds(doc).length > 0;
-  const route: Route = needsSetup && !SETUP_ROUTES.includes(requested.name) ? { name: 'welcome' } : requested;
+  const needsSetup = onboardingNeeds(doc).length > 0 || setupInProgress();
+  // Back from Google sign-in during setup: return to the wizard, keeping the sign-in result for its sync card.
+  const signInReturn = requested.name === 'settings' && setupInProgress() ? /[?&]google=\w+/.exec(window.location.hash)?.[0] : undefined;
+  const route: Route = (needsSetup && !SETUP_ROUTES.includes(requested.name)) || signInReturn ? { name: 'welcome' } : requested;
   useEffect(() => {
-    if (route.name !== requested.name) navigate(route);
-  }, [route, requested.name]);
+    if (route.name === requested.name) return;
+    if (signInReturn) window.location.replace(`#/welcome?${signInReturn.slice(1)}`);
+    else navigate(route);
+  }, [route, requested.name, signInReturn]);
   const { notify, storageProblem } = useStore();
   const editors = useEditors();
   useExtensionImport();

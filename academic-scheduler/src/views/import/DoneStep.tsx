@@ -2,6 +2,7 @@
 // saved just before the import) and links to the Day view and Assignments.
 import type { ScheduleDocument } from '../../model/types';
 import { routeToHash } from '../../router';
+import { setupInProgress } from '../../lib/onboarding';
 import { formatDateWithWeekday } from '../../lib/time';
 import { Icon } from '../../ui/Icon';
 import { diffDocuments, diffLines, firstImportedDate } from './logic';
@@ -87,9 +88,15 @@ export function DoneStep({
           <p style={{ margin: 0 }}>The schedule’s details (title, sources or issues) were updated; no items changed.</p>
         )}
         <div className="row imp-done-actions">
-          <a className="btn primary" href={routeToHash({ name: 'day', date: today })}>
-            <Icon name="day" /> Open Day view
-          </a>
+          {setupInProgress() ? (
+            <a className="btn primary" href={routeToHash({ name: 'welcome' })}>
+              <Icon name="chevronRight" /> Back to setup
+            </a>
+          ) : (
+            <a className="btn primary" href={routeToHash({ name: 'day', date: today })}>
+              <Icon name="day" /> Open Day view
+            </a>
+          )}
           {first && first !== today ? (
             <a className="btn" href={routeToHash({ name: 'day', date: first })}>
               <Icon name="calendar" /> Go to {formatDateWithWeekday(first, year)}
