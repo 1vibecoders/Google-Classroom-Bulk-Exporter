@@ -397,11 +397,15 @@ describe('analysis runs', () => {
     const english = inputs.find((i) => i.class === 'English 10')!;
     expect(english.KNOWN.find((k) => k.id === 'gc-OTAx')!.title).toBe('Othello essay');
     expect(english.texts.map((t) => t.text)).not.toContain('A copy of a synced post');
-    // Anything off rejects the upload.
-    expect(uploadedSources({ classes: [{ id: 'not-a-class', name: 'A' }], work: [] })).toBeNull();
-    expect(uploadedSources({ classes: [], work: [{ id: 'gc-UjE', classId: 'gc-class-OTk5', title: 'No class sent' }] })).toBeNull();
-    expect(uploadedSources({ classes: [{ id: 'gc-class-OTk5', name: 'H', announcements: [{ text: 'x'.repeat(5001) }] }], work: [] })).toBeNull();
-    expect(uploadedSources({ classes: [{ id: 'gc-class-OTk5', name: 'H' }], work: [{ id: 'gc-UjE', classId: 'gc-class-OTk5', title: 'T', url: 'javascript:alert(1)' }] })).toBeNull();
+    // A class or item with anything off is left out; the rest is kept.
+    expect(uploadedSources('nonsense')).toBeNull();
+    expect(uploadedSources({ classes: [{ id: 'not-a-class', name: 'A' }], work: [] })).toEqual([]);
+    expect(uploadedSources({ classes: [], work: [{ id: 'gc-UjE', classId: 'gc-class-OTk5', title: 'No class sent' }] })).toEqual([]);
+    const kept = uploadedSources({
+      classes: [{ id: 'gc-class-OTk5', name: 'H 📚', announcements: [{ text: 'x'.repeat(5001) }, { text: 'Quiz Friday 🎉' + 'y'.repeat(4980) }] }],
+      work: [{ id: 'gc-UjE', classId: 'gc-class-OTk5', title: 'T', url: 'javascript:alert(1)' }, { id: 'gc-UjI', classId: 'gc-class-OTk5', title: 'Fine' }],
+    })!;
+    expect(kept.map((r) => `${r.kind}:${r.kind === 'announcement' ? String(r.data.text).slice(0, 11) : r.source_id}`)).toEqual(['course:OTk5', 'announcement:Quiz Friday', 'coursework:UjI']);
   });
 
   it('reads the commitments description in the same run, once, and again only when it changes', async () => {

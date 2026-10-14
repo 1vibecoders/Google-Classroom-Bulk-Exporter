@@ -5,7 +5,8 @@
 // replace what a sync stored (a synced class is the sync's), and analysis.ts
 // leaves out uploaded announcements of synced classes, which the sync lists.
 //
-// Untrusted input: every field is checked; anything off rejects the upload.
+// Untrusted input: every field is checked; a class or item with anything off is
+// left out (with the class's work), the rest is stored.
 import { sha256 } from './crypto.js';
 import type { Db } from './db.js';
 
@@ -22,7 +23,7 @@ type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 /** Absent, or a string of at most `max` characters; `false` when it is something else. */
 const optional = (v: unknown, max: number, pattern?: RegExp): string | undefined | false =>
-  v === undefined || v === null ? undefined : typeof v === 'string' && v.length <= max && (!pattern || pattern.test(v)) ? v : false;
+  v === undefined || v === null ? undefined : typeof v === 'string' && Array.from(v).length <= max && (!pattern || pattern.test(v)) ? v : false;
 
 export type UploadedRecord = { kind: string; source_id: string; course_id: string; fingerprint: string; data: Obj; state: 'present' };
 
@@ -31,34 +32,32 @@ function record(kind: string, sourceId: string, courseId: string, data: Obj): Up
   return { kind, source_id: sourceId, course_id: courseId, fingerprint: sha256(JSON.stringify(clean)), data: clean, state: 'present' };
 }
 
-/** The records in `sources`, or null when anything is off. */
+/** The valid records in `sources`; null when it is not an upload of classes and work at all. */
 export function uploadedSources(sources: unknown): UploadedRecord[] | null {
   if (!isObj(sources) || !Array.isArray(sources.classes) || !Array.isArray(sources.work)) return null;
   if (sources.classes.length > MAX_CLASSES || sources.work.length > MAX_WORK) return null;
   const out: UploadedRecord[] = [];
   const courses = new Set<string>();
   for (const c of sources.classes) {
-    if (!isObj(c) || typeof c.id !== 'string') return null;
+    if (!isObj(c) || typeof c.id !== 'string') continue;
     const course = CLASS_ID.exec(c.id)?.[1];
     const name = optional(c.name, 200);
     const description = optional(c.description, MAX_TEXT);
-    if (!course || !name || description === false || !Array.isArray(c.announcements ?? [])) return null;
-    const announcements = (c.announcements ?? []) as unknown[];
-    if (announcements.length > MAX_ANNOUNCEMENTS_PER_CLASS) return null;
+    if (!course || !name || description === false || !Array.isArray(c.announcements ?? [])) continue;
     courses.add(course);
     out.push(record('course', course, course, { name, description }));
-    for (const a of announcements) {
-      if (!isObj(a)) return null;
+    for (const a of ((c.announcements ?? []) as unknown[]).slice(0, MAX_ANNOUNCEMENTS_PER_CLASS)) {
+      if (!isObj(a)) continue;
       const text = optional(a.text, MAX_TEXT);
       const postedAt = optional(a.postedAt, 19, DATE);
       const url = optional(a.url, 2000, URL_);
-      if (!text || !text.trim() || postedAt === false || url === false) return null;
+      if (!text || !text.trim() || postedAt === false || url === false) continue;
       // Imported announcements carry no Classroom id: the same text posted at the same time is the same announcement.
       out.push(record('announcement', `ext-${sha256(`${text}\n${postedAt ?? ''}`).slice(0, 32)}`, course, { text, postedAt, url }));
     }
   }
   for (const w of sources.work) {
-    if (!isObj(w) || typeof w.id !== 'string' || typeof w.classId !== 'string') return null;
+    if (!isObj(w) || typeof w.id !== 'string' || typeof w.classId !== 'string') continue;
     const source = /^gc-(.+)$/.exec(w.id)?.[1];
     const course = CLASS_ID.exec(w.classId)?.[1];
     const title = optional(w.title, 200);
@@ -66,8 +65,8 @@ export function uploadedSources(sources: unknown): UploadedRecord[] | null {
     const due = optional(w.due, 19, DATE);
     const points = optional(w.points, 100);
     const url = optional(w.url, 2000, URL_);
-    if (!source || !SOURCE_ID.test(source) || !course || !courses.has(course) || !title) return null;
-    if (description === false || due === false || points === false || url === false || (w.turnedIn !== undefined && typeof w.turnedIn !== 'boolean')) return null;
+    if (!source || !SOURCE_ID.test(source) || !course || !courses.has(course) || !title) continue;
+    if (description === false || due === false || points === false || url === false || (w.turnedIn !== undefined && typeof w.turnedIn !== 'boolean')) continue;
     out.push(record('coursework', source, course, { title, description, due, points, url, turnedIn: w.turnedIn === true ? true : undefined }));
   }
   return out;

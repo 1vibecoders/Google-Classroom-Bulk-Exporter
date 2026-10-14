@@ -1,7 +1,11 @@
 // Step 3 of the import: what was imported, an Undo button (restores the copy
 // saved just before the import) and links to the Day view and Assignments.
+// Outside setup, it also offers to plan the schedule with AI (the setup's Finish
+// does that during setup), so a class sent from the browser extension is planned too.
 import type { ScheduleDocument } from '../../model/types';
-import { routeToHash } from '../../router';
+import { navigate, routeToHash } from '../../router';
+import { useAiStatus } from '../../state/aiStore';
+import { useFirstSchedule } from '../useFirstSchedule';
 import { setupInProgress } from '../../lib/onboarding';
 import { formatDateWithWeekday } from '../../lib/time';
 import { Icon } from '../../ui/Icon';
@@ -36,6 +40,14 @@ export function DoneStep({
   const lines = diffLines(diff);
   const first = firstImportedDate(result.before, result.after, today);
   const year = Number(today.slice(0, 4)) || undefined;
+  const ai = useAiStatus();
+  const plan = useFirstSchedule();
+  const inSetup = setupInProgress();
+  const runsLeft = !!ai?.setupAvailable || !ai?.runs || ai.runs.used < ai.runs.limit;
+  const planWithAi = async () => {
+    await plan.build(true, 'Schedule built.');
+    navigate({ name: 'day', date: today });
+  };
 
   if (result.undone) {
     return (
@@ -88,12 +100,17 @@ export function DoneStep({
           <p style={{ margin: 0 }}>The schedule’s details (title, sources or issues) were updated; no items changed.</p>
         )}
         <div className="row imp-done-actions">
-          {setupInProgress() ? (
+          {!inSetup && ai?.configured ? (
+            <button type="button" className="btn primary" onClick={() => void planWithAi()} disabled={plan.building || !runsLeft}>
+              {plan.building ? 'Building your schedule…' : ai.setupAvailable ? 'Build my schedule with AI (free, once)' : 'Plan my schedule with AI'}
+            </button>
+          ) : null}
+          {inSetup ? (
             <a className="btn primary" href={routeToHash({ name: 'welcome' })}>
               <Icon name="chevronRight" /> Back to setup
             </a>
           ) : (
-            <a className="btn primary" href={routeToHash({ name: 'day', date: today })}>
+            <a className={ai?.configured ? 'btn' : 'btn primary'} href={routeToHash({ name: 'day', date: today })}>
               <Icon name="day" /> Open Day view
             </a>
           )}
@@ -106,6 +123,12 @@ export function DoneStep({
             <Icon name="list" /> Assignments
           </a>
         </div>
+        {!inSetup && !ai ? (
+          <p className="small muted" style={{ margin: 0 }}>
+            To have the AI read these classes and plan your schedule, <a href={routeToHash({ name: 'settings' })}>sign in with Google in Settings</a>.
+          </p>
+        ) : null}
+        {!inSetup && ai?.configured && !runsLeft ? <p className="small muted" style={{ margin: 0 }}>You used your AI planning runs for the last 24 hours.</p> : null}
         <div className="imp-undo-row">
           <button type="button" className="btn" onClick={onUndo} disabled={!canUndo}>
             <Icon name="undo" /> Undo import
