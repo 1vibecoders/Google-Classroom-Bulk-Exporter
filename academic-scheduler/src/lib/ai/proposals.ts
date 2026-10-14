@@ -11,11 +11,14 @@
 // - Applying by the person marks the field as theirs (`overrides`), so a
 //   later sync does not undo the decision; automatic changes do not.
 // - Every result is validated as a whole schedule before it is used.
+// - Applied work is planned into free study time right away (planApplied: the
+//   fixed-rule planner, never the AI), so accepting an estimate changes the calendar.
 import type { AiProposal } from '../../model/aiProposal';
 import type { Assignment, AssignmentType, ScheduleDocument, Source } from '../../model/types';
 import { resolveSettings } from '../../model/constants';
+import { DEFAULT_HORIZON_DAYS, planUnscheduledWork } from '../planner';
 import { fitToDue } from '../sync/fitToDue';
-import { todayLocal } from '../time';
+import { nowLocal, todayLocal } from '../time';
 import { validateDocument } from '../validate';
 
 export interface ReviewItem {
@@ -168,6 +171,21 @@ export function applyProposal(doc: ScheduleDocument, item: ReviewItem, byPerson:
     return { error: `This would make your schedule invalid${first ? ` (${first.message})` : ''}. Change the plan first, or edit the value.` };
   }
   return { doc: checked.doc };
+}
+
+/** The work an item is about: its assignment, or the assessment it adds. */
+export function workOf(item: ReviewItem): string {
+  return item.field === 'new' ? newAssessmentId(item.proposal) : item.assignment!.id;
+}
+
+/** Plans the part of this work that is not planned yet into free study time; nothing already planned moves. */
+export function planApplied(doc: ScheduleDocument, assignmentIds: string[]): { doc: ScheduleDocument; sessions: number; notPlanned?: string } {
+  if (!assignmentIds.length) return { doc, sessions: 0 };
+  const plan = planUnscheduledWork(doc, { from: nowLocal(), assignmentIds, horizonDays: DEFAULT_HORIZON_DAYS });
+  // Why the first piece of work could not be planned, so the person is never left wondering.
+  const notPlanned = plan.unplaced[0]?.reason;
+  const out = plan.blocks.length ? { doc: { ...doc, scheduleBlocks: [...doc.scheduleBlocks, ...plan.blocks] }, sessions: plan.blocks.length } : { doc, sessions: 0 };
+  return notPlanned ? { ...out, notPlanned } : out;
 }
 
 /** Items the person allows to be applied without asking. */

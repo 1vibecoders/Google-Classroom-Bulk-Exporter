@@ -28,6 +28,8 @@ export interface FirstSchedule {
   /** Findings that wait in Review (never applied on their own, § 16.4), and how many of them change a due date. */
   review: number;
   dueChanges: number;
+  /** When no session could be planned: why (the first reason the planner gives). */
+  notPlanned?: string;
   /** The analysis status to show next, without the applied proposals; null when AI was not used. */
   status: AnalysisStatus | null;
   /** Why AI could not be used, when it was set up but failed. */
@@ -75,5 +77,6 @@ export async function firstSchedule(doc: ScheduleDocument, useAi: boolean, timez
   }
   const plan = planUnscheduledWork(work, { from: nowLocal(), horizonDays: DEFAULT_HORIZON_DAYS });
   if (plan.blocks.length) work = { ...work, scheduleBlocks: [...work.scheduleBlocks, ...plan.blocks] };
-  return { doc: work, applied, estimated, sessions: plan.blocks.length, events, questions, review, dueChanges, status, ...(problem ? { problem } : {}) };
+  const notPlanned = plan.blocks.length ? undefined : plan.unplaced[0]?.reason;
+  return { ...(notPlanned ? { notPlanned } : {}), doc: work, applied, estimated, sessions: plan.blocks.length, events, questions, review, dueChanges, status, ...(problem ? { problem } : {}) };
 }

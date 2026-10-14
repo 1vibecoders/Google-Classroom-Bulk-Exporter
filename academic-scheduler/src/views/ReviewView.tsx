@@ -7,7 +7,7 @@ import { useState } from 'react';
 import type { AiProposal } from '../model/aiProposal';
 import { ASSIGNMENT_TYPE_LABELS } from '../model/constants';
 import { recordDecision, runAnalysis, type Decision } from '../lib/ai/api';
-import { applyProposal, reviewItems, type ReviewItem } from '../lib/ai/proposals';
+import { applyProposal, planApplied, reviewItems, workOf, type ReviewItem } from '../lib/ai/proposals';
 import { formatDuration, nowLocal } from '../lib/time';
 import { forgetProposals, setAiStatus, useAiStatus } from '../state/aiStore';
 import { useStore } from '../state/store';
@@ -35,6 +35,11 @@ function sourceLine(p: AiProposal, year: number): string {
   return p.source.postedAt ? `${what} (${formatWhen(p.source.postedAt, year)}) says:` : `${what} say${p.source.kind === 'coursework' ? '' : 's'}:`;
 }
 
+function sessionsLine({ sessions, notPlanned }: { sessions: number; notPlanned?: string }): string {
+  const planned = sessions ? ` Planned ${sessions} work ${sessions === 1 ? 'session' : 'sessions'} in your free study time.` : '';
+  return `${planned}${notPlanned ? ` ${sessions ? 'Some work could not be planned' : 'Nothing could be planned'}: ${notPlanned}` : ''}`;
+}
+
 function ReviewCard({ item, year, onDone }: { item: ReviewItem; year: number; onDone: (key: string, decision: Decision) => void }) {
   const { state, dispatch, notify } = useStore();
   const p = item.proposal;
@@ -58,9 +63,10 @@ function ReviewCard({ item, year, onDone }: { item: ReviewItem; year: number; on
       setProblem(result.error);
       return;
     }
+    const planned = planApplied(result.doc, [workOf(item)]);
     const snapshotId = newSnapshotId();
-    dispatch({ type: 'replaceDocument', doc: result.doc, label: heading(item), now: nowLocal(), snapshotId });
-    notify(`Applied: ${heading(item)}.`, { tone: 'success', action: { label: 'Undo', run: () => dispatch({ type: 'undo', snapshotId }) } });
+    dispatch({ type: 'replaceDocument', doc: planned.doc, label: heading(item), now: nowLocal(), snapshotId });
+    notify(`Applied: ${heading(item)}.${sessionsLine(planned)}`, { tone: planned.sessions || !planned.notPlanned ? 'success' : 'warning', action: { label: 'Undo', run: () => dispatch({ type: 'undo', snapshotId }) } });
     onDone(p.key, 'applied');
   };
 
@@ -152,7 +158,7 @@ function ReviewCard({ item, year, onDone }: { item: ReviewItem; year: number; on
 }
 
 export function ReviewView() {
-  const { state, notify } = useStore();
+  const { state, dispatch, notify } = useStore();
   const status = useAiStatus();
   const [busy, setBusy] = useState(false);
   const year = Number(nowLocal().slice(0, 4));
@@ -162,6 +168,36 @@ export function ReviewView() {
     forgetProposals([key]);
     void recordDecision(key, decision).then((ok) => {
       if (!ok) notify('Your decision could not be saved on the server; it may be asked again.', { tone: 'warning' });
+    });
+  };
+
+  /** Applies every item as proposed, then plans the work: one undoable change. */
+  const applyAll = () => {
+    let work = state.doc;
+    const applied: string[] = [];
+    const ids: string[] = [];
+    let failed = 0;
+    for (const item of items) {
+      const result = applyProposal(work, item, true);
+      if ('error' in result) {
+        failed++;
+        continue;
+      }
+      work = result.doc;
+      applied.push(item.proposal.key);
+      ids.push(workOf(item));
+    }
+    if (!applied.length) {
+      notify('None of the findings could be applied; open each one to see why.', { tone: 'warning' });
+      return;
+    }
+    const planned = planApplied(work, ids);
+    const snapshotId = newSnapshotId();
+    dispatch({ type: 'replaceDocument', doc: planned.doc, label: 'Applied the AI findings', now: nowLocal(), snapshotId });
+    for (const key of applied) decide(key, 'applied');
+    notify(`Applied ${applied.length} ${applied.length === 1 ? 'finding' : 'findings'}.${sessionsLine(planned)}${failed ? ` ${failed} could not be applied; they are still listed.` : ''}`, {
+      tone: failed ? 'warning' : 'success',
+      action: { label: 'Undo', run: () => dispatch({ type: 'undo', snapshotId }) },
     });
   };
 
@@ -193,6 +229,11 @@ export function ReviewView() {
             <button type="button" className="btn" onClick={() => void analyze()} disabled={busy}>
               {busy ? 'Reading…' : 'Read new announcements now'}
             </button>
+            {items.length > 1 ? (
+              <button type="button" className="btn primary" onClick={applyAll}>
+                Apply all {items.length}
+              </button>
+            ) : null}
             {status.pending ? <span className="small muted">{status.pending} new or changed texts not read yet.</span> : null}
           </div>
           {items.length === 0 ? (

@@ -4,10 +4,10 @@
 // from the next sync; nothing invalid is ever committed.
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AiProposal } from '../../src/model/aiProposal';
 import type { ScheduleDocument } from '../../src/model/types';
-import { applyProposal, automatic, reviewItems } from '../../src/lib/ai/proposals';
+import { applyProposal, automatic, planApplied, reviewItems, workOf } from '../../src/lib/ai/proposals';
 import { validateDocument } from '../../src/lib/validate';
 
 const ENGLISH = 'gc-class-NjI3ODk0MjE0NTQ5';
@@ -30,7 +30,28 @@ function proposal(fields: Partial<AiProposal>): AiProposal {
   };
 }
 
+afterEach(() => vi.useRealTimers());
+
 describe('AI proposals against the schedule', () => {
+  it('plans accepted work into free study time, and only that work', () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-12T08:00:00') });
+    const doc = example();
+    const grammar = doc.assignments.find((a) => a.id === 'gc-NzAwMDAwMDAwMDAz')!;
+    grammar.estimatedMinutes = 60;
+    grammar.estimateRange = undefined;
+    grammar.sourceState = 'present';
+    doc.scheduleBlocks = doc.scheduleBlocks.filter((b) => b.assignmentId !== grammar.id);
+    const before = doc.scheduleBlocks.length;
+    const [item] = reviewItems(doc, [proposal({ kind: 'workload', assignmentId: grammar.id, value: 90, confidence: { identity: 'high', value: 'low' } })]);
+    const result = applyProposal(doc, item, true);
+    if (!('doc' in result)) throw new Error(result.error);
+    const planned = planApplied(result.doc, [workOf(item)]);
+    expect(planned.sessions).toBeGreaterThan(0);
+    const added = planned.doc.scheduleBlocks.slice(before);
+    expect(added.every((b) => b.assignmentId === grammar.id && b.origin === 'planner')).toBe(true);
+    expect(validateDocument(planned.doc, { today: '2026-10-12' }).errors).toEqual([]);
+  });
+
   it('never replaces a due date Classroom gives without the person, and protects it once they apply it', () => {
     const doc = example();
     const [item] = reviewItems(doc, [proposal({ assignmentId: 'gc-NzAwMDAwMDAwMDAz' })]);
