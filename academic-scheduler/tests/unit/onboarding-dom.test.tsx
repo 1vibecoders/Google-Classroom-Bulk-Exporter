@@ -7,6 +7,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { commitmentsDescriptionError, onboardingNeeds } from '../../src/lib/onboarding';
 import { initialState, reducer } from '../../src/state/reducer';
+import { setAiStatus } from '../../src/state/aiStore';
 import { validateDocument } from '../../src/lib/validate';
 import type { AvailabilityWindow, ScheduleDocument } from '../../src/model/types';
 
@@ -211,6 +212,20 @@ describe('onboarding wizard', () => {
     const saved = JSON.parse(localStorage.getItem('academic-scheduler.v1') ?? 'null');
     expect(saved?.doc?.settings?.commitmentsDescription).toBe('Job on Saturdays');
     expect(saved?.doc?.schemaVersion).toBe('1.1');
+  });
+
+  it('offers planning with AI as a daily run once the free setup run is used, and finishing without AI', async () => {
+    localStorage.setItem('academic-scheduler:onboarding-step', '4');
+    await mount(doc({ schemaVersion: '1.1', availability: [WINDOW], settings: { commitmentsDescription: 'Swim Mon 4-6 PM.' } }), '#/welcome');
+    const status = { configured: true, proposals: [], pending: 0, budget: { limit: 20, used: 0 }, setupAvailable: false, runs: { limit: 3, used: 1 } };
+    act(() => setAiStatus(status));
+    expect(text()).toContain('counts as one of the 3 daily planning runs');
+    expect(button('Finish and plan my schedule with AI').disabled).toBe(false);
+    act(() => setAiStatus({ ...status, runs: { limit: 3, used: 3 } }));
+    expect(button('Finish and plan my schedule with AI').disabled).toBe(true);
+    await click(button('Finish without AI'));
+    expect(window.location.hash).toBe('#/day/2026-10-07');
+    act(() => setAiStatus(null));
   });
 
   it('lists what is still required on the review step and blocks Finish', async () => {

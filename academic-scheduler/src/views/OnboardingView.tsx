@@ -52,6 +52,9 @@ export function OnboardingView() {
   const ai = useAiStatus();
   const { building, build } = useFirstSchedule();
   const freeAi = !!ai?.configured && ai.setupAvailable !== false;
+  // After the free run is used, planning with AI is still offered as one of the 3 daily runs.
+  const paidAi = !!ai?.configured && !freeAi;
+  const runsLeft = !ai?.runs || ai.runs.used < ai.runs.limit;
   const doc = state.doc;
   const editors = useEditors();
   const today = useToday();
@@ -75,9 +78,9 @@ export function OnboardingView() {
     else go(1);
   };
 
-  const finish = async () => {
+  const finish = async (useAi: boolean) => {
     if (needs.length || building) return;
-    await build(freeAi, 'Setup complete.');
+    await build(useAi, 'Setup complete.');
     writeStep(null);
     markSetupInProgress(false);
     navigate({ name: 'day', date: today });
@@ -232,8 +235,10 @@ export function OnboardingView() {
               <dt>Your first schedule</dt>
               <dd>
                 {freeAi
-                  ? 'Finishing reads your classes, announcements and documents with AI (free this once, not counted toward the 3 daily planning runs), estimates how long each assignment takes, and plans the work into your free study time.'
-                  : 'Finishing plans the work that has a time estimate into your free study time.'}
+                  ? 'Finishing reads your classes, announcements, documents and your description of your commitments with AI (free this once, not counted toward the 3 daily planning runs), adds those commitments to the calendar, estimates how long each assignment takes (with steps for bigger work), and plans the work into your free study time.'
+                  : paidAi
+                    ? 'Planning with AI reads your classes, announcements, documents and your description of your commitments, adds those commitments to the calendar, estimates the work and plans it into your free study time. It counts as one of the 3 daily planning runs (the free one is used).'
+                    : 'Finishing plans the work that has a time estimate into your free study time.'}
               </dd>
               <dt>How work will be planned</dt>
               <dd>
@@ -265,9 +270,20 @@ export function OnboardingView() {
               <button type="button" className="btn ghost" onClick={() => go(3)}>
                 Back
               </button>
-              <button type="button" className="btn primary" onClick={() => void finish()} disabled={needs.length > 0 || building}>
-                {building ? 'Creating your schedule…' : 'Finish and create my schedule'}
-              </button>
+              {paidAi ? (
+                <>
+                  <button type="button" className="btn primary" onClick={() => void finish(true)} disabled={needs.length > 0 || building || !runsLeft}>
+                    {building ? 'Creating your schedule…' : 'Finish and plan my schedule with AI'}
+                  </button>
+                  <button type="button" className="btn" onClick={() => void finish(false)} disabled={needs.length > 0 || building}>
+                    Finish without AI
+                  </button>
+                </>
+              ) : (
+                <button type="button" className="btn primary" onClick={() => void finish(freeAi)} disabled={needs.length > 0 || building}>
+                  {building ? 'Creating your schedule…' : 'Finish and create my schedule'}
+                </button>
+              )}
             </div>
           </div>
         </section>
