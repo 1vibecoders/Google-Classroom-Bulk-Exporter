@@ -209,3 +209,13 @@ The website is now **Lattice Study** (owner decision; `academic-scheduler/PRODUC
 ## 13. Clean and compact restyle (2026-10-18)
 
 Owner request: Duolingo's cleanliness without copying it, and more compact. Choices: brand green with white cards; bold sans headings (serif only in the wordmark and motto); "chunky but calm" controls. Light tokens in `app.css`: near-white page, white cards, 2px soft borders, radii 8/12/14, accent `#2b7a52` (5.2:1 with white), pressed-edge tokens `--accent-edge` / `--edge` (dark theme too). `brand.css`: buttons with a 3px darker bottom edge that presses down, green pill for the current page, pill progress, 2px card and input borders, tighter spacing; `.ls-tile-value` and `.ds-meter` changed in their own files (they load after `brand.css`).
+
+## 14. Phase 7 (2026-10-18): verification and release readiness
+
+- **Lint:** ESLint (dev-only; `eslint.config.js`, `npm run lint`): recommended JavaScript and TypeScript rules and React's rules of hooks. Findings fixed: two needless initial assignments, invisible no-break space and BOM characters in regexes (now escapes), two hook dependency warnings (memoized), test-only `any` documented.
+- **Evaluation set (§ 31.3):** `tests/eval/cases.ts`, synthetic cases for every listed situation plus an injected-instruction text (§ 31.4). Offline in CI (`tests/unit/evaluation.test.ts`): recorded answers with noise through the real checks (precision, recall, deadline, source and class accuracy 1.0, noise dropped), the real planner (no overlaps or late sessions, infeasible work reported, test prep in shared time, disruption 0 after an unrelated change), unreadable files not sent. Live: `npm run eval:ai` (owner decision: the owner runs it; it needs a key and costs a few calls).
+- **Security (§ 30):** new test that one person never sees another's documents, AI findings or export; the built site contains no secrets; README "Security and privacy". The account export downloads as `lattice-study-account.json`.
+- **§ 31.1:** planning across the end of daylight saving.
+- **Docs:** README retitled Lattice Study with "Verification and evaluation" and "Limitations and known issues"; criterion-by-criterion evidence in `docs/acceptance.md`.
+
+**Not verified against real services:** a real school Google account (Classroom and Drive), real AI accuracy until `eval:ai` is run, the Vercel cron firing, a very large extension send.

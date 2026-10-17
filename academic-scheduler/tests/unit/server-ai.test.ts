@@ -13,7 +13,10 @@ import { checkProposals, type ExtractInput } from '../../server/ai/extract';
 import { checkEstimates, roundMinutes } from '../../server/ai/estimate';
 import { checkCommitments } from '../../server/ai/commitments';
 import { AI_DAILY_CALLS, analysisStatus, recordDecision, runAnalysis } from '../../server/analysis';
-import { cronAnalyze, postReview } from '../../server/aiRoutes';
+import { cronAnalyze, getAnalysis, postReview } from '../../server/aiRoutes';
+import { getDocuments } from '../../server/documentRoutes';
+import { exportAccount } from '../../server/routes';
+import { createSession } from '../../server/http';
 import { storeUploadedSources, uploadedSources } from '../../server/uploadedSources';
 import type { GoogleApi } from '../../server/google';
 
@@ -499,6 +502,33 @@ describe('routes', () => {
     expect(cross.status).toBe(403);
     const signedOut = await postReview(new Request(`${ORIGIN}/api/review`, { method: 'POST', headers: { origin: ORIGIN }, body: JSON.stringify({ key: 'a'.repeat(32), decision: 'applied' }) }));
     expect(signedOut.status).toBe(401);
+  });
+
+  it('never shows one person another person’s documents, AI findings or data (SPEC § 30, § 32 I)', async () => {
+    // A second person with a private document and an AI finding of their own.
+    await db.query(`INSERT INTO users (id, email, timezone) VALUES ('u2', 'other@example.com', $1)`, [TZ]);
+    await db.query(
+      `INSERT INTO source_records (user_id, kind, source_id, course_id, fingerprint, data, state) VALUES
+       ('u2', 'document', 'secret_doc_0001', 'OTHER', 'f', $1::jsonb, 'present'),
+       ('u2', 'announcement', 'OTHERANN', 'OTHER', 'f', $2::jsonb, 'present')`,
+      [JSON.stringify({ title: 'Private notes', status: 'ok', text: 'u2 private text', via: 'drive' }), JSON.stringify({ text: 'Quiz Friday.' })],
+    );
+    const theirs = { key: 'z'.repeat(32), kind: 'due_change', classId: 'gc-class-OTHER', source: { kind: 'announcement', id: 'OTHERANN' }, excerpt: 'Quiz Friday.', assignmentId: 'gc-Q', value: '2026-10-16', explicit: true, confidence: { identity: 'high', value: 'high' } };
+    await db.query(
+      `INSERT INTO ai_extractions (user_id, kind, source_id, course_id, content_hash, task_version, model, proposals) VALUES ('u2', 'announcement', 'OTHERANN', 'OTHER', 'h', 'v', 'fake-model', $1::jsonb)`,
+      [JSON.stringify([theirs])],
+    );
+    const cookie = (await createSession(context, 'u1')).split(';')[0];
+    const get = (path: string, f: (r: Request) => Promise<Response>) => f(new Request(`${ORIGIN}${path}`, { headers: { cookie } }));
+
+    const list = await (await get('/api/documents', getDocuments)).json();
+    expect(JSON.stringify(list)).not.toContain('secret_doc_0001');
+    expect((await get('/api/documents?id=secret_doc_0001', getDocuments)).status).toBe(404);
+    const status = await (await get('/api/analysis', getAnalysis)).json();
+    expect(JSON.stringify(status)).not.toContain('z'.repeat(32));
+    const exported = await (await get('/api/account/export', exportAccount)).text();
+    expect(exported).not.toContain('u2 private text');
+    expect(exported).not.toContain('OTHERANN');
   });
 
   it('runs the daily job only with the cron secret', async () => {

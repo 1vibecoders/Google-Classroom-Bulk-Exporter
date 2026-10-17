@@ -16,6 +16,8 @@ import {
 const TODAY = '2026-10-07';
 const ROOT = join(__dirname, '..', '..');
 
+// Test documents are mutated freely at any depth to build invalid files.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Doc = Record<string, any>;
 
 const A = 'bio-lab-2026-10-16';
@@ -973,7 +975,7 @@ describe('§ 13.1 structure', () => {
     for (const [mutate, path] of [
       [(d: Doc) => (asg(d).title = '   '), 'assignments[0].title'],
       [(d: Doc) => (d.classes[0].name = '\t\n'), 'classes[0].name'],
-      [(d: Doc) => (task(d).title = ' '), 'assignments[0].tasks[0].title'],
+      [(d: Doc) => (task(d).title = '\u00a0'), 'assignments[0].tasks[0].title'],
       [(d: Doc) => (d.issues = [{ kind: 'other', message: ' ' }]), 'issues[0].message'],
       [(d: Doc) => (d.meta.requestedChanges = [{ id: 'x', reason: '  ', requestedByPerson: true }]), 'meta.requestedChanges[0].reason'],
       [(d: Doc) => (asg(d).references = [{ title: ' ' }]), 'assignments[0].references[0].title'],
@@ -1850,7 +1852,7 @@ describe('parseScheduleText', () => {
   });
 
   it('strips a UTF-8 byte-order mark', () => {
-    expect(parseScheduleText(`﻿${JSON.stringify(base())}`, { today: TODAY }).ok).toBe(true);
+    expect(parseScheduleText(`\uFEFF${JSON.stringify(base())}`, { today: TODAY }).ok).toBe(true);
   });
 
   it('rejects empty text', () => {

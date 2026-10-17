@@ -179,7 +179,7 @@ export function googleApi(options: { clientId: string; clientSecret: string; fet
   // Retries rate limits, server errors and network failures with bounded backoff.
   async function call(url: string, init: RequestInit, read: (r: Response) => Promise<unknown> = (r) => r.json()): Promise<unknown> {
     for (let attempt = 0; ; attempt++) {
-      let response: Response | null = null;
+      let response: Response | null;
       try {
         response = await doFetch(url, init);
       } catch {

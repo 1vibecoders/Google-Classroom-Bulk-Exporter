@@ -60,7 +60,10 @@ function Shell() {
   const needsSetup = onboardingNeeds(doc).length > 0 || setupInProgress();
   // Back from Google sign-in during setup: return to the wizard, keeping the sign-in result for its sync card.
   const signInReturn = requested.name === 'settings' && setupInProgress() ? /[?&]google=\w+/.exec(window.location.hash)?.[0] : undefined;
-  const route: Route = (needsSetup && !SETUP_ROUTES.includes(requested.name)) || signInReturn ? { name: 'welcome' } : requested;
+  const route: Route = useMemo(
+    () => ((needsSetup && !SETUP_ROUTES.includes(requested.name)) || signInReturn ? { name: 'welcome' } : requested),
+    [needsSetup, requested, signInReturn],
+  );
   // A new page starts at its top (otherwise a phone keeps the last page's scroll position); moving between days keeps it.
   useEffect(() => {
     (document.scrollingElement ?? document.documentElement).scrollTop = 0;

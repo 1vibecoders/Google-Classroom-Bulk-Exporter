@@ -439,3 +439,14 @@ describe('competing work (SPEC § 25.5)', () => {
     expect(test.reason).toMatch(/^Not enough free study time before the test on .*\. That time goes to: Essay \(3 h\)\.$/);
   });
 });
+
+describe('daylight-saving change (SPEC § 31.1)', () => {
+  it('plans across the end of daylight saving at the same wall-clock times', () => {
+    // US daylight saving ends on Sunday 2026-11-01; times are local wall-clock times (SCHEDULE_FORMAT.md § 4).
+    const doc = makeDoc({ assignments: [{ id: 'a', title: 'Essay', estimatedMinutes: 120, due: '2026-11-02T23:59:00' }] });
+    expect(rows(plan(doc, '2026-10-31T08:00:00'))).toEqual([
+      ['a', '-', '2026-10-31T16:00:00', '2026-10-31T17:00:00'],
+      ['a', '-', '2026-11-01T16:00:00', '2026-11-01T17:00:00'],
+    ]);
+  });
+});

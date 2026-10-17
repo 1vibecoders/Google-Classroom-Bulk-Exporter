@@ -68,7 +68,7 @@ async function pdfText(bytes: Uint8Array): Promise<string> {
 export function tidy(text: string): string {
   return text
     .replace(/\r\n?/g, '\n')
-    .replace(/[ \t ]+/g, ' ')
+    .replace(/[ \t\u00a0]+/g, ' ')
     .replace(/ *\n */g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
@@ -87,7 +87,7 @@ export async function documentText(bytes: Uint8Array, mime: string): Promise<Doc
   } catch {
     return { status: 'unreadable' };
   }
-  const clean = tidy(text.replace(/^﻿/, ''));
+  const clean = tidy(text.replace(/^\uFEFF/, ''));
   if (!clean) return { status: 'no_text' };
   return { status: 'ok', text: Array.from(clean).slice(0, MAX_DOCUMENT_CHARS).join('') };
 }

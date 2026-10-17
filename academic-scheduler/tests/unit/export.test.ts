@@ -19,6 +19,8 @@ const ROOT = join(__dirname, '..', '..');
 const NOW = '2026-10-07T18:30:00';
 const OPTIONS = { exportId: 'u-exp-test0001', timezone: 'America/New_York' };
 
+// Exported JSON is read at any depth in assertions.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = Record<string, any>;
 
 const schema = JSON.parse(readFileSync(join(ROOT, 'schema', 'schedule-1.3.schema.json'), 'utf8'));

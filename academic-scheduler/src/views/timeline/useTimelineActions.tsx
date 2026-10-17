@@ -226,7 +226,9 @@ export function useTimelineActions(): TimelineActions {
 
   const addStudyTime = useCallback(() => editors.open({ kind: 'availability' }), [editors]);
 
-  const dialog = openBlockId ? (
+  const dialog = useMemo(
+    () =>
+      openBlockId ? (
     <BlockActionsDialog
       key={openBlockId}
       doc={doc}
@@ -248,7 +250,9 @@ export function useTimelineActions(): TimelineActions {
       }}
       onDelete={deleteBlock}
     />
-  ) : null;
+  ) : null,
+    [openBlockId, doc, closeAndRefocus, moveBlock, setBlockStatus, dispatch, closeBlock, editors, deleteBlock],
+  );
 
   return useMemo(
     () => ({

@@ -125,7 +125,7 @@ export function exportAccount(request: Request): Promise<Response> {
       context.db.query('SELECT key, decision, decided_at FROM ai_reviews WHERE user_id = $1 ORDER BY decided_at', [user.id]),
     ]);
     return json({ email: user.email, scopes: user.scopes.split(/\s+/), syncs, classroomRecords: records, aiRuns, aiResults, aiDecisions }, 200, {
-      'content-disposition': 'attachment; filename="academic-scheduler-account.json"',
+      'content-disposition': 'attachment; filename="lattice-study-account.json"',
     });
   });
 }

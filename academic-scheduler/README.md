@@ -1,4 +1,6 @@
-# Academic Scheduler
+# Lattice Study
+
+*Scheduling that understands the assignment.* (This folder, `academic-scheduler/`, is the website.)
 
 A calm, no-nonsense planner for students: classes, assignments, commitments, study
 time and scheduled work, shown as a day timeline, a week grid and an assignment
@@ -20,7 +22,7 @@ website imports that file. The two talk only through the documented
 ```
 Google Classroom ─▶ Classroom Exporter (ZIP) ─▶ Claude /academic-schedule ─▶ schedule.json
                                                                       │
-              ┌────────────── edit, plan, mark done ◀── Academic Scheduler (this website)
+              ┌────────────── edit, plan, mark done ◀── Lattice Study (this website)
               └──────────────▶ Export schedule.json ─▶ Claude /academic-schedule (update) ─▶ …
 ```
 
@@ -39,8 +41,11 @@ Live site: see [Deployment](#deployment) (the project is deployed on Vercel).
 - [Where your data lives](#where-your-data-lives)
 - [Google Classroom sync](#google-classroom-sync)
 - [Reading announcements with AI](#reading-announcements-with-ai)
+- [Security and privacy](#security-and-privacy)
 - [Installation and deployment](#installation-and-deployment)
 - [Development](#development)
+- [Verification and evaluation](#verification-and-evaluation)
+- [Limitations and known issues](#limitations-and-known-issues)
 - [Project layout](#project-layout)
 
 ## What it does
@@ -49,6 +54,8 @@ Live site: see [Deployment](#deployment) (the project is deployed on Vercel).
 | --- | --- |
 | **Day** (home) | A timeline of the day: school and other commitments, your *Available* study time, scheduled work blocks (`English / Read Chapter 6`), breaks, due dates and tests, a "now" line, and how much planned work fits into your free time. Drag blocks to move them, drag the bottom edge to resize. An agenda list shows the same day as text. |
 | **Week** | Seven days side by side with every class, commitment and work block; drag work to another time or day. Each day's header shows what is due and how full the day is. |
+| **Tests** | Upcoming quizzes, tests and exams with their study topics (from a study guide, the AI or you), how ready you feel on each, preparation done / planned / not planned, and the preparation sessions, which cover the topics that need review first. |
+| **Review** | What does not fit before its deadline, sessions that no longer fit, open issues, what was changed for you, then what the AI found that needs your decision. |
 | **Assignments** | Upcoming work sorted by deadline, with due and test dates, status (one click to mark done), estimated total and **remaining** workload, how much of it is scheduled, the next session, subtasks and references. "Plan unscheduled work" proposes blocks for whatever is not yet scheduled. |
 | **Classes** | Your classes with teacher, color, description, materials and open work. |
 | **Commitments** | Recurring commitments (School Mon–Fri 8:00–3:00, Fencing Mon 4:00–6:00, …), one-time events (Doctor Oct 12, 3:30–4:30) and the times you are available to study. |
@@ -308,6 +315,37 @@ part of the work (SPEC § 7), and texts are treated as data, not instructions.
   and documents can contain names and other personal details: for real student
   data, use a paid Gemini tier or Anthropic.
 
+## Security and privacy
+
+How SPEC.md § 30 is met in this deployment (a summary; no compliance with any
+named standard is claimed):
+
+- **Per-person data:** every server query is filtered by the signed-in person's
+  id; a test checks that one person never sees another person's documents, AI
+  findings or account export. Sessions are random ids stored hashed, in
+  HttpOnly, Secure, SameSite=Lax cookies; every request that changes something
+  must come from the site's own origin.
+- **Secrets stay on the server:** AI and Google keys, the token key and the
+  database URL are server environment variables; the built site contains none
+  of them (checked by searching the build output). Google refresh tokens are
+  encrypted (AES-256-GCM).
+- **Every input is validated:** schedule files (both validators and the JSON
+  Schema), extension messages (protocol and every field), uploads (sizes,
+  counts, ids, https links only), AI answers (quotes must occur in the text,
+  known ids, real dates, bounded numbers).
+- **AI boundaries:** the instructions are separate from the class's texts, which
+  are sent as data and never followed; the AI only reads dates, times, estimates
+  and study topics and never writes work; only the class a text belongs to is
+  sent with it.
+- **Logs carry no content:** run ids, counts, token numbers and error kinds only.
+- **Third parties:** Google (sign-in, Classroom, Drive), the AI provider you
+  configure (Anthropic or Google Gemini; see
+  [What is sent](#reading-announcements-with-ai)), Vercel (hosting) and Neon
+  (database).
+- **Your control:** export everything the server keeps (Settings, "Download server
+  data"), or delete your account, which revokes Google access and deletes every
+  stored record, cached AI result and decision with it (one cascade; tested).
+
 ## Installation and deployment
 
 The website is a static site: any static host works, and it also runs from a
@@ -371,9 +409,61 @@ npm ci
 npm run dev          # http://localhost:5173
 npm test             # unit tests (Vitest)
 npm run typecheck
+npm run lint         # ESLint (TypeScript and React hooks rules)
 npm run build        # dist/ + dist/academic-scheduler.html
 npm run test:e2e     # end-to-end tests (Playwright, against the build)
+npm run eval:ai      # optional: live AI evaluation (needs an AI key; costs a few API calls)
 ```
+
+## Verification and evaluation
+
+What is checked, and how (SPEC.md § 31–32; the criterion-by-criterion evidence is
+in [`../docs/acceptance.md`](../docs/acceptance.md)):
+
+- **Unit tests** (`npm test`, Vitest): the scheduling engine without the UI or
+  the AI (free time, recurrence and exceptions, time arithmetic across
+  daylight-saving changes, hard constraints, overlaps, session splitting, daily
+  limits, deadline order, steps, test preparation, remaining work, infeasible
+  plans, locked sessions, repair, undo), the importer and both file validators,
+  the server (sign-in, sync limits, documents, AI analysis with a fake provider,
+  one person's data never visible to another) and the views.
+- **End-to-end tests** (`npm run test:e2e`, Playwright on desktop and phone sizes)
+  against the built site.
+- **Evaluation set** (`tests/eval/cases.ts`, § 31.3): synthetic classes covering a
+  syllabus with several deadlines, an announcement that moves a due date, work
+  with no due time, work described only in an attachment, a study guide, two
+  documents with conflicting dates, an ambiguous title, a text with no deadlines,
+  an unreadable PDF, a past deadline, not enough free time, and a text that tries
+  to give the AI instructions. Offline (`tests/unit/evaluation.test.ts`, in CI) a
+  recorded answer with deliberate noise (an invented quote, an unknown id, a
+  duplicate) goes through the real checks, and the scheduling cases run the real
+  planner: precision, recall, deadline, source and class accuracy, duplicates,
+  hard-constraint violations and disruption after an unrelated change.
+- **Live AI evaluation** (`npm run eval:ai`): sends the same cases to the AI
+  provider configured by the environment (`ANTHROPIC_API_KEY` or `GEMINI_API_KEY`,
+  optional `AI_MODEL`), prints the scores and writes `test-results/eval-ai.json`.
+  About ten calls (cents on Haiku). It fails only if the AI obeys the injected
+  instruction; accuracy is reported, not gated. Without a key it is skipped.
+- **Lint and types** (`npm run lint`, `npm run typecheck`) and the build.
+
+## Limitations and known issues
+
+- **AI accuracy is measured only when you run `npm run eval:ai`**; CI checks the
+  deterministic parts (quote checks, review rules, planner) with recorded answers.
+- **AI needs sign-in.** Files sent from the extension while signed out stay in the
+  browser and are uploaded at the next AI run after sign-in.
+- **AI study topics** come only for quizzes, tests and exams that exist in Google
+  Classroom (the AI reads server data); topics have no time estimate of their own.
+- **Undo of an automatic repair** restores the whole schedule as it was, so a
+  change you made after it is undone too (the import undo warns about this).
+- **Sync allowance:** 3 counted syncs per rolling 24 hours; Drive documents need
+  the extra `drive.readonly` permission, which some schools block.
+- **Not verified on the live site:** a very large send from the extension end to
+  end, and the AI account's rate-limit tier (rate limits are retried).
+- **The browser extension** is still named "Academic Scheduler" until its next
+  release.
+- **The dark theme** keeps the older warm colors; the light theme is the neutral,
+  clean one.
 
 ## Project layout
 
@@ -393,6 +483,7 @@ academic-scheduler/
 │   └── views/                Day, Week, Assignments, Classes, Commitments, Import, Settings
 ├── tests/unit/               Vitest
 ├── tests/e2e/                Playwright
+├── tests/eval/               Evaluation set (§ 31.3) and the live AI evaluation
 └── scripts/build-single-file.mjs
 ```
 

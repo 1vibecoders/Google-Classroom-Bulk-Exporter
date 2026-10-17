@@ -24,7 +24,7 @@ function storage(): Storage | null {
 export function loadState(): LoadResult {
   const store = storage();
   if (!store) return { state: initialState(), problem: 'This browser does not allow saving data; changes will be lost when the page closes.' };
-  let raw: string | null = null;
+  let raw: string | null;
   try {
     raw = store.getItem(STORAGE_KEY);
   } catch {
