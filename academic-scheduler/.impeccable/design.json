@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-17T00:00:00Z",
+  "title": "Design System: Lattice Study",
+  "extensions": {
+    "colorMeta": {
+      "lattice-green": { "role": "primary", "displayName": "Lattice Green", "canonical": "#2b7a52", "tonalRamp": ["#0f2a1c", "#174029", "#1f5c45", "#2b7a52", "#4f9a74", "#86c4a4", "#c3e3d1", "#e4f2e9"] },
+      "lattice-green-soft": { "role": "primary", "displayName": "Soft Leaf", "canonical": "#e4f2e9" },
+      "lattice-green-edge": { "role": "primary", "displayName": "Lattice Ink Edge", "canonical": "#1f5c45" },
+      "brand-ink": { "role": "brand", "displayName": "Brand Ink (fixed)", "canonical": "#1f5c45" },
+      "brand-cream": { "role": "brand", "displayName": "Brand Cream (fixed)", "canonical": "#fffdf7" },
+      "page": { "role": "neutral", "displayName": "Page", "canonical": "#f7f7f5", "tonalRamp": ["#1d1f1c", "#4a4a46", "#6b6b66", "#cfcfca", "#e5e5e2", "#e9e9e6", "#f3f3f1", "#f7f7f5"] },
+      "text": { "role": "neutral", "displayName": "Text", "canonical": "#1d1f1c" },
+      "success": { "role": "semantic", "displayName": "Success", "canonical": "#2e6a33" },
+      "warning": { "role": "semantic", "displayName": "Warning", "canonical": "#8f5300" },
+      "danger": { "role": "semantic", "displayName": "Danger", "canonical": "#a3301c" },
+      "dark-page": { "role": "neutral", "displayName": "Dark Page (warm, open decision)", "canonical": "#171612", "tonalRamp": ["#0e0d0a", "#171612", "#1e1d18", "#26241e", "#302d26", "#4c483e", "#9d9586", "#ece7dc"] }
+    },
+    "typographyMeta": {
+      "wordmark": { "displayName": "Wordmark", "purpose": "\"Lattice\" in the header (20px) and on welcome (30px). Serif is brand-only." },
+      "headline": { "displayName": "Headline", "purpose": "Page titles." },
+      "title": { "displayName": "Title", "purpose": "Section and card headings (16px in card headers)." },
+      "title-sm": { "displayName": "Title Small", "purpose": "Sub-sections and empty-state headings." },
+      "body": { "displayName": "Body", "purpose": "Sentences and list content." },
+      "body-sm": { "displayName": "Body Small", "purpose": "Secondary sentences; the floor for sentences." },
+      "label": { "displayName": "Label", "purpose": "Field labels and control text." },
+      "motto": { "displayName": "Motto", "purpose": "Italic serif motto on the welcome screen only." }
+    },
+    "shadows": [
+      { "name": "float", "value": "0 12px 32px rgba(20, 22, 20, 0.14)", "purpose": "Modals, dropdown menus, toasts. Dark theme: rgba(0, 0, 0, 0.55)." },
+      { "name": "press-edge", "value": "0 3px 0 var(--edge)", "purpose": "Buttons only; primary uses var(--accent-edge). Collapses to 0 with translateY(3px) on press." },
+      { "name": "focus-halo", "value": "0 0 0 3px var(--accent-soft)", "purpose": "Focused inputs and the active primary toggle." }
+    ],
+    "motion": [
+      { "name": "state", "value": "0.12s", "purpose": "Color, background and border changes on buttons and nav." },
+      { "name": "press", "value": "0.08s ease-out", "purpose": "Button press-down and release." },
+      { "name": "fill", "value": "0.32s ease-out", "purpose": "Progress width and meter cell fills. Removed under reduced motion." }
+    ],
+    "breakpoints": [
+      { "name": "form-single-column", "value": "640px" },
+      { "name": "compact-header", "value": "720px" },
+      { "name": "header-wrap", "value": "760px" },
+      { "name": "max-content", "value": "1440px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The main action on a view; presses down onto its ink edge.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Add work</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 12px; border: 2px solid var(--border, #e5e5e2); background: var(--surface, #fff); color: var(--text, #1d1f1c); font: 700 15px 'Source Sans 3', system-ui, sans-serif; cursor: pointer; box-shadow: 0 3px 0 var(--edge, #d6d6d1); transition: background 0.12s, border-color 0.12s, transform 0.08s ease-out, box-shadow 0.08s ease-out; } .ds-btn-primary { background: var(--accent, #2b7a52); border-color: var(--accent, #2b7a52); color: var(--accent-text, #fff); box-shadow: 0 3px 0 var(--accent-edge, #1f5c45); } .ds-btn-primary:hover { background: var(--accent-hover, #256b48); border-color: var(--accent-hover, #256b48); } .ds-btn-primary:active { transform: translateY(3px); box-shadow: 0 0 0 var(--accent-edge, #1f5c45); } .ds-btn:focus-visible { outline: 2px solid var(--accent, #2b7a52); outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Default button: white with a soft border and gray press edge.",
+      "html": "<button class=\"ds-btn-secondary\">Today</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border-radius: 12px; border: 2px solid var(--border, #e5e5e2); background: var(--surface, #fff); color: var(--text, #1d1f1c); font: 700 15px 'Source Sans 3', system-ui, sans-serif; cursor: pointer; box-shadow: 0 3px 0 var(--edge, #d6d6d1); transition: background 0.12s, border-color 0.12s, transform 0.08s ease-out, box-shadow 0.08s ease-out; } .ds-btn-secondary:hover { background: var(--surface-2, #f3f3f1); border-color: var(--border-strong, #cfcfca); } .ds-btn-secondary:active { transform: translateY(3px); box-shadow: 0 0 0 var(--edge, #d6d6d1); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--accent, #2b7a52); outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Labelled field with a 2px soft border and green focus halo.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-label\">Title</span><input class=\"ds-input\" value=\"Othello Essay\"></label>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 4px; } .ds-label { font: 600 13px 'Source Sans 3', system-ui, sans-serif; color: var(--text-2, #4a4a46); } .ds-input { min-height: 34px; padding: 6px 12px; border-radius: 12px; border: 2px solid var(--border, #e5e5e2); background: var(--surface, #fff); color: var(--text, #1d1f1c); font: 15px 'Source Sans 3', system-ui, sans-serif; } .ds-input:hover { border-color: var(--border-strong, #cfcfca); } .ds-input:focus { outline: none; border-color: var(--accent, #2b7a52); box-shadow: 0 0 0 3px var(--accent-soft, #e4f2e9); }"
+    },
+    {
+      "name": "Navigation",
+      "kind": "nav",
+      "refersTo": "nav-link-current",
+      "description": "Pill nav; the current page is a soft green pill.",
+      "html": "<nav class=\"ds-nav\"><a href=\"#\" aria-current=\"page\">Day</a><a href=\"#\">Week</a><a href=\"#\">Assignments</a></nav>",
+      "css": ".ds-nav { display: flex; gap: 4px; } .ds-nav a { padding: 6px 12px; border-radius: 999px; color: var(--text-2, #4a4a46); font: 600 15px 'Source Sans 3', system-ui, sans-serif; text-decoration: none; transition: color 0.12s, background 0.12s; } .ds-nav a:hover { color: var(--text, #1d1f1c); background: var(--surface-2, #f3f3f1); } .ds-nav a[aria-current='page'] { color: var(--accent, #2b7a52); background: var(--accent-soft, #e4f2e9); } .ds-nav a:focus-visible { outline: 2px solid var(--accent, #2b7a52); outline-offset: 2px; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Flat white card with a 2px border and ruled header.",
+      "html": "<section class=\"ds-card\"><header class=\"ds-card-h\">In order</header><div class=\"ds-card-b\">4:15 PM Available, until 4:30 PM</div></section>",
+      "css": ".ds-card { background: var(--surface, #fff); border: 2px solid var(--border, #e5e5e2); border-radius: 14px; color: var(--text, #1d1f1c); font: 15px/1.5 'Source Sans 3', system-ui, sans-serif; } .ds-card-h { padding: 10px 14px; border-bottom: 2px solid var(--border, #e5e5e2); font-size: 16px; font-weight: 700; } .ds-card-b { padding: 14px; }"
+    },
+    {
+      "name": "Badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "Pill status label.",
+      "html": "<span class=\"ds-badge\">Draft</span> <span class=\"ds-badge ds-badge-ok\">Done</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--surface-2, #f3f3f1); color: var(--text-2, #4a4a46); font: 500 12px 'Source Sans 3', system-ui, sans-serif; } .ds-badge-ok { background: var(--success-soft, #e3eedc); color: var(--success, #2e6a33); }"
+    },
+    {
+      "name": "Lattice Meter",
+      "kind": "custom",
+      "refersTo": "progress",
+      "description": "Diamond-cell progress in the mark's geometry for level and test readiness.",
+      "html": "<span class=\"ds-meter\" role=\"progressbar\" aria-label=\"Level progress\" aria-valuenow=\"25\" aria-valuemax=\"100\"><i class=\"full\"></i><i class=\"full\"></i><i class=\"part\"></i><i class=\"flag\"></i><i></i><i></i></span>",
+      "css": ".ds-meter { display: inline-flex; align-items: center; gap: 5px; padding: 2px 0; } .ds-meter i { width: 11px; height: 11px; border-radius: 2px; transform: rotate(45deg); border: 1.5px solid var(--text-3, #6b6b66); transition: background 0.32s ease-out, border-color 0.32s ease-out; } .ds-meter i.full { background: var(--accent, #2b7a52); border-color: var(--accent, #2b7a52); } .ds-meter i.part { background: var(--accent-soft, #e4f2e9); border-color: var(--accent, #2b7a52); } .ds-meter i.flag { background: var(--warning-soft, #f7ead0); border-color: var(--warning, #8f5300); }"
+    },
+    {
+      "name": "Timeline Block",
+      "kind": "custom",
+      "description": "Scheduled session tinted by its class color with a 4px class-color left edge (data encoding).",
+      "html": "<div class=\"ds-block\" style=\"--block-color:#2F5D8C\"><b>English 10 / Othello Essay</b> 4:30 - 5:20 PM</div>",
+      "css": ".ds-block { padding: 4px 8px; border-radius: 6px; background: color-mix(in srgb, var(--block-color) 15%, var(--surface, #fff)); border: 1px solid color-mix(in srgb, var(--block-color) 40%, transparent); border-left: 4px solid var(--block-color); color: var(--text, #1d1f1c); font: 13px 'Source Sans 3', system-ui, sans-serif; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Tidy Study Desk",
+    "overview": "A clean, bright, compact workspace for one student planning real homework into real free time. White cards with soft 2px borders sit on a near-white page; bold sans headings carry the hierarchy; the Lattice green is the only brand voice, reserved for actions, the current place, and progress. Everything else that has color is data: each class owns a color, and that color marks its work on the calendar.\n\nDensity is deliberate. Spacing is tight (10px stacks, 14px card padding, 20px page gutter) so the day, the agenda, and the next action fit in one view on a laptop and stack cleanly on a phone. Interaction feels tactile: buttons sit on a darker bottom edge and press down when clicked, the way a physical key does. The Lattice mark's diagonal geometry recurs quietly as the diamond meter and as the faint grid behind empty states.\n\nThe serif belongs to the brand alone: the wordmark and the motto. The dark theme keeps the same structure on warm near-black surfaces with a pale Lattice green.",
+    "keyCharacteristics": [
+      "Near-white page, white cards, 2px soft gray borders, no ambient shadows.",
+      "One accent (Lattice green) for primary actions, current navigation, focus, and progress.",
+      "Class colors are data encoding, not decoration.",
+      "Bold Source Sans 3 headings; Source Serif 4 only in the wordmark and motto.",
+      "Pill shapes for navigation, badges, and progress; 12px rounding for controls, 14px for cards.",
+      "Buttons press down onto a 3px darker edge.",
+      "Compact rhythm, readable at phone width without sideways scrolling."
+    ],
+    "rules": [
+      { "name": "The One Green Rule", "body": "Lattice green means \"act here, you are here, or done so far\". It is never used as decoration, card fill, or heading color.", "section": "colors" },
+      { "name": "The Data Color Rule", "body": "Class colors appear only where they identify a class: the class dot and the left edge of calendar blocks and date chips. They never tint chrome, buttons, or headings.", "section": "colors" },
+      { "name": "The Fixed Mark Rule", "body": "The mark is always ink tile and cream lattice, in both themes.", "section": "colors" },
+      { "name": "The Serif Is a Signature Rule", "body": "Source Serif 4 appears only in the wordmark and the motto. Every heading, label and control is Source Sans 3.", "section": "typography" },
+      { "name": "The Tabular Numbers Rule", "body": "Times, stats and dates use tabular numerals so columns of figures align.", "section": "typography" },
+      { "name": "The Flat Surface Rule", "body": "Surfaces are flat at rest. Shadows mean \"this floats above the page\" and nothing else.", "section": "elevation" },
+      { "name": "The Press Edge Rule", "body": "The 3px bottom edge belongs to buttons, which press down onto it. Never put it on cards, chips, or static surfaces.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep cards flat: white surface, 2px border, 14px rounding, 14px padding.",
+      "Do use Lattice green only for primary actions, the current location, focus, and progress.",
+      "Do give every button the 3px press edge (except ghost and disabled) and let it press down on click.",
+      "Do use pills for navigation, badges and progress.",
+      "Do keep sentences at 13px or larger and use tabular numerals for times and stats.",
+      "Do mark class work with the class color dot or the 4px left edge on calendar blocks and date chips.",
+      "Do honor reduced motion: no press movement, no meter or progress transitions."
+    ],
+    "donts": [
+      "Don't use Source Serif 4 for headings or UI; it is for the wordmark and motto only.",
+      "Don't recolor or theme the Lattice mark; it stays ink and cream in dark mode.",
+      "Don't add shadows to cards or surfaces; the Float shadow is for modals, menus and toasts.",
+      "Don't put the press edge on anything that is not a button.",
+      "Don't use class colors for chrome, headings or buttons."
+    ]
+  }
+}
