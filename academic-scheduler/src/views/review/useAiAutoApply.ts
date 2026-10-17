@@ -9,6 +9,7 @@ import { nowLocal } from '../../lib/time';
 import { forgetProposals, getAutoApply, refreshAiStatus, useAiStatus } from '../../state/aiStore';
 import { useStore } from '../../state/store';
 import { newSnapshotId } from '../import/logic';
+import { movedLine } from '../timeline/RepairCard';
 
 export function useAiAutoApply(): void {
   const { state, dispatch, notify } = useStore();
@@ -37,7 +38,7 @@ export function useAiAutoApply(): void {
     work = planned.doc;
     busy.current = true;
     const snapshotId = newSnapshotId();
-    dispatch({ type: 'replaceDocument', doc: work, label: 'Changes read from Classroom announcements', now: nowLocal(), snapshotId });
+    dispatch({ type: 'replaceDocument', doc: work, label: 'Changes read from Classroom announcements', now: nowLocal(), snapshotId, details: planned.changes, automatic: true });
     forgetProposals(applied);
     void Promise.all(applied.map((key) => recordDecision(key, 'applied'))).finally(() => {
       busy.current = false;
@@ -49,7 +50,7 @@ export function useAiAutoApply(): void {
       estimates ? `AI time estimates for ${estimates === 1 ? '1 assignment' : `${estimates} assignments`}` : '',
     ].filter(Boolean);
     const sessions = planned.sessions ? ` Planned ${planned.sessions} work ${planned.sessions === 1 ? 'session' : 'sessions'} in your free study time.` : '';
-    notify(`Applied ${said.join(' and ')}.${sessions}`, {
+    notify(`Applied ${said.join(' and ')}.${movedLine(planned.moved)}${sessions}`, {
       tone: 'success',
       action: {
         label: 'Undo',

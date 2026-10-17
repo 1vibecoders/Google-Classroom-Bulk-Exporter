@@ -36,6 +36,12 @@ export async function saveLocalDocuments(list: ReadDocument[]): Promise<void> {
   });
 }
 
+export async function removeLocalDocuments(ids: string[]): Promise<void> {
+  await run('readwrite', (store) => {
+    for (const id of ids) store.delete(id);
+  });
+}
+
 /** Everything stored here; empty when IndexedDB is unavailable. */
 export async function localDocuments(): Promise<ReadDocument[]> {
   try {

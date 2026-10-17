@@ -5,7 +5,9 @@
 // clicks cannot overrun it; a second sync while one is running is refused.
 // What counts: a sync counts once Google has answered the course listing.
 // Attempts refused before that (no allowance left, already running, sign-in
-// expired, missing permission, Google unreachable) are not counted.
+// expired, missing permission, Google unreachable) are not counted. A run still
+// "running" after RUNNING_MINUTES died with its function (api/sync.ts
+// maxDuration): it blocks nothing, does not count, and is closed as failed.
 //
 // What is read (the same content the browser extension exports): per active
 // course its description, topics, published coursework with the person's
@@ -35,7 +37,7 @@ import {
   type SyncCounts,
 } from '../src/model/importBatch.js';
 import { decrypt, sha256 } from './crypto.js';
-import { driveRefs, syncDocuments, type DocumentRef } from './documents.js';
+import { driveRefs, markDetached, syncDocuments, type DocumentRef } from './documents.js';
 import type { Context } from './context.js';
 import type { Db } from './db.js';
 import {
@@ -54,7 +56,9 @@ import {
 import type { SessionUser } from './http.js';
 
 export const SYNC_LIMIT = 3;
-const RUNNING_MINUTES = 10;
+/** Longer than the sync function may run (api/sync.ts maxDuration = 300 s). */
+const RUNNING_MINUTES = 6;
+const LIVE = `(status <> 'running' OR started_at > now() - interval '${RUNNING_MINUTES} minutes')`;
 
 export type SyncOutcome =
   | { kind: 'ok'; batch: ImportBatch; allowance: SyncAllowance }
@@ -68,7 +72,7 @@ function asDate(value: unknown): Date {
 export async function allowance(db: Db, userId: string): Promise<SyncAllowance> {
   const rows = await db.query<{ started_at: unknown; status: string; counted: boolean }>(
     `SELECT started_at, status, counted FROM sync_runs
-     WHERE user_id = $1 AND ((counted AND started_at > now() - interval '24 hours') OR (status = 'running' AND started_at > now() - interval '${RUNNING_MINUTES} minutes'))
+     WHERE user_id = $1 AND ${LIVE} AND ((counted AND started_at > now() - interval '24 hours') OR status = 'running')
      ORDER BY started_at`,
     [userId],
   );
@@ -85,8 +89,12 @@ export async function allowance(db: Db, userId: string): Promise<SyncAllowance> 
 
 /** Takes one allowance atomically. Returns the run id, or null when none is left or a sync is running. */
 export async function reserveSync(db: Db, userId: string): Promise<number | null> {
-  const [, inserted] = await db.transaction([
+  const [, , inserted] = await db.transaction([
     { text: 'SELECT id FROM users WHERE id = $1 FOR UPDATE', params: [userId] },
+    {
+      text: `UPDATE sync_runs SET status = 'failed', counted = false, finished_at = now() WHERE user_id = $1 AND NOT ${LIVE}`,
+      params: [userId],
+    },
     {
       text: `INSERT INTO sync_runs (user_id, status, counted)
              SELECT $1, 'running', true
@@ -294,6 +302,8 @@ export async function runSync(context: Context, user: SessionUser, timezone: str
     const batchItems: ImportedAssignment[] = [];
     const warnings: string[] = [];
     const documents: DocumentRef[] = [];
+    // "kind:sourceId" of every item listed in this sync, for documents no longer attached (markDetached).
+    const listedItems = new Set<string>();
     let partial = false;
 
     /** Compares one record with the knowledge base and counts it. */
@@ -367,6 +377,7 @@ export async function runSync(context: Context, user: SessionUser, timezone: str
           const page = httpsUrl(m.alternateLink);
           const attached = links(m.materials) ?? [];
           records.push(record('material', classroomId(m.id), courseSource, { title, url: page, links: attached }));
+          listedItems.add(`material:${classroomId(m.id)}`);
           documents.push(...driveRefs(m.materials, courseSource, { kind: 'material', sourceId: classroomId(m.id) }));
           if (page) found.push({ title, url: page });
           for (const link of attached) found.push({ title: Array.from(`${title}: ${link.title}`).slice(0, 300).join(''), url: link.url });
@@ -379,6 +390,7 @@ export async function runSync(context: Context, user: SessionUser, timezone: str
           const data = announcementData(a, timezone);
           if (!data) continue;
           records.push(record('announcement', classroomId(a.id), courseSource, data));
+          listedItems.add(`announcement:${classroomId(a.id)}`);
           documents.push(...driveRefs(a.materials, courseSource, { kind: 'announcement', sourceId: classroomId(a.id) }));
           imported.announcements.push(data);
         }
@@ -395,6 +407,7 @@ export async function runSync(context: Context, user: SessionUser, timezone: str
           records.push(record('coursework', sourceId, courseSource, data));
           documents.push(...driveRefs(work.materials, courseSource, { kind: 'coursework', sourceId }));
           seen.add(sourceId);
+          listedItems.add(`coursework:${sourceId}`);
           batchItems.push({ id: `gc-${sourceId}`, classId: imported.id, sourceId, ...data, state: 'present' });
         }
       }
@@ -424,6 +437,7 @@ export async function runSync(context: Context, user: SessionUser, timezone: str
       );
     }
 
+    await markDetached(db, user.id, documents, listedItems);
     let documentCounts = {};
     if (documents.length) {
       if (user.scopes.split(/\s+/).includes(DRIVE_SCOPE)) {

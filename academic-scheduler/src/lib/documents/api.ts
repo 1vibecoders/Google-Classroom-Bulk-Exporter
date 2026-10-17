@@ -1,14 +1,16 @@
 // Course documents: on this website's server (server/documentRoutes.ts) for a
 // signed-in person, where the AI analysis reads them too; otherwise in this
 // browser (local.ts). Without a backend or signed out, the server part is
-// empty and nothing else changes.
+// empty and nothing else changes. Documents kept in the browser go to the
+// server before the next AI run once the person is signed in (uploadLocalDocuments).
 import type { CourseDocument } from '../../model/courseDocument';
 import type { ReadDocument } from './fromExtension';
-import { localDocuments, saveLocalDocuments } from './local';
+import { localDocuments, removeLocalDocuments, saveLocalDocuments } from './local';
 
-/** Vercel Functions accept request bodies up to 4.5 MB; the server takes at most 40 documents per request (documentRoutes.ts). */
-const MAX_UPLOAD_CHARS = 3_000_000;
+/** Vercel Functions accept request bodies up to 4.5 MB (bytes, not characters); the server takes at most 40 documents per request (documentRoutes.ts). */
+const MAX_UPLOAD_BYTES = 3_000_000;
 const MAX_UPLOAD_COUNT = 40;
+const encoder = new TextEncoder();
 
 async function get(path: string): Promise<Record<string, unknown> | null> {
   try {
@@ -49,32 +51,45 @@ async function upload(list: ReadDocument[]): Promise<boolean> {
   }
 }
 
+/** Uploads in requests of bounded size (UTF-8 bytes); stops at the first refusal (signed out, no backend). Returns the documents uploaded. */
+async function uploadAll(list: ReadDocument[]): Promise<ReadDocument[]> {
+  const batches: ReadDocument[][] = [[]];
+  let bytes = 0;
+  for (const item of list) {
+    const size = encoder.encode(JSON.stringify(item)).length + 200;
+    const current = batches[batches.length - 1];
+    if ((bytes + size > MAX_UPLOAD_BYTES && current.length) || current.length >= MAX_UPLOAD_COUNT) {
+      batches.push([]);
+      bytes = 0;
+    }
+    batches[batches.length - 1].push(item);
+    bytes += size;
+  }
+  const done: ReadDocument[] = [];
+  for (const batch of batches) {
+    if (!(await upload(batch))) break;
+    done.push(...batch);
+  }
+  return done;
+}
+
 /** Stores documents on the server when signed in (so the AI reads them), otherwise in this browser. */
 export async function storeDocuments(list: ReadDocument[]): Promise<'server' | 'browser' | 'failed'> {
   if (!list.length) return 'server';
-  // Requests of bounded size; the first refusal (signed out, no backend) keeps everything in the browser.
-  const batches: ReadDocument[][] = [[]];
-  let chars = 0;
-  for (const item of list) {
-    const size = (item.text?.length ?? 0) + 1000;
-    const current = batches[batches.length - 1];
-    if ((chars + size > MAX_UPLOAD_CHARS && current.length) || current.length >= MAX_UPLOAD_COUNT) {
-      batches.push([]);
-      chars = 0;
-    }
-    batches[batches.length - 1].push(item);
-    chars += size;
-  }
-  let uploaded = 0;
-  for (const batch of batches) {
-    if (!(await upload(batch))) break;
-    uploaded++;
-  }
-  if (uploaded === batches.length) return 'server';
+  const done = await uploadAll(list);
+  if (done.length === list.length) return 'server';
   try {
-    await saveLocalDocuments(batches.slice(uploaded).flat());
+    await saveLocalDocuments(list.slice(done.length));
     return 'browser';
   } catch {
     return 'failed';
   }
+}
+
+/** Moves documents kept in this browser to the server (signed in), so the AI reads them; does nothing when signed out. */
+export async function uploadLocalDocuments(): Promise<void> {
+  const local = await localDocuments();
+  if (!local.length) return;
+  const done = await uploadAll(local);
+  if (done.length) await removeLocalDocuments(done.map((d) => d.doc.id)).catch(() => undefined);
 }

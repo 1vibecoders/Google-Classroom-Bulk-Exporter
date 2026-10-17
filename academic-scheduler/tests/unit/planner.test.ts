@@ -424,3 +424,18 @@ describe('determinism and invariants', () => {
     expect(lines.join(' ')).not.toMatch(/\bAI\b/);
   });
 });
+
+describe('competing work (SPEC § 25.5)', () => {
+  it('names the test preparation and assignments that take the time when work does not fit', () => {
+    const doc = makeDoc({
+      assignments: [
+        { id: 't', title: 'Biology test', type: 'test', estimatedMinutes: 120, assessmentDate: '2026-10-14' },
+        { id: 'a', title: 'Essay', estimatedMinutes: 180, due: '2026-10-13T23:59:00' },
+      ],
+    });
+    const result = plan(doc);
+    // The essay is due first, so it takes the time; the test preparation that does not fit says so.
+    const test = result.unplaced.find((u) => u.assignmentId === 't')!;
+    expect(test.reason).toMatch(/^Not enough free study time before the test on .*\. That time goes to: Essay \(3 h\)\.$/);
+  });
+});

@@ -43,7 +43,9 @@
 //    to the deadline, where a session may also be shortened to fit a slot
 //    (never below minSessionMinutes, and never leaving a remainder shorter
 //    than that).
-// 6. Whatever does not fit is reported in `unplaced` with the reason.
+// 6. Whatever does not fit is reported in `unplaced` with the reason, naming
+//    the other work (assignments and test preparation) that takes the time
+//    before that deadline, so the trade-off is visible (SPEC § 25.5).
 //
 // The same input always gives the same output (except for generated ids).
 // With an empty `availability` (§ 11) nothing is planned.
@@ -535,9 +537,31 @@ export function planUnscheduledWork(doc: ScheduleDocument, options: PlanOptions)
     }
     if (!anyFree) return `There is no free study time ${until}.`;
     if (dailyLimitHit && maxDaily !== null) {
-      return `Your daily limit of ${formatDuration(maxDaily)} of work is reached on the free days ${until}.`;
+      return `Your daily limit of ${formatDuration(maxDaily)} of work is reached on the free days ${until}.${competing(part, notBefore, end)}`;
     }
-    return `Not enough free study time ${until}.`;
+    return `Not enough free study time ${until}.${competing(part, notBefore, end)}`;
+  }
+
+  /** " That time goes to: Biology test (preparation, 2 h), Essay (1 h)." — the other work planned in the window, most first. */
+  function competing(part: Part, start: number, end: number): string {
+    const minutes = new Map<Id, number>();
+    const add = (id: Id | undefined, from: number, to: number) => {
+      if (!id || id === part.assignment.id || to <= start || from >= end) return;
+      minutes.set(id, (minutes.get(id) ?? 0) + Math.min(to, end) - Math.max(from, start));
+    };
+    for (const b of doc.scheduleBlocks) {
+      if ((b.status ?? 'planned') === 'skipped' || (b.kind ?? 'work') !== 'work' || !isValidLocalDateTime(b.start) || !isValidLocalDateTime(b.end)) continue;
+      add(b.assignmentId, ldtToMinutes(b.start), ldtToMinutes(b.end));
+    }
+    for (const p of placed) add(p.assignmentId, p.start, p.end);
+    const top = [...minutes].sort((x, y) => y[1] - x[1] || compareText(x[0], y[0])).slice(0, 3);
+    if (!top.length) return '';
+    const names = top.map(([id, m]) => {
+      const other = assignmentsById.get(id);
+      const prep = other?.assessmentDate ? 'preparation, ' : '';
+      return `${other?.title ?? 'Other work'} (${prep}${formatDuration(m)})`;
+    });
+    return ` That time goes to: ${names.join(', ')}.`;
   }
 }
 

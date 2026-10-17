@@ -9,6 +9,9 @@ import { useEditors } from '../../editors/EditorHost';
 import { useConfirm } from '../../ui/common';
 import { newId } from '../../lib/ids';
 import { formatDateWithWeekday, isValidLocalDateTime, nowLocal } from '../../lib/time';
+import { repairPlan } from '../../lib/repair';
+import { newSnapshotId } from '../import/logic';
+import { repairNotice } from './RepairCard';
 import { BlockActionsDialog } from './BlockActionsDialog';
 import { blockSpan, formatSpan, spanToLdt, type ItemRef, type Span } from './logic';
 
@@ -23,6 +26,8 @@ export interface TimelineActions {
   createBlock: (date: DateStr, span: Span) => void;
   moveBlock: (view: BlockView, date: DateStr, span: Span, via: 'pointer' | 'keyboard' | 'dialog') => void;
   setBlockStatus: (block: ScheduleBlock, status: BlockStatus, label: string) => void;
+  /** A missed session: mark it skipped and plan its work again before the deadline (SPEC § 26.1), one undoable change. */
+  rescheduleBlock: (block: ScheduleBlock, label: string) => void;
   deleteBlock: (block: ScheduleBlock, label: string) => Promise<boolean>;
   setIssueStatus: (issue: DayIssue, status: IssueStatus) => void;
   addStudyTime: () => void;
@@ -136,6 +141,23 @@ export function useTimelineActions(): TimelineActions {
     [dispatch, notify],
   );
 
+  const rescheduleBlock = useCallback(
+    (block: ScheduleBlock, label: string) => {
+      const now = nowLocal();
+      const skip = ({ completedAt: _, ...b }: ScheduleBlock): ScheduleBlock => ({ ...b, status: 'skipped' });
+      const skipped = { ...doc, scheduleBlocks: doc.scheduleBlocks.map((b) => (b.id === block.id ? skip(b) : b)) };
+      const result = block.assignmentId ? repairPlan(skipped, now, [block.assignmentId]) : { doc: skipped, moved: 0, sessions: 0, unplaced: [], changes: [] };
+      const snapshotId = newSnapshotId();
+      dispatch({ type: 'replaceDocument', doc: result.doc, label: `Rescheduled ${label}`, now, snapshotId, details: [`${label}: marked skipped`, ...result.changes] });
+      const notice = repairNotice(result, doc);
+      notify(`Marked “${label}” as skipped.${notice.text ? ` ${notice.text}` : ' Nothing new was planned.'}`, {
+        tone: notice.atRisk || !result.sessions ? 'warning' : 'success',
+        action: { label: 'Undo', run: () => dispatch({ type: 'undo', snapshotId }) },
+      });
+    },
+    [doc, dispatch, notify],
+  );
+
   const deleteBlock = useCallback(
     async (block: ScheduleBlock, label: string) => {
       const where = blockSpan(block);
@@ -214,11 +236,12 @@ export function useTimelineActions(): TimelineActions {
       createBlock,
       moveBlock,
       setBlockStatus,
+      rescheduleBlock,
       deleteBlock,
       setIssueStatus,
       addStudyTime,
       dialog,
     }),
-    [openBlock, openBlockById, openEvent, openAssignment, openItem, createBlock, moveBlock, setBlockStatus, deleteBlock, setIssueStatus, addStudyTime, dialog],
+    [openBlock, openBlockById, openEvent, openAssignment, openItem, createBlock, moveBlock, setBlockStatus, rescheduleBlock, deleteBlock, setIssueStatus, addStudyTime, dialog],
   );
 }

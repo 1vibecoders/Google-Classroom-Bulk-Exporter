@@ -15,6 +15,7 @@ import { routeToHash } from '../router';
 import { EmptyState } from '../ui/common';
 import { formatWhen, safeHref } from './lists/format';
 import { newSnapshotId } from './import/logic';
+import { movedLine } from './timeline/RepairCard';
 
 const CONFIDENCE_WORDS = { low: 'low', medium: 'medium', high: 'high' } as const;
 
@@ -35,9 +36,9 @@ function sourceLine(p: AiProposal, year: number): string {
   return p.source.postedAt ? `${what} (${formatWhen(p.source.postedAt, year)}) says:` : `${what} say${p.source.kind === 'coursework' ? '' : 's'}:`;
 }
 
-function sessionsLine({ sessions, notPlanned }: { sessions: number; notPlanned?: string }): string {
+function sessionsLine({ sessions, moved, notPlanned }: { sessions: number; moved: number; notPlanned?: string }): string {
   const planned = sessions ? ` Planned ${sessions} work ${sessions === 1 ? 'session' : 'sessions'} in your free study time.` : '';
-  return `${planned}${notPlanned ? ` ${sessions ? 'Some work could not be planned' : 'Nothing could be planned'}: ${notPlanned}` : ''}`;
+  return `${movedLine(moved)}${planned}${notPlanned ? ` ${sessions ? 'Some work could not be planned' : 'Nothing could be planned'}: ${notPlanned}` : ''}`;
 }
 
 function ReviewCard({ item, year, onDone }: { item: ReviewItem; year: number; onDone: (key: string, decision: Decision) => void }) {
@@ -65,7 +66,7 @@ function ReviewCard({ item, year, onDone }: { item: ReviewItem; year: number; on
     }
     const planned = planApplied(result.doc, [workOf(item)]);
     const snapshotId = newSnapshotId();
-    dispatch({ type: 'replaceDocument', doc: planned.doc, label: heading(item), now: nowLocal(), snapshotId });
+    dispatch({ type: 'replaceDocument', doc: planned.doc, label: heading(item), now: nowLocal(), snapshotId, details: planned.changes });
     notify(`Applied: ${heading(item)}.${sessionsLine(planned)}`, { tone: planned.sessions || !planned.notPlanned ? 'success' : 'warning', action: { label: 'Undo', run: () => dispatch({ type: 'undo', snapshotId }) } });
     onDone(p.key, 'applied');
   };
@@ -193,7 +194,7 @@ export function ReviewView() {
     }
     const planned = planApplied(work, ids);
     const snapshotId = newSnapshotId();
-    dispatch({ type: 'replaceDocument', doc: planned.doc, label: 'Applied the AI findings', now: nowLocal(), snapshotId });
+    dispatch({ type: 'replaceDocument', doc: planned.doc, label: 'Applied the AI findings', now: nowLocal(), snapshotId, details: planned.changes });
     for (const key of applied) decide(key, 'applied');
     notify(`Applied ${applied.length} ${applied.length === 1 ? 'finding' : 'findings'}.${sessionsLine(planned)}${failed ? ` ${failed} could not be applied; they are still listed.` : ''}`, {
       tone: failed ? 'warning' : 'success',

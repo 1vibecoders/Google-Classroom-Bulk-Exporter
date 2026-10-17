@@ -33,6 +33,10 @@ export interface Snapshot {
   label: string;
   createdAt: LocalDateTimeStr;
   doc: ScheduleDocument;
+  /** What the change did, one line each (e.g. which sessions moved and why; SPEC § 26.4). */
+  details?: string[];
+  /** Made by the website on its own (not a click by the person). */
+  automatic?: boolean;
 }
 
 export interface AppState {
@@ -57,7 +61,7 @@ type Collection = CollectionName;
 export type IssueScope = { collection: Collection; id: string } | null;
 
 export type Action =
-  | { type: 'replaceDocument'; doc: ScheduleDocument; label: string; now: LocalDateTimeStr; snapshotId: string }
+  | { type: 'replaceDocument'; doc: ScheduleDocument; label: string; now: LocalDateTimeStr; snapshotId: string; details?: string[]; automatic?: boolean }
   | { type: 'upsertClass'; item: SchoolClass }
   /** deleteContents: also delete the class's assignments and events (else they are kept without the class). */
   | { type: 'deleteClass'; id: string; deleteContents: boolean; now: LocalDateTimeStr }
@@ -280,7 +284,14 @@ export function reducer(state: AppState, action: Action): AppState {
       return action.state;
 
     case 'replaceDocument': {
-      const snapshot: Snapshot = { id: action.snapshotId, label: action.label, createdAt: action.now, doc };
+      const snapshot: Snapshot = {
+        id: action.snapshotId,
+        label: action.label,
+        createdAt: action.now,
+        doc,
+        ...(action.details?.length ? { details: action.details } : {}),
+        ...(action.automatic ? { automatic: true } : {}),
+      };
       return { doc: action.doc, snapshots: [snapshot, ...state.snapshots].slice(0, MAX_SNAPSHOTS) };
     }
 

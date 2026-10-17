@@ -367,7 +367,8 @@ function DataPanel() {
           <h3 className="ls-subhead">Undo history</h3>
           {state.snapshots.length === 0 ? (
             <p className="small muted" style={{ margin: 0 }}>
-              Nothing to undo yet. A copy of your schedule is kept here before each import, example load or delete-all (the last 5).
+              Nothing to undo yet. A copy of your schedule is kept here before each import, example load, delete-all and each change that moves
+              planned sessions, with what moved and why (the last 5).
             </p>
           ) : (
             <ul className="ls-snapshots">
@@ -376,8 +377,19 @@ function DataPanel() {
                   <div>
                     <div>{s.label}</div>
                     <div className="small muted">
-                      {isValidLocalDateTime(s.createdAt) ? formatLdt(s.createdAt, year) : ''} · {docSummary(s.doc)}
+                      {isValidLocalDateTime(s.createdAt) ? formatLdt(s.createdAt, year) : ''} · {s.automatic ? 'Automatic · ' : ''}
+                      {docSummary(s.doc)}
                     </div>
+                    {s.details?.length ? (
+                      <details className="small">
+                        <summary>What changed ({s.details.length})</summary>
+                        <ul>
+                          {s.details.map((line, i) => (
+                            <li key={i}>{line}</li>
+                          ))}
+                        </ul>
+                      </details>
+                    ) : null}
                   </div>
                   <button type="button" className="btn small" onClick={() => void restore(s.id)}>
                     <Icon name="undo" size={14} /> Restore

@@ -12,11 +12,12 @@
 //   later sync does not undo the decision; automatic changes do not.
 // - Every result is validated as a whole schedule before it is used.
 // - Applied work is planned into free study time right away (planApplied: the
-//   fixed-rule planner, never the AI), so accepting an estimate changes the calendar.
+//   fixed-rule planner, never the AI), so accepting an estimate changes the calendar;
+//   its sessions that no longer fit (e.g. after an earlier due date) are moved (repair.ts).
 import type { AiProposal } from '../../model/aiProposal';
 import type { Assignment, AssignmentType, ScheduleDocument, Source } from '../../model/types';
 import { resolveSettings } from '../../model/constants';
-import { DEFAULT_HORIZON_DAYS, planUnscheduledWork } from '../planner';
+import { repairPlan } from '../repair';
 import { fitToDue } from '../sync/fitToDue';
 import { nowLocal, todayLocal } from '../time';
 import { validateDocument } from '../validate';
@@ -178,13 +179,16 @@ export function workOf(item: ReviewItem): string {
   return item.field === 'new' ? newAssessmentId(item.proposal) : item.assignment!.id;
 }
 
-/** Plans the part of this work that is not planned yet into free study time; nothing already planned moves. */
-export function planApplied(doc: ScheduleDocument, assignmentIds: string[]): { doc: ScheduleDocument; sessions: number; notPlanned?: string } {
-  if (!assignmentIds.length) return { doc, sessions: 0 };
-  const plan = planUnscheduledWork(doc, { from: nowLocal(), assignmentIds, horizonDays: DEFAULT_HORIZON_DAYS });
+/** Plans the part of this work that is not planned yet into free study time, and moves its sessions that no longer fit; nothing else moves. */
+export function planApplied(
+  doc: ScheduleDocument,
+  assignmentIds: string[],
+): { doc: ScheduleDocument; sessions: number; moved: number; changes: string[]; notPlanned?: string } {
+  if (!assignmentIds.length) return { doc, sessions: 0, moved: 0, changes: [] };
+  const plan = repairPlan(doc, nowLocal(), assignmentIds);
   // Why the first piece of work could not be planned, so the person is never left wondering.
   const notPlanned = plan.unplaced[0]?.reason;
-  const out = plan.blocks.length ? { doc: { ...doc, scheduleBlocks: [...doc.scheduleBlocks, ...plan.blocks] }, sessions: plan.blocks.length } : { doc, sessions: 0 };
+  const out = { doc: plan.doc, sessions: plan.sessions, moved: plan.moved, changes: plan.changes };
   return notPlanned ? { ...out, notPlanned } : out;
 }
 

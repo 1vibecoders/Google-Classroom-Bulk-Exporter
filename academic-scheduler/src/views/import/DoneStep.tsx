@@ -125,7 +125,8 @@ export function DoneStep({
         </div>
         {!inSetup && !ai ? (
           <p className="small muted" style={{ margin: 0 }}>
-            To have the AI read these classes and plan your schedule, <a href={routeToHash({ name: 'settings' })}>sign in with Google in Settings</a>.
+            The AI reads only for signed-in people. These classes and files stay in this browser: <a href={routeToHash({ name: 'settings' })}>sign in with Google in
+            Settings</a>, then use “Build my schedule with AI” there, and the AI reads them too.
           </p>
         ) : null}
         {!inSetup && ai?.configured && !runsLeft ? <p className="small muted" style={{ margin: 0 }}>You used your AI planning runs for the last 24 hours.</p> : null}

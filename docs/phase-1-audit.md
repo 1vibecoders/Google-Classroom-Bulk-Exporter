@@ -163,3 +163,25 @@ Owner decision: Vercel Functions for the backend, Google sign-in. Details for us
 - Website: `src/lib/ai/proposals.ts` decides deterministically: automatic only for sure, stated findings that fill a gap; person-owned values, Classroom's own due dates and disagreeing texts go to Review; applying by the person adds the field to `overrides`; every result is validated as a whole schedule. Review page (`#/review`) with quote, current/proposed value, reasons, Apply/Edit/Reject/Later; Settings card with automation switch, last run (read vs reused), pending count and budget; analysis runs after each sync.
 - Course documents (added after Phase 4): attached Drive files are read by the sync with the optional `drive.readonly` scope (server/documents.ts; Drive modifiedTime/md5Checksum decide re-downloads) and by the extension (protocol version 2 sends the files; the website reads them with src/lib/documents/text.ts). They are stored as `source_records` of kind `document` and analyzed like announcements (first 20,000 characters, with the assignment they are attached to). Signed-out extension users keep them in IndexedDB, without AI.
 - Not done: schedule reconciliation after a committed change (Phase 5, the deterministic planner); signed-out extension users get no AI reading (the AI runs on server data); a document no longer attached to anything is not marked missing.
+
+## 10. Phase 5 (2026-10-16): deterministic scheduling — plan repair
+
+Already in place before this slice: interval-based free time (availability − busy events − existing sessions, breaks kept), hard deadlines (due moment, assessment day start, task due), dependency order, daily cap, spreading over days, min/max session length, unplaced work reported with a reason (`src/lib/planner.ts`); the calendar flags sessions that overlap or end late (`src/lib/calendar.ts`); finished-but-unmarked sessions ask "Did you do these?" (§ 26.1).
+
+**New:**
+- `src/lib/repair.ts` (SPEC § 17.2, § 26.2–26.3): `brokenSessions` finds planned future sessions that overlap a busy event or another session that stays, or end after their deadline; `repairPlan` removes only those and plans that work again with the planner. Only flexible sessions move (planned, not locked, not the person's own, work that still counts); of two overlapping flexible sessions the later one moves. Work that no longer fits is returned as `unplaced`, never placed after its deadline.
+- Accepting an AI finding (`planApplied`, Review and auto-apply) now also moves that work's broken sessions, so an earlier due date re-plans the work instead of only raising an issue.
+- Day view card "N sessions no longer fit" with "Re-plan them": one undoable change; the notice names work at risk.
+
+**Later the same day (leftovers of Phases 1–5):**
+- Repair runs automatically on every import (Classroom sync, extension send, schedule file); "Undo import" reverts it too. Planner-made sessions outside study time, and planner-made sessions over the daily limit (latest first), count as broken; sessions from a schedule file are left alone for those two checks (owner decision).
+- Missed sessions: "Reschedule" marks the session skipped and plans its work again before the deadline, as one undoable change.
+- Competing work (§ 25.5): when work does not fit, the reason names the assignments and test preparation that take the time before that deadline.
+- Change history (§ 26.4): undo snapshots record what moved and why, one line per session, and whether the change was automatic; Settings → Undo history shows them.
+- Sync: a run still "running" after 6 minutes (the function's limit is 300 s) is closed as failed and not counted, so it no longer blocks syncs.
+- Documents: a Drive document is marked missing once every item it was attached to was listed and none attaches it any more; one attached to an older announcement is kept.
+- Signed out: files sent from the extension stay in the browser and are uploaded before the next AI run after sign-in (owner decision: the AI stays sign-in only). Every upload (documents and AI sources) is sized in UTF-8 bytes, so non-English text stays under the 4.5 MB request limit.
+
+**Not done yet:** the test study planner (topics, topic status, adaptive sessions; § 25.2–25.4); undo of a repair is a whole-schedule snapshot (a later unrelated change is undone too; the import undo warns about this); after an import repair the "due date moved earlier" issue can still count sessions as ending late; not verified live: a large send end to end and the AI account's rate-limit tier (429s are retried with retry-after).
+
+**Tests:** `tests/unit/repair.test.ts`, new cases in `planner.test.ts`, `server-sync.test.ts`, `documentsUpload.test.ts`; website unit 976/976, e2e 30/30.

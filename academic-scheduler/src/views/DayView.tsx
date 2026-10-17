@@ -13,6 +13,7 @@ import { DayIssues } from './timeline/DayIssues';
 import { DayStrip } from './timeline/DayStrip';
 import { DaySummary, UnmarkedSessions } from './timeline/DaySummary';
 import { GettingStarted } from './timeline/GettingStarted';
+import { RepairCard } from './timeline/RepairCard';
 import { Timeline } from './timeline/Timeline';
 import { ViewToolbar, useViewMode } from './timeline/ViewToolbar';
 import { useDayModels } from './timeline/modelCache';
@@ -109,7 +110,8 @@ export function DayView({ date }: { date: string }) {
 
         <aside className="day-side" aria-label="Day overview">
           <DaySummary model={model} maxDaily={settings.maxDailyStudyMinutes} now={now} onAddStudyTime={actions.addStudyTime} />
-          <UnmarkedSessions blocks={unmarked} onStatus={actions.setBlockStatus} onOpen={actions.openBlock} />
+          <UnmarkedSessions blocks={unmarked} onStatus={actions.setBlockStatus} onReschedule={actions.rescheduleBlock} onOpen={actions.openBlock} />
+          <RepairCard now={now} />
           <DayIssues doc={doc} issues={model.issues} onStatus={actions.setIssueStatus} onOpenItem={actions.openItem} title="Issues for this day" />
           {mode === 'timeline' ? (
             <section className="card side-agenda" aria-labelledby="side-agenda-title">

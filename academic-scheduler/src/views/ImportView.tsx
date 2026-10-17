@@ -14,6 +14,8 @@ import { useToday } from '../ui/hooks';
 import { applyImport, type ImportPlan } from '../lib/importDiff';
 import { validateDocument } from '../lib/validate';
 import { nowLocal } from '../lib/time';
+import { repairPlan } from '../lib/repair';
+import { repairNotice } from './timeline/RepairCard';
 import { ChooseStep } from './import/ChooseStep';
 import { PreviewStep } from './import/PreviewStep';
 import { DoneStep, type ImportResult } from './import/DoneStep';
@@ -99,6 +101,14 @@ export function ImportView() {
       notify(`Nothing was imported: ${err instanceof Error ? err.message : 'the file could not be combined with your schedule'}.`, { tone: 'error' });
       return;
     }
+    // A changed due date or a new commitment can break planned sessions: move only those (SPEC § 17.2); Undo import reverts this too.
+    const repair = repairPlan(after, nowLocal());
+    let details: string[] = [];
+    if (repair.moved && validateDocument(repair.doc).ok) {
+      details = repair.changes.map((c) => `Moved automatically. ${c}`);
+      after = repair.doc;
+      notify(repairNotice(repair, after).text, { tone: repair.unplaced.length ? 'warning' : 'success' });
+    }
     // Last safety check: never store a schedule that is not valid.
     const verify = validateDocument(after);
     if (!verify.ok) {
@@ -107,7 +117,7 @@ export function ImportView() {
       return;
     }
     const snapshotId = newSnapshotId();
-    dispatch({ type: 'replaceDocument', doc: after, label: `Import ${loaded.fileName}`, now: nowLocal(), snapshotId });
+    dispatch({ type: 'replaceDocument', doc: after, label: `Import ${loaded.fileName}`, now: nowLocal(), snapshotId, details });
     setChoices({});
     setStep({ name: 'done', loaded, result: { fileName: loaded.fileName, snapshotId, before, after, undone: false } });
   };

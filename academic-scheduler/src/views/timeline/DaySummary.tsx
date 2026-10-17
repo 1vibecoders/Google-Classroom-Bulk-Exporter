@@ -101,11 +101,12 @@ export function DaySummary({ model, maxDaily, now, onAddStudyTime }: DaySummaryP
 interface UnmarkedProps {
   blocks: BlockView[];
   onStatus: (block: ScheduleBlock, status: BlockStatus, label: string) => void;
+  onReschedule: (block: ScheduleBlock, label: string) => void;
   onOpen: (view: BlockView) => void;
 }
 
 /** Sessions of the day that are over but still "planned": ask whether they happened. */
-export function UnmarkedSessions({ blocks, onStatus, onOpen }: UnmarkedProps) {
+export function UnmarkedSessions({ blocks, onStatus, onReschedule, onOpen }: UnmarkedProps) {
   if (blocks.length === 0) return null;
   return (
     <section className="card ds-unmarked" aria-labelledby="ds-unmarked-title">
@@ -127,6 +128,11 @@ export function UnmarkedSessions({ blocks, onStatus, onOpen }: UnmarkedProps) {
               <button type="button" className="btn small ghost" onClick={() => onStatus(view.block, 'skipped', view.label)} aria-label={`Mark ${view.label} skipped`}>
                 Skipped
               </button>
+              {view.block.assignmentId ? (
+                <button type="button" className="btn small ghost" onClick={() => onReschedule(view.block, view.label)} aria-label={`Reschedule ${view.label}`}>
+                  Reschedule
+                </button>
+              ) : null}
             </span>
           </li>
         ))}

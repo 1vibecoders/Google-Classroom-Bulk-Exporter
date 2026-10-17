@@ -3,6 +3,7 @@
 // the rest of the website works as before.
 import type { AnalysisStatus, CommitmentsResult } from '../../model/aiProposal';
 import type { UploadSources } from './sources';
+import { uploadLocalDocuments } from '../documents/api';
 
 export type Decision = 'applied' | 'rejected' | 'deferred';
 
@@ -30,6 +31,8 @@ export type RunResult = AnalysisStatus & { message?: string; busy?: boolean; lim
  * `sources`: the imported classes and work (lib/ai/sources.ts), so the AI reads them without a Google sync.
  */
 export async function runAnalysis(timezone: string, setup = false, commitments?: string, sources?: UploadSources): Promise<RunResult | { error: string }> {
+  // Files sent from the extension while signed out are in this browser: the AI reads only what the server has.
+  await uploadLocalDocuments();
   const result = await call('/api/analysis', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

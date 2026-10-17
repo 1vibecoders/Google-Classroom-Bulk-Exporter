@@ -12,7 +12,11 @@
 //
 // Limits per sync: MAX_FILES files checked, MAX_DOWNLOADS downloaded, and a
 // time budget; the rest is read by the next sync.
-// shortcut: a document no longer attached to anything keeps its record (and stays analyzable); mark it missing once course listings report completeness per item kind.
+//
+// Disappearance (§ 13.4): a Drive document is marked missing once no item lists
+// it any more, but only when every item it was attached to was listed in this
+// sync (markDetached). One attached to an older announcement (only the newest
+// are listed) or to an item whose listing failed keeps its record.
 import { documentText, EXPORTED_AS_TEXT, MAX_DOCUMENT_BYTES, READABLE, type DocumentStatus } from '../src/lib/documents/text.js';
 import { sha256 } from './crypto.js';
 import type { Context } from './context.js';
@@ -146,6 +150,25 @@ async function save(context: Context, userId: string, fileId: string, courseId: 
 }
 
 /** Drive file ids of the materials of one Classroom item. */
+/** Marks missing the Drive documents that no listed item attaches any more; `listed`: "kind:sourceId" of every item listed in this sync. */
+export async function markDetached(db: Context['db'], userId: string, refs: DocumentRef[], listed: Set<string>): Promise<number> {
+  const attached = new Set(refs.map((r) => r.fileId));
+  const rows = await db.query<{ source_id: string; data: { parents?: Parent[] } }>(
+    `SELECT source_id, data FROM source_records WHERE user_id = $1 AND kind = 'document' AND state = 'present' AND data->>'via' = 'drive'`,
+    [userId],
+  );
+  const gone = rows
+    .filter((r) => !attached.has(r.source_id) && !!r.data.parents?.length && r.data.parents.every((p) => listed.has(`${p.kind}:${p.sourceId}`)))
+    .map((r) => r.source_id);
+  if (gone.length) {
+    await db.query(`UPDATE source_records SET state = 'missing' WHERE user_id = $1 AND kind = 'document' AND source_id IN (SELECT jsonb_array_elements_text($2::jsonb))`, [
+      userId,
+      JSON.stringify(gone),
+    ]);
+  }
+  return gone.length;
+}
+
 export function driveRefs(
   materials: Array<{ driveFile?: { driveFile?: { id?: string; title?: string; alternateLink?: string } } }> | undefined,
   courseId: string,

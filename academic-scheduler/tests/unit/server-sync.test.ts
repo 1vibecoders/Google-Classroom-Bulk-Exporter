@@ -189,6 +189,15 @@ describe('sync allowance (3 per rolling 24 hours, server-side)', () => {
     expect(outcome.allowance).toMatchObject({ remaining: 2, running: true });
   });
 
+  it('closes a sync that died while running: it neither blocks nor counts', async () => {
+    await db.query(`INSERT INTO sync_runs (user_id, status, counted, started_at) VALUES ('u1', 'running', true, now() - interval '7 minutes')`);
+    expect((await runSync(context, user, TZ)).kind).toBe('ok');
+    expect(await db.query(`SELECT status, counted FROM sync_runs ORDER BY id`)).toEqual([
+      { status: 'failed', counted: false },
+      expect.objectContaining({ counted: true }),
+    ]);
+  });
+
   it('does not count attempts that fail before Google answered', async () => {
     classroom.refreshError = new GoogleError('expired', 400, 'invalid_grant', false);
     expect((await runSync(context, user, TZ)).kind).toBe('reauth');
@@ -387,6 +396,27 @@ describe('course documents', () => {
     await runSync(context, user, TZ);
     expect(classroom.downloads).toEqual([DOC, DOC]);
     expect((await documents())[DOC].text).toBe('Lab report due Monday.');
+  });
+
+  it('marks a document missing once no listed item attaches it, but keeps one an unlisted item still may', async () => {
+    await runSync(context, user, TZ);
+    // Removed from the coursework, still on the announcement: present.
+    (classroom.work['222'] as CourseWork[])[0].materials = [attach(PHOTO, 'Diagram')];
+    await pg.query(`DELETE FROM sync_runs`);
+    await runSync(context, user, TZ);
+    const state = async (id: string) => (await db.query<{ state: string }>(`SELECT state FROM source_records WHERE kind = 'document' AND source_id = $1`, [id]))[0].state;
+    expect(await state(DOC)).toBe('present');
+    // The announcement is no longer among the newest listed: it may still attach the file, so it stays.
+    classroom.announcements = { '111': [] };
+    await pg.query(`DELETE FROM sync_runs`);
+    await runSync(context, user, TZ);
+    expect(await state(DOC)).toBe('present');
+    // Listed again without the file: nothing attaches it any more.
+    classroom.announcements = { '111': [{ id: '701', text: 'Study guide attached', materials: [] }] };
+    await pg.query(`DELETE FROM sync_runs`);
+    await runSync(context, user, TZ);
+    expect(await state(DOC)).toBe('missing');
+    expect(await state(PHOTO)).toBe('present');
   });
 
   it('lists documents without their text and returns the text of one document on request', async () => {
