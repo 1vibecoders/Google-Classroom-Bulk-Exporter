@@ -1,36 +1,39 @@
-/* Academic Scheduler — design tokens and shared component styles. */
+/* Lattice Study — design tokens and shared component styles. */
 
 :root {
-  /* Paper planner: warm paper, near-black ink, one ink-green accent; class colors carry the rest. */
-  --bg: #f6f3ea;
-  --surface: #fffdf7;
-  --surface-2: #f0ece1;
-  --surface-3: #e6e0d2;
-  --text: #1d1b16;
-  --text-2: #49453c;
-  --text-3: #6b665a;
-  --border: #e0d9c9;
-  --border-strong: #c4bba7;
-  --accent: #1f5c45;
-  --accent-hover: #174a37;
-  --accent-soft: #e2ece4;
+  /* Clean and bright: white cards on a near-white page, soft gray borders, the Lattice green for actions and progress; class colors carry the rest. */
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --surface-2: #f3f3f1;
+  --surface-3: #e9e9e6;
+  --text: #1d1f1c;
+  --text-2: #4a4a46;
+  --text-3: #6b6b66;
+  --border: #e5e5e2;
+  --border-strong: #cfcfca;
+  --accent: #2b7a52;
+  --accent-hover: #256b48;
+  --accent-soft: #e4f2e9;
   --accent-text: #ffffff;
+  /* The pressed-down bottom edge of buttons (the Lattice ink green under the primary). */
+  --accent-edge: #1f5c45;
+  --edge: #d6d6d1;
   --success: #2e6a33;
   --success-soft: #e3eedc;
   --warning: #8f5300;
   --warning-soft: #f7ead0;
   --danger: #a3301c;
   --danger-soft: #f6e0da;
-  --available: #eaf0e2;
-  --available-border: #a8c098;
-  --busy: #ece7da;
-  --busy-stripe: #e2dccd;
+  --available: #edf5ea;
+  --available-border: #a8c69a;
+  --busy: #efefec;
+  --busy-stripe: #e6e6e2;
   --now: #c23b22;
   --shadow-1: none;
-  --shadow-2: 0 12px 32px rgba(45, 35, 15, 0.14);
-  --radius-s: 4px;
-  --radius-m: 6px;
-  --radius-l: 8px;
+  --shadow-2: 0 12px 32px rgba(20, 22, 20, 0.14);
+  --radius-s: 8px;
+  --radius-m: 12px;
+  --radius-l: 14px;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -54,6 +57,8 @@
     --accent-hover: #a2d4ba;
     --accent-soft: #1f3229;
     --accent-text: #0f1a14;
+    --accent-edge: #4f8a6c;
+    --edge: #0e0d0a;
     --success: #9ccc8a;
     --success-soft: #1e2b1b;
     --warning: #e3ac52;
@@ -84,6 +89,8 @@
   --accent-hover: #a2d4ba;
   --accent-soft: #1f3229;
   --accent-text: #0f1a14;
+  --accent-edge: #4f8a6c;
+  --edge: #0e0d0a;
   --success: #9ccc8a;
   --success-soft: #1e2b1b;
   --warning: #e3ac52;

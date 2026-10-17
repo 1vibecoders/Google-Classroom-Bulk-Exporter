@@ -590,10 +590,10 @@ label.imp-row-title {
 /* ---------- Step 3: done ---------- */
 
 .imp-done {
-  border-left: 4px solid var(--success);
+  border-color: var(--success);
 }
 .imp-done.undone {
-  border-left-color: var(--border-strong);
+  border-color: var(--border-strong);
 }
 .imp-done-title {
   display: flex;

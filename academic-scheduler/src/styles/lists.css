@@ -84,9 +84,9 @@ details > summary.ls-subhead {
   color: var(--text-3);
 }
 .ls-tile-value {
-  font-family: var(--serif);
   font-size: 24px;
-  font-weight: 600;
+  font-weight: 800;
+  letter-spacing: -0.01em;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
@@ -135,22 +135,22 @@ details > summary.ls-subhead {
 }
 .ls-segmented {
   display: inline-flex;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-s);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-m);
   overflow: hidden;
-  height: 34px;
+  height: 38px;
 }
 .ls-segmented button {
   border: none;
   background: var(--surface);
   color: var(--text-2);
   font: inherit;
-  font-weight: 500;
+  font-weight: 600;
   padding: 0 12px;
   cursor: pointer;
 }
 .ls-segmented button + button {
-  border-left: 1px solid var(--border-strong);
+  border-left: 2px solid var(--border);
 }
 .ls-segmented button[aria-pressed='true'] {
   background: var(--accent-soft);
@@ -1170,15 +1170,13 @@ details > summary.ls-subhead {
   list-style: none;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-m);
 }
 .ls-snapshots li {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 10px;
+  padding: 8px 0;
 }
 .ls-snapshots li + li {
   border-top: 1px solid var(--border);
@@ -1235,19 +1233,22 @@ details > summary.ls-subhead {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 8px;
+  gap: 0;
 }
 .test-topics li {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  padding: 8px 0;
+  border-radius: var(--radius-s);
+}
+.test-topics li + li {
+  border-top: 1px solid var(--border);
 }
 .test-topics li.topic-needs_review {
-  border-color: var(--warning);
+  background: var(--warning-soft);
+  padding: 8px 6px;
 }
 .test-topics li.topic-comfortable {
   opacity: 0.75;
