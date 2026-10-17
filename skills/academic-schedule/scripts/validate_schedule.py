@@ -34,7 +34,7 @@ import sys
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 SUPPORTED_MAJOR = 1
-SUPPORTED_MINOR = 2
+SUPPORTED_MINOR = 3
 SUPPORTED = "%d.%d" % (SUPPORTED_MAJOR, SUPPORTED_MINOR)
 MAX_FILE_BYTES = 10 * 1024 * 1024  # the website's import limit
 MAX_EXTENSION_DEPTH = 200  # the website cannot store deeper x- values
@@ -67,6 +67,8 @@ ASSIGNMENT_TYPES = [
 ]
 ASSESSMENT_TYPES = ["quiz", "test", "exam", "presentation"]
 WORK_STATUSES = ["not_started", "in_progress", "done", "cancelled"]
+TOPIC_STATUSES = ["not_started", "in_progress", "needs_review", "comfortable"]
+TOPIC_BASES = ["listed", "materials", "inferred", "user"]
 BLOCK_STATUSES = ["planned", "done", "skipped"]
 PRIORITIES = ["low", "medium", "high", "urgent"]
 CONFIDENCES = ["low", "medium", "high"]
@@ -94,7 +96,7 @@ OVERRIDABLE_FIELDS = {
     "assignment": [
         "title", "classId", "type", "topic", "description", "due", "assessmentDate", "recommendedCompletionDate",
         "estimatedMinutes", "estimateRange", "estimateConfidence", "estimateBasis", "priority", "points", "required",
-        "sourceState", "tasks", "references", "dependsOn",
+        "sourceState", "tasks", "references", "dependsOn", "studyTopics",
     ],
     "task": [
         "title", "description", "due", "required", "estimatedMinutes", "estimateRange", "dependsOn",
@@ -400,6 +402,17 @@ def point_estimate(lo: int, hi: int) -> int:
 
 def _check_work_shape(raw: dict, path: str, ctx: "Ctx") -> None:
     _check_completed_at(raw, path, ctx)
+    topics = raw.get("studyTopics")
+    if isinstance(topics, list):
+        seen = set()
+        for i, t in enumerate(topics):
+            tid = t.get("id") if isinstance(t, dict) else None
+            if not isinstance(tid, str):
+                continue
+            if tid in seen:
+                ctx.err("%s[%d].id" % (child_path(path, "studyTopics"), i), "duplicate-id",
+                        "The study topic id %s is used twice in this assignment; each topic needs its own id." % json.dumps(tid))
+            seen.add(tid)
     if "estimateRange" in raw and "estimatedMinutes" not in raw:
         rng = raw.get("estimateRange")
         suggestion = ""
@@ -557,6 +570,16 @@ TASK_SPEC = _item_spec("a task", "task", [
     "sources": 'Tasks have no "sources"; they inherit their assignment\'s (section 6).',
 })
 
+# Version 1.3 (section 8.3): one small thing to study for an assessment.
+STUDY_TOPIC_SPEC = Spec("a study topic", [
+    ("id", ID),
+    ("title", TEXT(200, True)),
+    ("status", ENUM(TOPIC_STATUSES)),
+    ("basis", ENUM(TOPIC_BASES)),
+    ("quote", TEXT(1000)),
+    ("source", SOURCE),
+], ["id", "title"])
+
 ASSIGNMENT_SPEC = _item_spec("an assignment", "assignment", [
     ("title", TEXT(200, True)),
     ("classId", ID),
@@ -580,6 +603,7 @@ ASSIGNMENT_SPEC = _item_spec("an assignment", "assignment", [
     ("tasks", ARRAY(OBJECT(TASK_SPEC))),
     ("references", ARRAY(OBJECT(REFERENCE_SPEC))),
     ("dependsOn", ARRAY(ID, unique=True)),
+    ("studyTopics", ARRAY(OBJECT(STUDY_TOPIC_SPEC), None, 100)),
 ], ["title"], with_source=True, check=_check_work_shape)
 
 EVENT_SPEC = _item_spec("an event", "event", [
@@ -621,7 +645,7 @@ BLOCK_SPEC = _item_spec("a schedule block", "block", [
 ], ["start", "end"], with_source=True, planner=True, check=_check_block_shape)
 
 ROOT_SPEC = Spec("the schedule", [
-    ("schemaVersion", ENUM(["1.0", "1.1", "1.2"])),
+    ("schemaVersion", ENUM(["1.0", "1.1", "1.2", "1.3"])),
     ("meta", OBJECT(META_SPEC)),
     ("settings", OBJECT(SETTINGS_SPEC)),
     ("classes", ARRAY(OBJECT(CLASS_SPEC))),
@@ -993,6 +1017,9 @@ def _walk_ldt(value: Any, path: str, ctx: Ctx, or_date: bool) -> Any:
 
 def schema_version_for(doc: dict) -> str:
     """The lowest version that has every feature `doc` uses (section 2: writers write this)."""
+    assignments = doc.get("assignments")
+    if isinstance(assignments, list) and any(isinstance(a, dict) and "studyTopics" in a for a in assignments):
+        return "1.3"
     classes = doc.get("classes")
     if isinstance(classes, list) and any(isinstance(c, dict) and "announcements" in c for c in classes):
         return "1.2"
@@ -1756,7 +1783,12 @@ def validate_document(data: Any, today: Optional[str] = None, generator: bool = 
     needed = schema_version_for(doc)
     if version and needed > version:
         announced = next((i for i, c in enumerate(doc.get("classes") or []) if isinstance(c, dict) and "announcements" in c), None)
-        if needed == "1.2" and announced is not None:
+        topics_at = next((i for i, a in enumerate(doc.get("assignments") or []) if isinstance(a, dict) and "studyTopics" in a), None)
+        if needed == "1.3" and topics_at is not None:
+            ctx.errors.append({"path": "assignments[%d].studyTopics" % topics_at, "code": "version-feature",
+                               "message": '"studyTopics" is new in schema version 1.3, but this file says '
+                                          '"schemaVersion": "%s". Write "1.3" or leave the field out.' % version})
+        elif needed == "1.2" and announced is not None:
             ctx.errors.append({"path": "classes[%d].announcements" % announced, "code": "version-feature",
                                "message": '"announcements" is new in schema version 1.2, but this file says '
                                           '"schemaVersion": "%s". Write "1.2" or leave the field out.' % version})

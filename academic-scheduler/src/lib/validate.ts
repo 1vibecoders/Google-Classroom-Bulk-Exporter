@@ -32,6 +32,8 @@ import {
   SUPPORTED_MINOR,
   WEEKDAYS,
   WORK_STATUSES,
+  TOPIC_BASES,
+  TOPIC_STATUSES,
   resolveSettings,
   schemaVersionFor,
 } from '../model/constants';
@@ -127,7 +129,14 @@ export function validateDocument(input: unknown, options: ValidateOptions = {}):
   const doc = (normalized === INVALID ? {} : normalized) as Record<string, unknown>;
   // The stored version is the lowest one that has every feature the file uses (§ 2).
   const needed = schemaVersionFor(doc);
-  if (version.version && needed > version.version) {
+  const topicsAt = needed === '1.3' ? (doc.assignments as Array<Record<string, unknown>>).findIndex((a) => a?.studyTopics !== undefined) : -1;
+  if (version.version && needed > version.version && topicsAt >= 0) {
+    ctx.errors.push({
+      path: `assignments[${topicsAt}].studyTopics`,
+      code: 'version-feature',
+      message: `"studyTopics" is new in schema version 1.3, but this file says "schemaVersion": "${version.version}". Write "1.3" or leave the field out.`,
+    });
+  } else if (version.version && needed > version.version) {
     const announced = needed === '1.2' ? (doc.classes as Array<Record<string, unknown>>).findIndex((c) => c?.announcements !== undefined) : -1;
     ctx.errors.push(
       announced >= 0
@@ -300,7 +309,7 @@ export const OVERRIDABLE_FIELDS = {
   assignment: [
     'title', 'classId', 'type', 'topic', 'description', 'due', 'assessmentDate', 'recommendedCompletionDate',
     'estimatedMinutes', 'estimateRange', 'estimateConfidence', 'estimateBasis', 'priority', 'points', 'required',
-    'sourceState', 'tasks', 'references', 'dependsOn',
+    'sourceState', 'tasks', 'references', 'dependsOn', 'studyTopics',
   ],
   task: [
     'title', 'description', 'due', 'required', 'estimatedMinutes', 'estimateRange', 'dependsOn',
@@ -512,6 +521,20 @@ const TASK_SPEC = itemSpec(
   },
 );
 
+/** Format 1.3 (§ 8.3): one small thing to study for an assessment. */
+const STUDY_TOPIC_SPEC = spec(
+  'a study topic',
+  [
+    ['id', ID],
+    ['title', text(200, true)],
+    ['status', oneOf(TOPIC_STATUSES)],
+    ['basis', oneOf(TOPIC_BASES)],
+    ['quote', text(1000)],
+    ['source', SOURCE],
+  ],
+  ['id', 'title'],
+);
+
 const ASSIGNMENT_SPEC = itemSpec(
   'an assignment',
   'assignment',
@@ -538,6 +561,7 @@ const ASSIGNMENT_SPEC = itemSpec(
     ['tasks', arrayOf(object(TASK_SPEC))],
     ['references', arrayOf(object(REFERENCE_SPEC))],
     ['dependsOn', arrayOf(ID, { unique: true })],
+    ['studyTopics', arrayOf(object(STUDY_TOPIC_SPEC), { max: 100 })],
   ],
   ['title'],
   { withSource: true, check: checkWorkShape },
@@ -1148,6 +1172,16 @@ function checkEventShape(raw: Record<string, unknown>, path: string, ctx: Ctx): 
 /** Assignments and tasks: completedAt only with status done; estimateRange needs estimatedMinutes. */
 function checkWorkShape(raw: Record<string, unknown>, path: string, ctx: Ctx): void {
   checkCompletedAt(raw, path, ctx);
+  const topics = get(raw, 'studyTopics');
+  if (Array.isArray(topics)) {
+    const seen = new Set<unknown>();
+    topics.forEach((t, i) => {
+      const id = isPlainObject(t) ? get(t, 'id') : undefined;
+      if (id === undefined) return;
+      if (seen.has(id)) err(ctx, `${childPath(path, 'studyTopics')}[${i}].id`, 'duplicate-id', `The study topic id ${JSON.stringify(id)} is used twice in this assignment; each topic needs its own id.`);
+      seen.add(id);
+    });
+  }
   if (has(raw, 'estimateRange') && !has(raw, 'estimatedMinutes')) {
     const range = get(raw, 'estimateRange');
     let suggestion = '';
@@ -1254,7 +1288,7 @@ function checkVersion(root: Record<string, unknown>): { version?: string; error?
       stop: {
         path: 'schemaVersion',
         code: 'version-unsupported',
-        message: `This file uses schema version ${value}, but this version of the Academic Scheduler supports up to ${supported}. Update the website or generate a ${supported} file.`,
+        message: `This file uses schema version ${value}, but this version of Lattice Study supports up to ${supported}. Update the website or generate a ${supported} file.`,
       },
     };
   }

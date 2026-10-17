@@ -21,12 +21,14 @@ import type {
   ScheduleEvent,
   SchoolClass,
   Settings,
+  StudyTopic,
   Task,
   Tombstone,
   TombstoneCollection,
   WorkStatus,
 } from '../model/types';
 import { MAX_TOMBSTONES, NON_OVERRIDABLE_FIELDS, schemaVersionFor } from '../model/constants';
+import { withPrepDescriptions } from '../lib/studyPlan';
 
 export interface Snapshot {
   id: string;
@@ -61,6 +63,8 @@ type Collection = CollectionName;
 export type IssueScope = { collection: Collection; id: string } | null;
 
 export type Action =
+  /** Study topics of an assessment (§ 8.3); its upcoming planner sessions are re-described from them. */
+  | { type: 'setStudyTopics'; id: string; topics: StudyTopic[]; now: LocalDateTimeStr }
   | { type: 'replaceDocument'; doc: ScheduleDocument; label: string; now: LocalDateTimeStr; snapshotId: string; details?: string[]; automatic?: boolean }
   | { type: 'upsertClass'; item: SchoolClass }
   /** deleteContents: also delete the class's assignments and events (else they are kept without the class). */
@@ -229,8 +233,10 @@ function withoutRootIssuesFor(doc: ScheduleDocument, ids: Set<string>): Schedule
 
 // ---------------------------------------------------------------------------
 
+/** The stored version follows the features in use (§ 2), e.g. 1.3 once an assignment has study topics. */
 function withDoc(state: AppState, doc: ScheduleDocument): AppState {
-  return { ...state, doc };
+  const schemaVersion = schemaVersionFor(doc);
+  return { ...state, doc: schemaVersion === doc.schemaVersion ? doc : { ...doc, schemaVersion } };
 }
 
 function setStatusFields<T extends { status?: string; completedAt?: string }>(item: T, status: string, now: LocalDateTimeStr): T {
@@ -293,6 +299,14 @@ export function reducer(state: AppState, action: Action): AppState {
         ...(action.automatic ? { automatic: true } : {}),
       };
       return { doc: action.doc, snapshots: [snapshot, ...state.snapshots].slice(0, MAX_SNAPSHOTS) };
+    }
+
+    case 'setStudyTopics': {
+      const assignments = updateItem(doc.assignments, action.id, (a) => {
+        const { studyTopics: _, ...rest } = a;
+        return action.topics.length ? { ...a, studyTopics: action.topics } : rest;
+      });
+      return withDoc(state, withPrepDescriptions({ ...doc, assignments }, action.id, action.now));
     }
 
     case 'undo': {

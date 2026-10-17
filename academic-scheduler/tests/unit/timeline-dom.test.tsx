@@ -179,8 +179,22 @@ describe('DayView', () => {
     expect(block('b-eng').start).toBe(`${DAY}T16:00:00`);
     await pointer(window, 'pointerup', 50, start + 56);
     expect(container.querySelector('.tl-ghost')).toBeNull();
+    // 5:00 PM is taken by the math session: asked first (SPEC § 27.2), moved only on "Continue anyway".
+    expect(document.body.textContent).toContain('This time breaks your plan');
+    expect(document.body.textContent).toContain('It overlaps');
+    await act(async () => buttonByText('Continue anyway').click());
     expect(block('b-eng')).toMatchObject({ start: `${DAY}T17:00:00`, end: `${DAY}T17:45:00`, locked: true });
     expect(document.body.textContent).toContain('Moved “English / Read Chapter 6”');
+  });
+
+  it('keeps a session where it was when a move onto other work is cancelled', async () => {
+    await mount(<DayView date={DAY} />);
+    const start = y('16:00') + 10;
+    await pointer(blockButton('b-eng'), 'pointerdown', 50, start);
+    await pointer(window, 'pointermove', 50, start + 56);
+    await pointer(window, 'pointerup', 50, start + 56);
+    await act(async () => buttonByText('Cancel').click());
+    expect(block('b-eng').start).toBe(`${DAY}T16:00:00`);
   });
 
   it('resizes a block from its bottom edge', async () => {

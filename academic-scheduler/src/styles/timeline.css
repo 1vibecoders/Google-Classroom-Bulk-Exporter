@@ -1397,3 +1397,11 @@
 .gs-steps li.is-done .gs-text strong {
   color: var(--text-2);
 }
+
+/* Next up (Day view, today) */
+.next-up-what {
+  margin: 4px 0 0;
+}
+.next-up .warning-text {
+  color: var(--warning);
+}

@@ -15,23 +15,29 @@ import { routeToHash } from '../router';
 import { EmptyState } from '../ui/common';
 import { formatWhen, safeHref } from './lists/format';
 import { newSnapshotId } from './import/logic';
+import { ScheduleProblems } from './review/ScheduleProblems';
+import { useNow } from '../ui/hooks';
 import { movedLine } from './timeline/RepairCard';
 
 const CONFIDENCE_WORDS = { low: 'low', medium: 'medium', high: 'high' } as const;
+export const TOPIC_BASIS_WORDS = { listed: 'listed in a study guide or announcement', materials: 'from class materials', inferred: 'expected from the title', user: 'added by you' } as const;
 
 function show(item: ReviewItem, value: string | number | undefined, year: number): string {
   if (value === undefined || value === '') return 'none';
+  if (item.field === 'topics') return `${value} ${Number(value) === 1 ? 'topic' : 'topics'}`;
   return item.field === 'estimate' ? formatDuration(Number(value)) : formatWhen(String(value), year);
 }
 
 function heading(item: ReviewItem): string {
   const p = item.proposal;
   if (item.field === 'new') return `New ${(ASSIGNMENT_TYPE_LABELS[p.type ?? 'other'] ?? 'assessment').toLowerCase()}: ${p.title}`;
+  if (item.field === 'topics') return `Study topics for “${item.assignment!.title}”`;
   return `${item.field === 'due' ? 'Due date' : 'Workload estimate'} of “${item.assignment!.title}”`;
 }
 
 function sourceLine(p: AiProposal, year: number): string {
   if (p.kind === 'workload') return 'The AI estimated this from the assignment’s title, points, instructions and documents:';
+  if (p.kind === 'topics') return 'The AI read the class materials that look relevant and proposes:';
   const what = { announcement: 'An announcement', coursework: 'The assignment’s instructions', document: 'A course document' }[p.source.kind];
   return p.source.postedAt ? `${what} (${formatWhen(p.source.postedAt, year)}) says:` : `${what} say${p.source.kind === 'coursework' ? '' : 's'}:`;
 }
@@ -92,7 +98,18 @@ function ReviewCard({ item, year, onDone }: { item: ReviewItem; year: number; on
         </dl>
         <div>
           <div className="small">{sourceLine(p, year)}</div>
-          <blockquote className="ls-text small">{p.kind === 'workload' ? p.excerpt : `“${p.excerpt}”`}</blockquote>
+          {p.kind === 'topics' ? (
+            <ul className="small">
+              {(p.topics ?? []).map((t) => (
+                <li key={t.title}>
+                  <strong>{t.title}</strong> <span className="muted">· {TOPIC_BASIS_WORDS[t.basis]}</span>
+                  {t.quote ? <div className="muted">“{t.quote}”</div> : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <blockquote className="ls-text small">{p.kind === 'workload' ? p.excerpt : `“${p.excerpt}”`}</blockquote>
+          )}
           {href ? (
             <a className="small" href={href} target="_blank" rel="noopener noreferrer">
               Open in Classroom<span className="visually-hidden"> (opens in a new tab)</span>
@@ -111,7 +128,7 @@ function ReviewCard({ item, year, onDone }: { item: ReviewItem; year: number; on
           </div>
         ) : null}
         <div className="small muted">
-          Confidence — {item.field === 'new' ? 'that it is new' : 'which work'}: {CONFIDENCE_WORDS[p.confidence.identity]}, {item.field === 'estimate' ? 'time' : 'date'}:{' '}
+          Confidence — {item.field === 'new' ? 'that it is new' : 'which work'}: {CONFIDENCE_WORDS[p.confidence.identity]}, {item.field === 'estimate' ? 'time' : item.field === 'topics' ? 'topics' : 'date'}:{' '}
           {CONFIDENCE_WORDS[p.confidence.value]}. {p.kind === 'workload' ? 'An estimate, not stated by the teacher.' : p.explicit ? 'Stated in the text.' : 'Worked out, not stated.'}
         </div>
         {editing ? (
@@ -141,7 +158,7 @@ function ReviewCard({ item, year, onDone }: { item: ReviewItem; year: number; on
           <button type="button" className="btn primary" onClick={apply}>
             {editing ? 'Apply my value' : 'Apply'}
           </button>
-          {!editing ? (
+          {!editing && item.field !== 'topics' ? (
             <button type="button" className="btn" onClick={() => setEditing(true)}>
               Edit
             </button>
@@ -162,7 +179,8 @@ export function ReviewView() {
   const { state, dispatch, notify } = useStore();
   const status = useAiStatus();
   const [busy, setBusy] = useState(false);
-  const year = Number(nowLocal().slice(0, 4));
+  const now = useNow();
+  const year = Number(now.slice(0, 4));
   const items = status ? reviewItems(state.doc, status.proposals) : [];
 
   const decide = (key: string, decision: Decision) => {
@@ -216,6 +234,8 @@ export function ReviewView() {
   return (
     <div className="page stack">
       <h1>Review</h1>
+      <ScheduleProblems now={now} />
+      <h2>Needs your decision</h2>
       <p className="muted">
         Changes the AI read in your Classroom announcements, assignment instructions and course documents. Safe ones are applied for you (with Undo) if you allow it in{' '}
         <a href={routeToHash({ name: 'settings' })}>Settings</a>; everything else waits here. The AI only reads dates and times; it never does your work.

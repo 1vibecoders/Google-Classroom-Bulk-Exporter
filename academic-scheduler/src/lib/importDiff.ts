@@ -1567,9 +1567,23 @@ function mergeExtensions(out: Obj, cur: Obj): void {
   for (const k of Object.keys(cur)) if (k.startsWith('x-') && !(k in out) && cur[k] !== undefined) out[k] = clone(cur[k]);
 }
 
+/** Study topics (§ 8.3): a topic's status is the person's, and topics the person added stay. */
+function mergeStudyTopics(out: Obj, cur: Obj): void {
+  if (!Array.isArray(cur.studyTopics)) return;
+  const mine = new Map((cur.studyTopics as Obj[]).filter(isObj).map((t) => [t.id, t] as const));
+  const incoming = Array.isArray(out.studyTopics) ? (out.studyTopics as Obj[]).filter(isObj) : [];
+  const ids = new Set(incoming.map((t) => t.id));
+  const merged = [
+    ...incoming.map((t) => (mine.get(t.id)?.status !== undefined ? { ...t, status: mine.get(t.id)!.status } : t)),
+    ...[...mine.values()].filter((t) => t.basis === 'user' && !ids.has(t.id)).map(clone),
+  ];
+  setOrDelete(out, 'studyTopics', merged.length ? merged : undefined);
+}
+
 /** § 16.3 for an unlocked generated/planner item: the file's values except the person-owned ones. */
 function mergeCommon(an: Analysis, cur: Obj, file: Obj): Obj {
   const out = clone(file);
+  mergeStudyTopics(out, cur);
   setOrDelete(out, 'origin', cur.origin);
   if (nonEmptyText(cur.notes)) out.notes = cur.notes;
   const curOverrides = overridesOf(cur);
@@ -1608,6 +1622,7 @@ function mergeWorkStatus(out: Obj, cur: Obj, file: Obj, takeFile: boolean): void
 /** The file's version of a protected item, taken on the person's request (kept/yourItems rows). */
 function takeItem(an: Analysis, c: ItemCollection, cur: Obj, file: Obj, sel: Sel, taskRefs: Set<string>, out: TaskOut): Obj {
   const taken = clone(file);
+  mergeStudyTopics(taken, cur);
   setOrDelete(taken, 'origin', cur.origin);
   if (nonEmptyText(cur.notes)) taken.notes = cur.notes;
   if (cur.origin === 'user') setOrDelete(taken, 'overrides', cur.overrides);
@@ -2502,6 +2517,7 @@ const FIELD_LABELS: Record<string, string> = {
   topics: 'Topics',
   references: 'References',
   announcements: 'Announcements',
+  studyTopics: 'Study topics',
   classId: 'Class',
   type: 'Type',
   topic: 'Topic',
@@ -2584,6 +2600,7 @@ const FIELD_ORDER = [
   'description',
   'notes',
   'topics',
+  'studyTopics',
   'references',
   'archived',
   'locked',
@@ -2671,6 +2688,8 @@ function fmtValue(an: Analysis, c: ItemCollection, field: string, value: unknown
         : '—';
     case 'topics':
       return Array.isArray(value) ? truncate(value.join(', '), 120) : String(value);
+    case 'studyTopics':
+      return Array.isArray(value) ? truncate(value.map((t) => (isObj(t) ? (text(t.title) ?? '') : '')).join(', '), 120) : '—';
     case 'announcements':
       return Array.isArray(value) ? `${plural(value.length, 'announcement', 'announcements')}${isObj(value[0]) ? `, newest: “${truncate(text(value[0].text) ?? '', 80)}”` : ''}` : '—';
     case 'dependsOn':

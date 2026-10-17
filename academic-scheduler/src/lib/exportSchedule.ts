@@ -48,8 +48,8 @@ export function exportDocument(doc: ScheduleDocument, now: LocalDateTimeStr, opt
   if (isPlainObject(settings) && Object.keys(settings).length > 0) out.settings = settings;
 
   out.classes = sortBy(canonList(get(source, 'classes'), FORMAT_SPECS.class), classKey);
-  out.schemaVersion = schemaVersionFor(out);
   out.assignments = sortBy(canonList(get(source, 'assignments'), FORMAT_SPECS.assignment), assignmentKey);
+  out.schemaVersion = schemaVersionFor(out);
   out.events = sortBy(canonList(get(source, 'events'), FORMAT_SPECS.event), timedKey);
   out.availability = sortBy(canonList(get(source, 'availability'), FORMAT_SPECS.availability), timedKey);
   out.scheduleBlocks = sortBy(canonList(get(source, 'scheduleBlocks'), FORMAT_SPECS.block), blockKey);

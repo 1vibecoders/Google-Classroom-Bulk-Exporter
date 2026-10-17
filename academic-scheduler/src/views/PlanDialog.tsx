@@ -12,6 +12,8 @@ import { classColor } from '../lib/calendar';
 import { DEFAULT_HORIZON_DAYS, describePlannerRules, planUnscheduledWork } from '../lib/planner';
 import { formatDateWithWeekday, formatDuration, nowLocal } from '../lib/time';
 import { blockMinutes } from '../lib/workload';
+import { withPrepDescriptions } from '../lib/studyPlan';
+import { newSnapshotId } from './import/logic';
 import { Modal } from '../ui/Modal';
 import { Icon } from '../ui/Icon';
 import { ClassChip } from '../ui/common';
@@ -71,11 +73,13 @@ export function PlanDialog({ assignmentIds, onClose }: PlanDialogProps) {
 
   const add = () => {
     if (kept.length === 0) return;
-    const ids = kept.map((b) => b.id);
-    dispatch({ type: 'addBlocks', items: kept });
+    // Test preparation sessions say which study topics they cover (studyPlan.ts).
+    const next = withPrepDescriptions({ ...doc, scheduleBlocks: [...doc.scheduleBlocks, ...kept] }, undefined, from);
+    const snapshotId = newSnapshotId();
+    dispatch({ type: 'replaceDocument', doc: next, label: `Planned ${plural(kept.length, 'work session')}`, now: nowLocal(), snapshotId });
     notify(`Added ${plural(kept.length, 'work session')} (${formatDuration(keptMinutes)}) to your schedule.`, {
       tone: 'success',
-      action: { label: 'Undo', run: () => dispatch({ type: 'deleteBlocks', ids, now: nowLocal() }) },
+      action: { label: 'Undo', run: () => dispatch({ type: 'undo', snapshotId }) },
     });
     onClose();
   };

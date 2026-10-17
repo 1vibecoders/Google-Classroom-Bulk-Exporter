@@ -18,7 +18,7 @@ export type DateOrDateTimeStr = string;
 /** `#RRGGBB` */
 export type ColorStr = string;
 
-export type SchemaVersion = '1.0' | '1.1' | '1.2';
+export type SchemaVersion = '1.0' | '1.1' | '1.2' | '1.3';
 export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 /** `planner` = placed by the website's deterministic planner (schedule blocks only). */
 export type Origin = 'user' | 'generated' | 'planner';
@@ -46,6 +46,10 @@ export type Confidence = 'low' | 'medium' | 'high';
 export type BlockKind = 'work' | 'break';
 export type SourceState = 'present' | 'missing' | 'withdrawn';
 export type IssueStatus = 'open' | 'resolved' | 'dismissed';
+/** Format 1.3: how ready the person feels on a study topic (person-owned). */
+export type TopicStatus = 'not_started' | 'in_progress' | 'needs_review' | 'comfortable';
+/** Format 1.3: where a study topic comes from: listed in a study guide, supported by class materials, inferred, or added by the person. */
+export type TopicBasis = 'listed' | 'materials' | 'inferred' | 'user';
 
 /** `x-…` extension properties: preserved untouched, never interpreted. */
 export type Extensions = { [key: `x-${string}`]: unknown };
@@ -141,6 +145,19 @@ export interface Task extends Omit<ItemBase, 'source' | 'sources'> {
   required?: boolean;
 }
 
+/** Format 1.3: one small thing to study for an assessment (SPEC § 25.2). */
+export interface StudyTopic {
+  /** Unique within its assignment. */
+  id: Id;
+  title: string;
+  /** Person-owned; default `not_started`. */
+  status?: TopicStatus;
+  basis?: TopicBasis;
+  /** The words in the source that support the topic. */
+  quote?: string;
+  source?: Source;
+}
+
 export interface Assignment extends ItemBase {
   title: string;
   classId?: Id;
@@ -164,6 +181,8 @@ export interface Assignment extends ItemBase {
   references?: Reference[];
   dependsOn?: Id[];
   sourceState?: SourceState;
+  /** Format 1.3: what to study for this assessment. */
+  studyTopics?: StudyTopic[];
 }
 
 export interface Recurrence {

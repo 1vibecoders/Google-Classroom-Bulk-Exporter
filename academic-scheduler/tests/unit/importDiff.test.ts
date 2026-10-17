@@ -777,6 +777,32 @@ describe('categories', () => {
 // Person-owned fields (§ 16.3)
 // ===========================================================================
 
+describe('study topics during an update (§ 8.3)', () => {
+  it('keeps the person’s topic status and their own topics; otherwise the file’s topics win', () => {
+    const cur = current((d) => {
+      d.schemaVersion = '1.3';
+      essayOf(d).studyTopics = [
+        { id: 'thesis', title: 'Thesis statements', basis: 'listed', status: 'needs_review' },
+        { id: 'mine-1', title: 'MLA citations', basis: 'user', status: 'in_progress' },
+        { id: 'old', title: 'Dropped topic', basis: 'inferred' },
+      ];
+    });
+    const file = generated((d) => {
+      d.schemaVersion = '1.3';
+      essayOf(d).studyTopics = [
+        { id: 'thesis', title: 'Thesis statements', basis: 'listed', status: 'not_started' },
+        { id: 'evidence', title: 'Using evidence', basis: 'materials' },
+      ];
+    });
+    const { doc } = run(cur, file);
+    expect(essayOf(doc).studyTopics).toEqual([
+      { id: 'thesis', title: 'Thesis statements', basis: 'listed', status: 'needs_review' },
+      { id: 'evidence', title: 'Using evidence', basis: 'materials' },
+      { id: 'mine-1', title: 'MLA citations', basis: 'user', status: 'in_progress' },
+    ]);
+  });
+});
+
 describe('person-owned fields during an update', () => {
   const withStatus = (status: Assignment['status'], completedAt?: string) => (d: ScheduleDocument) => {
     const r = d.assignments.find((a) => a.id === 'gc-read3')!;

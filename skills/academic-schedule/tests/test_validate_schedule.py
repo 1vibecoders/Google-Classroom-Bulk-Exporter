@@ -224,7 +224,7 @@ class Rules(unittest.TestCase):
         self.check(doc(settings={"dayEndTime": "24:00", "minSessionMinutes": 60, "maxSessionMinutes": 60}))
 
     def test_unsupported_versions_stop_with_one_error(self):
-        for version in ("2.0", "1.3", "one"):
+        for version in ("2.0", "1.4", "one"):
             result = self.check(doc(schemaVersion=version), ok=False)
             self.assertEqual(len(result.errors), 1)
             self.assertEqual(result.errors[0]["path"], "schemaVersion")

@@ -1,6 +1,6 @@
 // App shell: header with navigation, the prominent Import button, Export and
 // "+ New"; the routed page; dialogs and notifications.
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { StoreProvider, useDoc, useStore } from './state/store';
 import { ConfirmProvider, Toasts } from './ui/common';
 import { EditorProvider, useEditors } from './editors/EditorHost';
@@ -20,8 +20,12 @@ import { CommitmentsView } from './views/CommitmentsView';
 import { ImportView } from './views/ImportView';
 import { useExtensionImport } from './views/import/useExtensionImport';
 import { ReviewView } from './views/ReviewView';
+import { TestsView } from './views/TestsView';
+import { LatticeMark, Wordmark } from './ui/LatticeMark';
 import { useAiAutoApply } from './views/review/useAiAutoApply';
 import { reviewItems } from './lib/ai/proposals';
+import { useNow } from './ui/hooks';
+import { atRiskWork, brokenSessions } from './lib/repair';
 import { useAiStatus } from './state/aiStore';
 import { SettingsView } from './views/SettingsView';
 import type { AppState } from './state/reducer';
@@ -42,6 +46,7 @@ const NAV: Array<{ label: string; icon: Parameters<typeof Icon>[0]['name']; rout
   { label: 'Day', icon: 'day', route: (r) => ({ name: 'day', date: 'date' in r ? r.date : todayLocal() }), match: ['day'] },
   { label: 'Week', icon: 'week', route: (r) => ({ name: 'week', date: 'date' in r ? r.date : todayLocal() }), match: ['week'] },
   { label: 'Assignments', icon: 'list', route: () => ({ name: 'assignments' }), match: ['assignments'] },
+  { label: 'Tests', icon: 'target', route: () => ({ name: 'tests' }), match: ['tests'] },
   { label: 'Classes', icon: 'book', route: () => ({ name: 'classes' }), match: ['classes'] },
   { label: 'Commitments', icon: 'clock', route: () => ({ name: 'commitments' }), match: ['commitments'] },
 ];
@@ -56,6 +61,10 @@ function Shell() {
   // Back from Google sign-in during setup: return to the wizard, keeping the sign-in result for its sync card.
   const signInReturn = requested.name === 'settings' && setupInProgress() ? /[?&]google=\w+/.exec(window.location.hash)?.[0] : undefined;
   const route: Route = (needsSetup && !SETUP_ROUTES.includes(requested.name)) || signInReturn ? { name: 'welcome' } : requested;
+  // A new page starts at its top (otherwise a phone keeps the last page's scroll position); moving between days keeps it.
+  useEffect(() => {
+    (document.scrollingElement ?? document.documentElement).scrollTop = 0;
+  }, [route.name]);
   useEffect(() => {
     if (route.name === requested.name) return;
     if (signInReturn) window.location.replace(`#/welcome?${signInReturn.slice(1)}`);
@@ -66,7 +75,10 @@ function Shell() {
   useExtensionImport();
   useAiAutoApply();
   const ai = useAiStatus();
-  const toReview = ai?.configured ? reviewItems(doc, ai.proposals).length : 0;
+  const now = useNow();
+  // Review also lists schedule problems (§ 27.5), so it is always in the menu.
+  const problems = useMemo(() => brokenSessions(doc, now).length + atRiskWork(doc, now).length, [doc, now]);
+  const toReview = (ai?.configured ? reviewItems(doc, ai.proposals).length : 0) + problems;
 
   const exportNow = useCallback(() => {
     const result = createExport(doc, nowLocal());
@@ -88,11 +100,11 @@ function Shell() {
         Skip to content
       </a>
       <header className="app-header no-print">
-        <a className="brand" href={routeToHash({ name: 'day', date: todayLocal() })} aria-label="Academic Scheduler — today">
-          <span className="brand-mark" aria-hidden="true">
-            <Icon name="calendar" size={16} />
+        <a className="brand" href={routeToHash({ name: 'day', date: todayLocal() })} aria-label="Lattice Study, today">
+          <LatticeMark size={28} />
+          <span className="brand-name">
+            <Wordmark />
           </span>
-          <span className="brand-name">Academic Scheduler</span>
         </a>
         <nav className="nav" aria-label="Main">
           {NAV.map((item) => (
@@ -100,18 +112,16 @@ function Shell() {
               {item.label}
             </a>
           ))}
-          {ai?.configured ? (
-            <a href={routeToHash({ name: 'review' })} aria-current={route.name === 'review' ? 'page' : undefined}>
-              Review{toReview ? <span className="badge"> {toReview}<span className="visually-hidden"> to review</span></span> : null}
-            </a>
-          ) : null}
+          <a href={routeToHash({ name: 'review' })} aria-current={route.name === 'review' ? 'page' : undefined}>
+            Review{toReview ? <span className="badge"> {toReview}<span className="visually-hidden"> to review</span></span> : null}
+          </a>
         </nav>
         <div className="header-actions">
-          <a className={`btn primary ${route.name === 'import' ? 'active' : ''}`} href={routeToHash({ name: 'import' })} aria-current={route.name === 'import' ? 'page' : undefined}>
+          <a className={`btn primary ${route.name === 'import' ? 'active' : ''}`} href={routeToHash({ name: 'import' })} aria-current={route.name === 'import' ? 'page' : undefined} aria-label="Import">
             <Icon name="upload" />
-            <span>Import</span>
+            <span className="hide-narrow">Import</span>
           </a>
-          <button type="button" className="btn" onClick={exportNow}>
+          <button type="button" className="btn" onClick={exportNow} aria-label="Export">
             <Icon name="download" />
             <span className="hide-narrow">Export</span>
           </button>
@@ -167,6 +177,8 @@ function Page({ route }: { route: Route }) {
       return <SettingsView />;
     case 'review':
       return <ReviewView />;
+    case 'tests':
+      return <TestsView />;
     case 'welcome':
       return <OnboardingView />;
   }

@@ -5,8 +5,8 @@
 // (src/lib/ai/proposals.ts); nothing here is trusted as a fact on its own.
 import type { AssignmentType, Confidence, DateOrDateTimeStr, DateStr, EventCategory, Id, TimeStr, Weekday } from './types';
 
-/** estimate: a time the text states; workload: the AI's own estimate (SPEC.md § 24.1), `excerpt` is its short basis. */
-export type ProposalKind = 'due_change' | 'new_assessment' | 'estimate' | 'workload';
+/** estimate: a time the text states; workload: the AI's own estimate (SPEC.md § 24.1), `excerpt` is its short basis; topics: what to study for an assessment (§ 25.2), `value` is how many. */
+export type ProposalKind = 'due_change' | 'new_assessment' | 'estimate' | 'workload' | 'topics';
 
 export interface AiProposal {
   /** Stable for the same evidence and value, so a decision is not asked again (§ 16.4). */
@@ -34,6 +34,8 @@ export interface AiProposal {
   steps?: Array<{ title: string; minutes: number }>;
   /** new_assessment: the AI's estimate of the preparation time (minutes). */
   prepMinutes?: number;
+  /** topics: what to study, each with the verbatim words that support it (checked on the server). */
+  topics?: Array<{ title: string; basis: 'listed' | 'materials' | 'inferred'; quote?: string; source?: { kind: 'announcement' | 'coursework' | 'document'; id: string; url?: string } }>;
 }
 
 /** A commitment the AI read from the person's own description (settings.commitmentsDescription). */

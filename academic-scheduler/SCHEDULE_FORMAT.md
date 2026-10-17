@@ -1,4 +1,4 @@
-# Schedule File Format — version 1.2
+# Schedule File Format — version 1.3
 
 This document is the complete, normative description of the JSON file that the
 **Academic Scheduler** website imports and exports, and that the Claude
@@ -8,7 +8,7 @@ this format.
 It is written so that a developer or an AI can produce valid files without
 guessing. A machine-readable JSON Schema (draft 2020-12) for the structural
 rules is shipped next to this file:
-[`schema/schedule-1.2.schema.json`](schema/schedule-1.2.schema.json).
+[`schema/schedule-1.3.schema.json`](schema/schedule-1.3.schema.json).
 The JSON Schema cannot express every rule; the **semantic rules** in
 [§ 13](#13-validation-rules) also apply, and the website and the skill's
 validator (`skills/academic-schedule/scripts/validate_schedule.py`) enforce all of them.
@@ -77,9 +77,10 @@ are used as in RFC 2119.
 ## 2. Versioning
 
 Every file MUST start with a `schemaVersion` string of the form
-`"MAJOR.MINOR"`. This document defines **`"1.2"`**. Version 1.1 adds one
+`"MAJOR.MINOR"`. This document defines **`"1.3"`**. Version 1.1 adds one
 optional field, `settings.commitmentsDescription`; version 1.2 adds class
-`announcements` (§ 7.1). Every 1.0 and 1.1 file is also a valid 1.2 file.
+`announcements` (§ 7.1); version 1.3 adds assignment `studyTopics` (§ 8.3).
+Every 1.0, 1.1 and 1.2 file is also a valid 1.3 file.
 
 | Change | Version change | Example |
 | --- | --- | --- |
@@ -91,11 +92,12 @@ Rules:
 - A reader that implements version `M.n` MUST accept files whose major version
   is `M` and whose minor version is `≤ n`, and MUST **reject** any other
   version with a clear message (for example: *"This file uses schema version
-  1.3, but this version of the Academic Scheduler supports up to 1.2. Update
-  the website or generate a 1.2 file."*). The current website supports
-  `1.0`, `1.1` and `1.2`.
+  1.4, but this version of the Academic Scheduler supports up to 1.3. Update
+  the website or generate a 1.3 file."*). The current website supports
+  `1.0`, `1.1`, `1.2` and `1.3`.
 - A writer MUST write the lowest version that contains every feature it uses.
-  Today that is `"1.2"` when any class has `announcements`, otherwise `"1.1"`
+  Today that is `"1.3"` when any assignment has `studyTopics`, otherwise
+  `"1.2"` when any class has `announcements`, otherwise `"1.1"`
   when `settings.commitmentsDescription` is present, otherwise `"1.0"`. A file
   that says a lower version than a field it uses is invalid (the error names
   the field).
@@ -514,6 +516,7 @@ exams, or a study goal.
 | `tasks` | array of [Task](#9-tasks-subtasks) | no | `[]` | Steps of the assignment, in recommended order. |
 | `references` | array of [Reference](#82-reference) | no | `[]` | Attachments, links and materials. |
 | `dependsOn` | array of assignment IDs, unique | no | `[]` | Assignments that should be finished first (e.g. a reading before its quiz). Must exist, must not include itself, no cycles. |
+| `studyTopics` | array of [Study topic](#83-study-topic), ≤ 100 entries | no | `[]` | Version 1.3. What to study for an assessment. |
 
 **`type` values:**
 
@@ -617,6 +620,21 @@ References appear on assignments and on classes (§ 7).
 | `path` | Text ≤ 500 | no | Path inside an export (informational). |
 | `kind` | `"attachment"` \| `"link"` \| `"reading"` \| `"rubric"` \| `"template"` \| `"other"` | no (default `"attachment"`) | What it is. |
 | `required` | boolean | no (default `false`) | `true` if the work requires using/submitting it. Reference material is `false`. |
+
+### 8.3 Study topic
+
+Version 1.3. One small thing to study for an assessment (a quiz, test or
+exam), so preparation sessions can say what to review. Topics only describe
+*what* to study; they never contain answers.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | ID | **yes** | Unique within its assignment. |
+| `title` | Text 1–200 | **yes** | The topic, e.g. `"Cell membrane structure"`. |
+| `status` | `"not_started"` \| `"in_progress"` \| `"needs_review"` \| `"comfortable"` | no (default `"not_started"`) | **Person-owned**: how ready the person feels. Imports keep the current value for a topic with the same `id`. |
+| `basis` | `"listed"` \| `"materials"` \| `"inferred"` \| `"user"` | no | Where it comes from: listed in a study guide or announcement, supported by class materials, inferred, or added by the person. Topics with `"user"` are kept when an import leaves them out. |
+| `quote` | Text ≤ 1000 | no | The words in the source that support the topic. |
+| `source` | [Source](#source) | no | Where the quote is from. |
 
 ## 9. Tasks (subtasks)
 
@@ -2170,3 +2188,4 @@ Saturday, Oct 24, 9 to 11 AM; I want to do two past papers"). It shows:
 | 1.0 | 2026-10-07 | Initial version. |
 | 1.1 | 2026-10-12 | Optional `settings.commitmentsDescription` (onboarding). |
 | 1.2 | 2026-10-12 | Optional class `announcements` (§ 7.1). |
+| 1.3 | 2026-10-17 | Optional assignment `studyTopics` (§ 8.3). |

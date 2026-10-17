@@ -1,5 +1,6 @@
 // Enumerations, defaults and display labels of schedule format 1.0.
 import type {
+  Assignment,
   AssignmentType,
   BlockStatus,
   CollectionName,
@@ -12,6 +13,8 @@ import type {
   ResolvedSettings,
   SchemaVersion,
   SchoolClass,
+  TopicBasis,
+  TopicStatus,
   Settings,
   SourceKind,
   SourceState,
@@ -19,16 +22,18 @@ import type {
   WorkStatus,
 } from './types';
 
-export const SCHEMA_VERSION = '1.2' as const;
+export const SCHEMA_VERSION = '1.3' as const;
 export const SUPPORTED_MAJOR = 1;
-export const SUPPORTED_MINOR = 2;
+export const SUPPORTED_MINOR = 3;
 
 /** The lowest version that has every feature `doc` uses (§ 2: writers write this). */
-export function schemaVersionFor(doc: { settings?: Settings; classes?: unknown }): SchemaVersion {
+export function schemaVersionFor(doc: { settings?: Settings; classes?: unknown; assignments?: unknown }): SchemaVersion {
+  if (Array.isArray(doc.assignments) && doc.assignments.some((a) => (a as Assignment | null)?.studyTopics !== undefined)) return '1.3';
   if (Array.isArray(doc.classes) && doc.classes.some((c) => (c as SchoolClass | null)?.announcements !== undefined)) return '1.2';
   return doc.settings?.commitmentsDescription !== undefined ? '1.1' : '1.0';
 }
-export const APP_NAME = 'Academic Scheduler';
+export const APP_NAME = 'Lattice Study';
+export const MOTTO = 'Scheduling that understands the assignment.';
 export const APP_VERSION = '1.0.0';
 export const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 
@@ -56,6 +61,14 @@ export const WEEKDAY_SHORT: Record<Weekday, string> = {
 };
 
 export const WORK_STATUSES: WorkStatus[] = ['not_started', 'in_progress', 'done', 'cancelled'];
+export const TOPIC_STATUSES: TopicStatus[] = ['not_started', 'in_progress', 'needs_review', 'comfortable'];
+export const TOPIC_STATUS_LABELS: Record<TopicStatus, string> = {
+  not_started: 'Not started',
+  in_progress: 'In progress',
+  needs_review: 'Needs more review',
+  comfortable: 'Comfortable',
+};
+export const TOPIC_BASES: TopicBasis[] = ['listed', 'materials', 'inferred', 'user'];
 export const WORK_STATUS_LABELS: Record<WorkStatus, string> = {
   not_started: 'Not started',
   in_progress: 'In progress',

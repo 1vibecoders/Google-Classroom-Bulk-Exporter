@@ -128,13 +128,13 @@ describe('§ 2 schemaVersion', () => {
     expect(result.schemaVersion).toBe('2.0');
   });
 
-  it('rejects a newer minor version (1.3) with the § 2 message', () => {
+  it('rejects a newer minor version (1.4) with the § 2 message', () => {
     const result = run((d) => {
-      d.schemaVersion = '1.3';
+      d.schemaVersion = '1.4';
     });
     onlyError(result, 'schemaVersion', 'version-unsupported');
     expect(result.errors[0].message).toBe(
-      'This file uses schema version 1.3, but this version of the Academic Scheduler supports up to 1.2. Update the website or generate a 1.2 file.',
+      'This file uses schema version 1.4, but this version of Lattice Study supports up to 1.3. Update the website or generate a 1.3 file.',
     );
   });
 

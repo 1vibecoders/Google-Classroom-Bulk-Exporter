@@ -23,6 +23,7 @@ import { resolveSettings } from '../model/constants';
 import { buildDays, freeTimeByDate } from './calendar';
 import { DEFAULT_HORIZON_DAYS, planUnscheduledWork, type UnplacedWork } from './planner';
 import { addDays, dateOf, dayNumber, formatDateWithWeekday, formatDuration, formatTime12, isValidLocalDateTime, ldtToMinutes, timeOf } from './time';
+import { withPrepDescriptions } from './studyPlan';
 import { progressByAssignment } from './workload';
 
 export interface RepairResult {
@@ -97,6 +98,28 @@ export function brokenSessions(doc: ScheduleDocument, now: LocalDateTimeStr, ass
   return broken;
 }
 
+/** Work that cannot fit before its deadline even if planned now (overdue work included), most urgent first. */
+export function atRiskWork(doc: ScheduleDocument, now: LocalDateTimeStr): UnplacedWork[] {
+  return planUnscheduledWork(doc, { from: now, horizonDays: DEFAULT_HORIZON_DAYS }).unplaced.filter((u) => u.minutes > 0);
+}
+
+/**
+ * What a session breaks where it is now (for a move by hand, SPEC § 27.2):
+ * `problems` (overlaps, a passed deadline) need the person's confirmation;
+ * `note` (outside study time) is only said.
+ */
+export function sessionProblems(doc: ScheduleDocument, blockId: Id): { problems: string[]; note: string | null } {
+  const block = doc.scheduleBlocks.find((b) => b.id === blockId);
+  if (!block || !isValidLocalDateTime(block.start) || (block.status ?? 'planned') === 'skipped') return { problems: [], note: null };
+  const view = buildDays(doc, dateOf(block.start), 1)[0]?.blocks.find((v) => v.block.id === blockId);
+  if (!view) return { problems: [], note: null };
+  const problems = [...new Set(view.conflictsWith.map((c) => `It overlaps ${c.title}.`))];
+  if (view.lateReason) problems.push(`${view.lateReason}.`);
+  const windows = doc.availability.length ? (freeTimeByDate(doc, dateOf(block.start), dateOf(block.start)).get(dateOf(block.start))?.availability ?? []) : null;
+  const outside = !view.isBreak && !!windows && !windows.some((w) => w.start <= view.start && view.end <= w.end);
+  return { problems, note: outside ? 'It is outside your study time.' : null };
+}
+
 /**
  * Moves the broken sessions (see above) and plans that work again; with
  * `assignmentIds`, only that work is repaired, and its unplanned part is planned too.
@@ -108,8 +131,11 @@ export function repairPlan(doc: ScheduleDocument, now: LocalDateTimeStr, assignm
   const gone = new Set(broken.map((b) => b.block.id));
   const rest = gone.size ? { ...doc, scheduleBlocks: doc.scheduleBlocks.filter((b) => !gone.has(b.id)) } : doc;
   const plan = planUnscheduledWork(rest, { from: now, assignmentIds: ids, horizonDays: DEFAULT_HORIZON_DAYS });
+  let out = plan.blocks.length ? { ...rest, scheduleBlocks: [...rest.scheduleBlocks, ...plan.blocks] } : rest;
+  // Test preparation sessions say which study topics they cover.
+  for (const id of ids) out = withPrepDescriptions(out, id, now);
   return {
-    doc: plan.blocks.length ? { ...rest, scheduleBlocks: [...rest.scheduleBlocks, ...plan.blocks] } : rest,
+    doc: out,
     moved: gone.size,
     sessions: plan.blocks.length,
     unplaced: plan.unplaced,

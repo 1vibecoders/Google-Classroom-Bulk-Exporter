@@ -15,7 +15,8 @@ import { useEditors } from '../editors/EditorHost';
 import { Icon } from '../ui/Icon';
 import { useToday } from '../ui/hooks';
 import { navigate, routeToHash } from '../router';
-import { resolveSettings } from '../model/constants';
+import { MOTTO, resolveSettings } from '../model/constants';
+import { LatticeMark, Wordmark } from '../ui/LatticeMark';
 import { describePlannerRules } from '../lib/planner';
 import { markSetupInProgress, onboardingNeeds, type OnboardingNeed } from '../lib/onboarding';
 import { useAiStatus } from '../state/aiStore';
@@ -88,6 +89,13 @@ export function OnboardingView() {
 
   return (
     <div className="imp-page">
+      <div className="welcome-brand">
+        <LatticeMark size={44} />
+        <div>
+          <Wordmark />
+          <p className="motto">{MOTTO}</p>
+        </div>
+      </div>
       <div className="page-header">
         <div>
           <h1 className="imp-h1">Set up your schedule</h1>

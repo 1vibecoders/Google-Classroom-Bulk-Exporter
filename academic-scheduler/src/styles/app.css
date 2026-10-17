@@ -527,6 +527,7 @@ dialog.modal.narrow {
 }
 dialog.modal::backdrop {
   background: rgba(30, 25, 15, 0.4);
+  backdrop-filter: blur(4px);
 }
 .modal-inner {
   display: flex;
@@ -759,5 +760,5 @@ dialog.modal::backdrop {
 
 .btn.primary.active { box-shadow: 0 0 0 3px var(--accent-soft); }
 @media (max-width: 720px) {
-  .hide-narrow, .brand-name { display: none; }
+  .hide-narrow { display: none; }
 }

@@ -9,7 +9,7 @@ import { useEditors } from '../../editors/EditorHost';
 import { useConfirm } from '../../ui/common';
 import { newId } from '../../lib/ids';
 import { formatDateWithWeekday, isValidLocalDateTime, nowLocal } from '../../lib/time';
-import { repairPlan } from '../../lib/repair';
+import { repairPlan, sessionProblems } from '../../lib/repair';
 import { newSnapshotId } from '../import/logic';
 import { repairNotice } from './RepairCard';
 import { BlockActionsDialog } from './BlockActionsDialog';
@@ -107,14 +107,38 @@ export function useTimelineActions(): TimelineActions {
   );
 
   const moveBlock = useCallback(
-    (view: BlockView, date: DateStr, span: Span, via: 'pointer' | 'keyboard' | 'dialog') => {
+    async (view: BlockView, date: DateStr, span: Span, via: 'pointer' | 'keyboard' | 'dialog') => {
       const block = view.block;
       const { start, end } = spanToLdt(date, span);
       const before = { start: block.start, end: block.end, locked: block.locked === true };
+      // Checked before saving (SPEC § 27.2): an overlap or a passed deadline needs a confirmation.
+      const check = sessionProblems({ ...doc, scheduleBlocks: doc.scheduleBlocks.map((b) => (b.id === block.id ? { ...b, start, end } : b)) }, block.id);
+      if (check.problems.length) {
+        const ok = await confirm({
+          title: 'This time breaks your plan',
+          message: (
+            <>
+              <p style={{ marginTop: 0 }}>
+                Moving “{view.label}” to {formatDateWithWeekday(date)}, {formatSpan(span.start, span.end)}:
+              </p>
+              <ul>
+                {check.problems.map((p) => (
+                  <li key={p}>{p}</li>
+                ))}
+              </ul>
+              <p style={{ marginBottom: 0 }}>Cancel keeps it where it was.</p>
+            </>
+          ),
+          confirmLabel: 'Continue anyway',
+          focusCancel: true,
+        });
+        if (!ok) return;
+      }
       dispatch({ type: 'moveBlock', id: block.id, start, end });
       if (via !== 'pointer') return;
       const pinned = isGeneratedLike(block) && !block.locked ? ' It is now pinned, so later imports keep your time.' : '';
-      notify(`Moved “${view.label}” to ${formatDateWithWeekday(date)}, ${formatSpan(span.start, span.end)}.${pinned}`, {
+      const note = check.note ? ` ${check.note}` : '';
+      notify(`Moved “${view.label}” to ${formatDateWithWeekday(date)}, ${formatSpan(span.start, span.end)}.${note}${pinned}`, {
         tone: 'success',
         action: {
           label: 'Undo',
@@ -125,7 +149,7 @@ export function useTimelineActions(): TimelineActions {
         },
       });
     },
-    [dispatch, notify],
+    [doc, confirm, dispatch, notify],
   );
 
   const setBlockStatus = useCallback(

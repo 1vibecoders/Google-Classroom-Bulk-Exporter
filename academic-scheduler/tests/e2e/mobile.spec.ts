@@ -3,7 +3,7 @@ import { expect, loadExample, test } from './fixtures';
 
 test('every view fits a phone screen without sideways scrolling @mobile', async ({ page }) => {
   await loadExample(page);
-  for (const route of ['day/2026-10-13', 'week/2026-10-13', 'assignments', 'classes', 'commitments', 'import', 'settings']) {
+  for (const route of ['day/2026-10-13', 'week/2026-10-13', 'assignments', 'tests', 'review', 'classes', 'commitments', 'import', 'settings']) {
     await page.goto(`/#/${route}`);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     const [scrollWidth, clientWidth] = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
@@ -23,4 +23,14 @@ test('the Day view can show the day as a list on a phone @mobile', async ({ page
   // The choice is remembered.
   await page.reload();
   await expect(page.getByRole('list', { name: 'Schedule for Tuesday, October 13' })).toBeVisible();
+});
+
+test('switching pages on a phone starts the new page at its top @mobile', async ({ page }) => {
+  await loadExample(page);
+  await page.goto('/#/assignments');
+  await page.mouse.wheel(0, 2000);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Tests' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Tests' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
 });

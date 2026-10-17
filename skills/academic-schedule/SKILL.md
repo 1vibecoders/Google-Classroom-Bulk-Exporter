@@ -15,7 +15,7 @@ when to do it) is decided here, by you, from evidence.
 **Output contract**
 
 1. A file (default `schedule.json`, or the name/location the person asks for) that conforms exactly
-   to [references/SCHEDULE_FORMAT.md](references/SCHEDULE_FORMAT.md) (version `"1.2"` if a class has `announcements`, else `"1.1"` if `settings.commitmentsDescription` is present, else `"1.0"`). Data only: no
+   to [references/SCHEDULE_FORMAT.md](references/SCHEDULE_FORMAT.md) (version `"1.3"` if an assignment has `studyTopics`, else `"1.2"` if a class has `announcements`, else `"1.1"` if `settings.commitmentsDescription` is present, else `"1.0"`). Data only: no
    comments, no prose outside the fields made for text (`description`, `estimateBasis`,
    `issues[].message`, `requestedChanges[].reason`, labels). Always write the file; JSON pasted in
    the chat is only ever an extra copy of it.
@@ -130,7 +130,7 @@ dependencies between pieces of work. Record the evidence for each fact (file and
 
 - An in-class quiz/test/exam: `type` quiz/test/exam with `assessmentDate`, normally **no** `due`.
   An online quiz with a deadline and no sitting: `due` and no `assessmentDate`. A presentation:
-  `assessmentDate` (plus `due` only if slides must be submitted earlier).
+  `assessmentDate` (plus `due` only if slides must be submitted earlier). Quiz/test/exam: small, concrete `studyTopics` (§ 8.3) from study guides, announcements and unit materials (`basis` listed/materials/inferred, with `quote` and `source`); no answers, omit `status`, keep topic `id`s on update.
 - A step with its own hard deadline ("bring your outline Tuesday") is a task `due` checkpoint.
 - Write a time whenever the source states one (`Oct 16, 11:59 PM` → `2026-10-16T23:59:00`); a Date
   only when no time is stated. Year-less Classroom dates: use the inventory's inference, check it

@@ -34,6 +34,7 @@ import { COMMITMENTS_SCHEMA, COMMITMENTS_SYSTEM, COMMITMENTS_TASK_VERSION, check
 import { AiError } from './ai/provider.js';
 import { ESTIMATE_SCHEMA, ESTIMATE_SYSTEM, ESTIMATE_TASK_VERSION, checkEstimates, estimateInput, type WorkItem } from './ai/estimate.js';
 import { EXTRACT_TASK_VERSION, SCHEMA, SYSTEM, checkProposals, promptInput, type ExtractInput, type KnownWork, type SourceText } from './ai/extract.js';
+import { TOPICS_SCHEMA, TOPICS_SYSTEM, TOPICS_TASK_VERSION, assessmentsFrom, checkTopics, topicsInput } from './ai/topics.js';
 import type { Context } from './context.js';
 import type { Db } from './db.js';
 import { localNow } from './sync.js';
@@ -236,6 +237,16 @@ export async function analysisStatus(context: Context, userId: string): Promise<
       for (const p of cached!.proposals) if (!hidden.has(p.key)) proposals.push(p);
     }
   }
+  // Study topics of upcoming assessments; "today" in UTC is close enough for counting what is pending.
+  const classNames = new Map(records.filter((r) => r.kind === 'course').map((r) => [r.source_id, str(r.data.name) ?? 'Class']));
+  for (const { record, hash } of assessmentsFrom(records, new Date().toISOString().slice(0, 10), classNames)) {
+    const cached = cache.get(`topics:${record.source_id}`);
+    if (!isCurrent(cached, hash, ai.model, TOPICS_TASK_VERSION)) {
+      pending++;
+      continue;
+    }
+    for (const p of cached!.proposals) if (!hidden.has(p.key)) proposals.push(p);
+  }
   const last = runs[0];
   return {
     configured: true,
@@ -420,13 +431,36 @@ export async function runAnalysis(context: Context, userId: string, timezone: st
       });
       for (let i = 0; i < pending.length; i += MAX_WORK_PER_CALL) estimateJobs.push({ size: Math.min(MAX_WORK_PER_CALL, pending.length - i), courseId, chunk: pending.slice(i, i + MAX_WORK_PER_CALL), estimate: true });
     }
-    // Facts and estimates take turns, so both progress when the cap or the time limit cuts the run short.
-    const jobs: Array<(typeof extractJobs)[number] | EstimateJob> = [];
-    for (let i = 0; i < Math.max(extractJobs.length, estimateJobs.length); i++) {
+    // Then study topics of upcoming assessments whose materials changed (one call each).
+    type TopicsJob = { size: 1; topics: ReturnType<typeof assessmentsFrom>[number] };
+    const topicsJobs: TopicsJob[] = assessmentsFrom(records, today, classNames)
+      .filter((a) => {
+        const current = isCurrent(cache.get(`topics:${a.record.source_id}`), a.hash, ai.model, TOPICS_TASK_VERSION);
+        if (current) tally.reused++;
+        return !current;
+      })
+      .map((topics) => ({ size: 1, topics }));
+    // Facts, estimates and topics take turns, so all progress when the cap or the time limit cuts the run short.
+    const jobs: Array<(typeof extractJobs)[number] | EstimateJob | TopicsJob> = [];
+    for (let i = 0; i < Math.max(extractJobs.length, estimateJobs.length, topicsJobs.length); i++) {
       if (extractJobs[i]) jobs.push(extractJobs[i]);
       if (estimateJobs[i]) jobs.push(estimateJobs[i]);
+      if (topicsJobs[i]) jobs.push(topicsJobs[i]);
     }
     await runAll(affordable(jobs), async (job) => {
+      if ('topics' in job) {
+        const { record, input, hash } = job.topics;
+        const result = await ai.structured({ task: 'topics', system: TOPICS_SYSTEM, input: topicsInput(input), schema: TOPICS_SCHEMA, maxOutputTokens: 3000 });
+        models.add(result.model);
+        tally.inputTokens += result.usage.inputTokens;
+        tally.outputTokens += result.usage.outputTokens;
+        const { proposal, rejected } = checkTopics(result.output, input);
+        tally.rejected += rejected;
+        await saveResults(db, userId, TOPICS_TASK_VERSION, ai.model, [
+          { kind: 'topics', source_id: record.source_id, course_id: record.course_id, content_hash: hash, proposals: proposal ? [proposal] : [] },
+        ]);
+        return;
+      }
       if ('estimate' in job) {
         const { courseId, chunk } = job;
         const input = { classId: `gc-class-${courseId}`, className: classNames.get(courseId) ?? 'Class', work: chunk.map((c) => c.item) };

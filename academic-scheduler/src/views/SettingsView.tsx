@@ -3,7 +3,7 @@
 // where the data lives, and what this website is (how planning works, offline, format).
 import { useMemo, useState } from 'react';
 import example from '../../examples/complete-schedule.json';
-import { APP_VERSION, COLLECTION_LABELS, SCHEMA_VERSION, resolveSettings } from '../model/constants';
+import { APP_VERSION, COLLECTION_LABELS, MOTTO, SCHEMA_VERSION, resolveSettings } from '../model/constants';
 import type { ScheduleDocument } from '../model/types';
 import { useStore } from '../state/store';
 import { useConfirm } from '../ui/common';
@@ -491,9 +491,10 @@ function About() {
   return (
     <section className="card" aria-labelledby="about-head">
       <div className="card-header">
-        <h2 id="about-head">About Academic Scheduler</h2>
+        <h2 id="about-head">About Lattice Study</h2>
       </div>
       <div className="card-body stack ls-about">
+        <p className="motto">{MOTTO}</p>
         <div className="ls-about-point">
           <Icon name="info" />
           <div>
@@ -531,7 +532,7 @@ function About() {
           </div>
         </div>
         <p className="small muted" style={{ margin: 0 }}>
-          Academic Scheduler {APP_VERSION}
+          Lattice Study {APP_VERSION}
         </p>
       </div>
     </section>

@@ -1223,3 +1223,59 @@ details > summary.ls-subhead {
   border-top: 1px solid var(--border);
   padding-top: 8px;
 }
+
+/* Tests view (study topics) */
+.test-head {
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.test-topics {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.test-topics li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.test-topics li.topic-needs_review {
+  border-color: var(--warning);
+}
+.test-topics li.topic-comfortable {
+  opacity: 0.75;
+}
+.test-suggestion {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+}
+.test-readiness {
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.test-add {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: 520px;
+}
+.test-add .field {
+  flex: 1;
+}
+.test-status {
+  width: auto;
+}
+.test-add .btn {
+  min-height: 37px;
+}

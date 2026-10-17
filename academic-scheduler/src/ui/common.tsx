@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useState, type ReactNode } from
 import { ASSIGNMENT_TYPE_LABELS, ISSUE_KIND_LABELS, PRIORITY_LABELS, WORK_STATUS_LABELS } from '../model/constants';
 import type { AssignmentType, Issue, Priority, WorkStatus } from '../model/types';
 import { Icon } from './Icon';
+import { LatticeMark } from './LatticeMark';
 import { Modal } from './Modal';
 import { useStore } from '../state/store';
 
@@ -48,6 +49,7 @@ export function IssueList({ issues }: { issues?: Issue[] }) {
 export function EmptyState({ title, children, actions }: { title: string; children?: ReactNode; actions?: ReactNode }) {
   return (
     <div className="empty">
+      <LatticeMark size={32} />
       <h3>{title}</h3>
       {children ? <div>{children}</div> : null}
       {actions ? <div className="row">{actions}</div> : null}
@@ -91,6 +93,8 @@ export interface ConfirmOptions {
   message: ReactNode;
   confirmLabel?: string;
   danger?: boolean;
+  /** Focus Cancel instead of the confirm button (the safe choice is to stop). */
+  focusCancel?: boolean;
 }
 
 type ConfirmFn = (options: ConfirmOptions) => Promise<boolean>;
@@ -113,10 +117,10 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
           onClose={() => close(false)}
           footer={
             <>
-              <button type="button" className="btn" onClick={() => close(false)}>
+              <button type="button" className={`btn${pending.focusCancel ? ' primary' : ''}`} onClick={() => close(false)} autoFocus={pending.focusCancel}>
                 Cancel
               </button>
-              <button type="button" className={`btn ${pending.danger ? 'danger' : 'primary'}`} onClick={() => close(true)} autoFocus>
+              <button type="button" className={`btn ${pending.danger ? 'danger' : pending.focusCancel ? '' : 'primary'}`} onClick={() => close(true)} autoFocus={!pending.focusCancel}>
                 {pending.confirmLabel || 'OK'}
               </button>
             </>

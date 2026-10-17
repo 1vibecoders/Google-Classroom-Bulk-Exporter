@@ -1,7 +1,7 @@
 # Schedule-format test fixtures
 
 Small schedule files that pin down what is valid and what is not under
-[SCHEDULE_FORMAT.md](../../SCHEDULE_FORMAT.md) versions 1.0 to 1.2. They are shared by
+[SCHEDULE_FORMAT.md](../../SCHEDULE_FORMAT.md) versions 1.0 to 1.3. They are shared by
 the website's tests (`tests/unit/schema-parity.test.ts`) and by the
 `/academic-schedule` skill's Python validator
 (`skills/academic-schedule/scripts/validate_schedule.py`), so both sides
@@ -21,7 +21,7 @@ This also rewrites this README (the tables below come from the fixtures).
 
 - `valid/*.json` — must be accepted: no errors (warnings are allowed).
 - `invalid/structural-*.json` — break a rule marked **[S]** in § 13: the
-  JSON Schema (`schema/schedule-1.2.schema.json`, draft 2020-12) rejects
+  JSON Schema (`schema/schedule-1.3.schema.json`, draft 2020-12) rejects
   them, and so must every validator.
 - `invalid/semantic-*.json` — break only a rule marked **[V]** in § 13: the
   JSON Schema accepts them, every full validator must reject them.
@@ -100,6 +100,7 @@ website, not format rules, so no fixture covers them.
 | `valid/protected-items-and-history.json` |  | User, locked and planner items, done/skipped blocks, tombstones, requested changes and root issues about tasks. |  |
 | `valid/settings-extremes.json` |  | Settings at the edges of their ranges: minSessionMinutes = maxSessionMinutes, zero break and daily limit, 00:00–24:00 day. |  |
 | `valid/version-1-1-commitments-description.json` |  | A 1.1 file using its one new field, settings.commitmentsDescription (multi-line text). |  |
+| `valid/version-1-3-study-topics.json` |  | A 1.3 file using its new field, study topics on an assessment (statuses, bases, a quote and its source). |  |
 | `valid/version-1-2-class-announcements.json` |  | A 1.2 file using its new field, class announcements (with a posted time, link and attachment). |  |
 | `valid/empty-optional-arrays.json` |  | Empty optional arrays are allowed (they mean the same as absent). |  |
 | `valid/warnings-only.json` |  | Valid, but every § 13.4 warning applies: blocks after due/task due/assessment, overlaps (block, busy event), session length, daily limit, a recurrence that never occurs, a far date, overrides on a user item, an unknown time zone. |  |
@@ -113,7 +114,9 @@ website, not format rules, so no fixture covers them.
 | `invalid/structural-root-is-array.json` | § 13.1 rule 1 | The root must be an object. | `(root)` |
 | `invalid/structural-schema-version-number.json` | § 2, § 13.1 rule 1 | schemaVersion must be the string "1.0", not the number 1.0. | `schemaVersion` |
 | `invalid/structural-schema-version-unsupported-major.json` | § 2 | Major version 2 is not supported (single clear error). | `schemaVersion` |
-| `invalid/structural-schema-version-newer-minor.json` | § 2 | Minor version 1.3 is newer than 1.2. | `schemaVersion` |
+| `invalid/structural-schema-version-newer-minor.json` | § 2 | Minor version 1.4 is newer than 1.3. | `schemaVersion` |
+| `invalid/structural-schema-version-too-low-for-study-topics.json` | § 2 | Study topics need "schemaVersion": "1.3". | `assignments[0].studyTopics` |
+| `invalid/structural-study-topic-without-title.json` | § 8.3 | A study topic needs its title. | `assignments[0].studyTopics[0].title` |
 | `invalid/structural-schema-version-too-low-for-feature.json` | § 2 | settings.commitmentsDescription needs "schemaVersion": "1.1". | `settings.commitmentsDescription` |
 | `invalid/structural-schema-version-too-low-for-announcements.json` | § 2 | Class announcements need "schemaVersion": "1.2". | `classes[0].announcements` |
 | `invalid/structural-announcement-without-text.json` | § 7.1 | An announcement needs its text. | `classes[0].announcements[0].text` |

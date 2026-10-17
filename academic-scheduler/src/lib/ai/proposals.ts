@@ -14,10 +14,14 @@
 // - Applied work is planned into free study time right away (planApplied: the
 //   fixed-rule planner, never the AI), so accepting an estimate changes the calendar;
 //   its sessions that no longer fit (e.g. after an earlier due date) are moved (repair.ts).
+// - Study topics (§ 25.2) are added to the assessment, never replacing the
+//   person's; automatic only when a study guide or announcement lists them and
+//   the assessment has none yet.
 import type { AiProposal } from '../../model/aiProposal';
-import type { Assignment, AssignmentType, ScheduleDocument, Source } from '../../model/types';
-import { resolveSettings } from '../../model/constants';
+import type { Assignment, AssignmentType, ScheduleDocument, Source, StudyTopic } from '../../model/types';
+import { resolveSettings, schemaVersionFor } from '../../model/constants';
 import { repairPlan } from '../repair';
+import { withPrepDescriptions } from '../studyPlan';
 import { fitToDue } from '../sync/fitToDue';
 import { nowLocal, todayLocal } from '../time';
 import { validateDocument } from '../validate';
@@ -27,7 +31,7 @@ export interface ReviewItem {
   className: string;
   /** The work it is about (absent for a new assessment). */
   assignment?: Assignment;
-  field: 'due' | 'new' | 'estimate';
+  field: 'due' | 'new' | 'estimate' | 'topics';
   previous?: string | number;
   /** Why it is not applied automatically; empty: safe to apply on its own. */
   reasons: string[];
@@ -80,6 +84,16 @@ export function reviewItems(doc: ScheduleDocument, proposals: AiProposal[]): Rev
     if (!className) continue;
     if (p.kind === 'workload' && stated.has(p.assignmentId)) continue;
     const reasons: string[] = [];
+    if (p.kind === 'topics') {
+      const assignment = doc.assignments.find((a) => a.id === p.assignmentId);
+      if (!assignment) continue;
+      const have = new Set((assignment.studyTopics ?? []).map((t) => squash(t.title)));
+      if ((p.topics ?? []).every((t) => have.has(squash(t.title)))) continue;
+      if (!p.explicit) reasons.push('No study guide or announcement lists these; the AI took them from class materials. Check them.');
+      if (have.size) reasons.push('There are already study topics; the new ones would be added.');
+      items.push({ proposal: p, className, assignment, field: 'topics', previous: have.size || undefined, reasons });
+      continue;
+    }
     if (p.kind === 'workload') {
       // An estimate is never stated; only a low-confidence one waits for the person.
       if (p.confidence.value === 'low') reasons.push('The AI had little to go on; check the time.');
@@ -113,6 +127,7 @@ export function reviewItems(doc: ScheduleDocument, proposals: AiProposal[]): Rev
 
 function sourceOf(p: AiProposal): Source {
   const what = { announcement: 'Announcement', coursework: 'Classroom instructions', document: 'Course document' }[p.source.kind];
+  if (p.kind === 'topics') return { kind: 'google_classroom', ...(p.source.url ? { url: p.source.url } : {}), label: `AI study topics from ${what.toLowerCase()}` };
   const label = Array.from(p.kind === 'workload' ? `AI workload estimate: ${p.excerpt}` : `${what}: “${p.excerpt}”`).slice(0, 200).join('');
   return { kind: 'google_classroom', ...(p.source.url ? { url: p.source.url } : {}), label };
 }
@@ -139,6 +154,26 @@ export function applyProposal(doc: ScheduleDocument, item: ReviewItem, byPerson:
       // The AI's preparation estimate, so the planner spreads study time before the date.
       ...(p.prepMinutes ? { estimatedMinutes: p.prepMinutes, estimateConfidence: 'low' as const, estimateBasis: 'AI estimate of the preparation time' } : {}),
     });
+  } else if (item.field === 'topics') {
+    const a = next.assignments.find((x) => x.id === item.assignment!.id);
+    if (!a) return { error: 'The assignment is no longer in your schedule.' };
+    const topics = [...(a.studyTopics ?? [])];
+    const have = new Set(topics.map((t) => squash(t.title)));
+    const ids = new Set(topics.map((t) => t.id));
+    for (const t of p.topics ?? []) {
+      if (have.has(squash(t.title))) continue;
+      have.add(squash(t.title));
+      let id = slug(t.title) || 'topic';
+      for (let n = 2; ids.has(id); n++) id = `${slug(t.title) || 'topic'}-${n}`;
+      ids.add(id);
+      const label = { announcement: 'Announcement', coursework: 'Classroom instructions', document: 'Course document' }[t.source?.kind ?? 'coursework'];
+      const topic: StudyTopic = { id, title: t.title, basis: t.basis, ...(t.quote ? { quote: Array.from(t.quote).slice(0, 1000).join('') } : {}) };
+      if (t.source) topic.source = { kind: 'google_classroom', ...(t.source.url ? { url: t.source.url } : {}), label };
+      topics.push(topic);
+    }
+    a.studyTopics = topics.slice(0, 100);
+    a.sources = [...(a.sources ?? []), sourceOf(p)].slice(-20);
+    Object.assign(next, withPrepDescriptions(next, a.id));
   } else {
     const a = next.assignments.find((x) => x.id === item.assignment!.id);
     if (!a) return { error: 'The assignment is no longer in your schedule.' };
@@ -166,6 +201,8 @@ export function applyProposal(doc: ScheduleDocument, item: ReviewItem, byPerson:
     if (byPerson && a.origin !== 'user' && !a.overrides?.includes(field)) a.overrides = [...(a.overrides ?? []), field];
     a.sources = [...(a.sources ?? []), sourceOf(p)].slice(-20);
   }
+  // The stored version follows the features in use (study topics are 1.3).
+  next.schemaVersion = schemaVersionFor(next);
   const checked = validateDocument(next, { today: todayLocal() });
   if (!checked.ok || !checked.doc) {
     const first = checked.errors[0];

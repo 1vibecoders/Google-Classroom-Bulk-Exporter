@@ -117,6 +117,7 @@ beforeEach(async () => {
   estimate = (work) => ({ estimates: work.map((w) => ({ id: w.id, minutes: 100, confidence: 'medium', basis: 'Short written work' })) });
   failWith = null;
   answer = (request) => {
+    if (request.task === 'topics') return { topics: [] };
     const input = JSON.parse(request.input) as { texts: Array<{ id: string; text: string }> };
     const essay = input.texts.find((t) => t.text.includes('now due Friday'));
     return { proposals: essay ? [proposal({ sourceId: essay.id, kind: 'due_change', assignmentId: 'gc-OTAx', date: '2026-10-16', excerpt: 'now due Friday' })] : [] };
@@ -325,7 +326,8 @@ describe('analysis runs', () => {
     await runAnalysis(context, 'u1', TZ, 'user');
     expect(estimateCalls).toHaveLength(1);
     await record('coursework', 'OTAy', { title: 'Vocab quiz', description: 'Learn 40 words.' });
-    expect((await analysisStatus(context, 'u1')).pending).toBe(2);
+    // Its text and its estimate are pending, and so are its study topics (it is a quiz with instructions now).
+    expect((await analysisStatus(context, 'u1')).pending).toBe(3);
     await runAnalysis(context, 'u1', TZ, 'user');
     expect(JSON.parse(estimateCalls[1].input).work.map((w: { id: string }) => w.id)).toEqual(['gc-OTAy']);
   });

@@ -65,6 +65,10 @@ test('Week view: drag a block to the next day; it is pinned', async ({ page }) =
   const mondayBox = (await monday.boundingBox())!;
   const tuesdayBox = (await tuesday.boundingBox())!;
   await dragBy(page, block, 0, tuesdayBox.x - mondayBox.x);
+  // The reading is due Tuesday (date only, so at 12:00 AM): the move needs a confirmation (SPEC § 27.2).
+  const confirm = page.getByRole('dialog', { name: 'This time breaks your plan' });
+  await expect(confirm).toContainText('Ends after the due date');
+  await confirm.getByRole('button', { name: 'Continue anyway' }).click();
 
   const moved = tuesday.getByRole('button', { name: /^English 10 \/ Read Othello Act 3, 6:30 – 7:20 PM/ });
   await expect(moved).toBeVisible();

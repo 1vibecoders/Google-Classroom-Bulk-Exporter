@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/1vibecoders/Google-Classroom-Bulk-Exporter/academic-scheduler/schema/schedule-1.2.schema.json",
-  "title": "Academic Scheduler schedule file, versions 1.0 to 1.2",
+  "$id": "https://github.com/1vibecoders/Google-Classroom-Bulk-Exporter/academic-scheduler/schema/schedule-1.3.schema.json",
+  "title": "Academic Scheduler schedule file, versions 1.0 to 1.3",
   "description": "Structural rules of the schedule format (the rules marked [S] in SCHEDULE_FORMAT.md section 13). Semantic rules marked [V] (unique IDs, tombstones, issue ids, references, dependency cycles, date ordering, block end on the start date or at the next midnight, real calendar dates, non-blank required text, estimate ranges, settings after defaults) are described in section 13 and enforced by the website and validate_schedule.py. Every pattern must match the whole value: Python validators must use full-match semantics, because Python's '$' also matches before a trailing newline. 'default' annotations repeat the defaults of SCHEDULE_FORMAT.md; they are informative and never change validity.",
   "type": "object",
   "required": ["schemaVersion", "classes", "assignments", "events", "availability", "scheduleBlocks"],
   "properties": {
-    "schemaVersion": { "enum": ["1.0", "1.1", "1.2"] },
+    "schemaVersion": { "enum": ["1.0", "1.1", "1.2", "1.3"] },
     "meta": { "$ref": "#/$defs/meta" },
     "settings": { "$ref": "#/$defs/settings" },
     "classes": { "type": "array", "items": { "$ref": "#/$defs/class" } },
@@ -20,11 +20,15 @@
   "allOf": [
     {
       "if": { "required": ["settings"], "properties": { "settings": { "required": ["commitmentsDescription"] } } },
-      "then": { "properties": { "schemaVersion": { "enum": ["1.1", "1.2"] } } }
+      "then": { "properties": { "schemaVersion": { "enum": ["1.1", "1.2", "1.3"] } } }
     },
     {
       "if": { "required": ["classes"], "properties": { "classes": { "contains": { "type": "object", "required": ["announcements"] } } } },
-      "then": { "properties": { "schemaVersion": { "const": "1.2" } } }
+      "then": { "properties": { "schemaVersion": { "enum": ["1.2", "1.3"] } } }
+    },
+    {
+      "if": { "required": ["assignments"], "properties": { "assignments": { "contains": { "type": "object", "required": ["studyTopics"] } } } },
+      "then": { "properties": { "schemaVersion": { "const": "1.3" } } }
     }
   ],
   "patternProperties": { "^x-": true },
@@ -205,7 +209,7 @@
             "enum": [
               "title", "classId", "type", "topic", "description", "due", "assessmentDate", "recommendedCompletionDate",
               "estimatedMinutes", "estimateRange", "estimateConfidence", "estimateBasis", "priority", "points", "required",
-              "sourceState", "tasks", "references", "dependsOn"
+              "sourceState", "tasks", "references", "dependsOn", "studyTopics"
             ]
           },
           { "$ref": "#/$defs/extensionName" }
@@ -316,6 +320,20 @@
       "patternProperties": { "^x-": true },
       "additionalProperties": false
     },
+    "studyTopic": {
+      "type": "object",
+      "required": ["id", "title"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "status": { "enum": ["not_started", "in_progress", "needs_review", "comfortable"], "default": "not_started" },
+        "basis": { "enum": ["listed", "materials", "inferred", "user"] },
+        "quote": { "type": "string", "maxLength": 1000 },
+        "source": { "$ref": "#/$defs/source" }
+      },
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false
+    },
     "task": {
       "type": "object",
       "required": ["id", "title"],
@@ -376,7 +394,8 @@
         "sourceState": { "enum": ["present", "missing", "withdrawn"], "default": "present" },
         "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" }, "default": [] },
         "references": { "type": "array", "items": { "$ref": "#/$defs/reference" }, "default": [] },
-        "dependsOn": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" }, "default": [] }
+        "dependsOn": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" }, "default": [] },
+        "studyTopics": { "description": "Version 1.3.", "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/studyTopic" } }
       },
       "patternProperties": { "^x-": true },
       "additionalProperties": false,
