@@ -17,6 +17,19 @@ vi.mock('../../src/editors/EditorHost', () => ({
   EditorProvider: ({ children }: { children: ReactNode }) => children,
   useEditors: () => ({ open: editorOpen, close: () => {} }),
 }));
+// A test can hand the next first-schedule build a promise of its own (to hold it, or make it fail).
+const firstScheduleGate = vi.hoisted(() => ({ next: null as Promise<never> | null }));
+vi.mock('../../src/lib/ai/firstSchedule', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../src/lib/ai/firstSchedule')>();
+  return {
+    ...real,
+    firstSchedule: (...args: Parameters<typeof real.firstSchedule>) => {
+      const gate = firstScheduleGate.next;
+      firstScheduleGate.next = null;
+      return gate ?? real.firstSchedule(...args);
+    },
+  };
+});
 import { App } from '../../src/App';
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -166,11 +179,17 @@ describe('onboarding wizard', () => {
   it('moves through the slides with Back / Next and the dots, and Get started opens the first step with focus on it', async () => {
     await mount(doc(), '#/welcome');
     expect(button('Back').disabled).toBe(true);
+    const live = container.querySelector('[aria-live="polite"]');
     await click(button('Next'));
     expect(text()).toContain('Planned into your real free time');
+    // The live region stays the same node, so screen readers announce the new slide.
+    expect(container.querySelector('[aria-live="polite"]')).toBe(live);
     expect(container.querySelectorAll('.ob-dot')[1].getAttribute('aria-current')).toBe('true');
+    button('Back').focus();
     await click(button('Back'));
     expect(text()).toContain('Everything due, in one place');
+    // Back is disabled on the first slide, so focus moves to Next instead of falling to the page.
+    expect(document.activeElement).toBe(button('Next'));
     await click(container.querySelector<HTMLButtonElement>('button[aria-label^="Slide 3"]')!);
     expect(text()).toContain('Nothing is planned after its due date');
     expect(() => button('Skip intro')).toThrow();
@@ -179,6 +198,33 @@ describe('onboarding wizard', () => {
     expect(document.activeElement?.textContent).toBe('Get your work in');
     expect(localStorage.getItem(STEP_KEY)).toBe('work');
     expect(localStorage.getItem(ACTIVE_KEY)).toBe('1');
+
+    // Back to the slides: focus goes to the slide title.
+    await click(button('Back'));
+    expect(document.activeElement?.textContent).toBe('Everything due, in one place');
+  });
+
+  it('keeps study time locked while the first plan is built, and recovers when the build fails', async () => {
+    localStorage.setItem(STEP_KEY, 'study');
+    await mount(doc({ availability: [WINDOW] }), '#/welcome');
+    let fail: (error: Error) => void = () => {};
+    firstScheduleGate.next = new Promise<never>((_, reject) => {
+      fail = reject;
+    });
+    await click(button('Build my plan'));
+    expect(button(/Building your plan/).disabled).toBe(true);
+    for (const b of [button(/Weekdays 4–7 PM/), button(/Customize/), container.querySelector<HTMLButtonElement>('button[aria-label="Edit After school"]')!, container.querySelector<HTMLButtonElement>('button[aria-label="Delete After school"]')!]) {
+      expect(b.disabled).toBe(true);
+    }
+
+    await act(async () => {
+      fail(new Error('Network down'));
+    });
+    await settle();
+    expect(button('Build my plan').disabled).toBe(false);
+    expect(button(/Customize/).disabled).toBe(false);
+    expect(currentStep()).toContain('Study time');
+    expect(text()).toContain('Your plan could not be built (Network down)');
   });
 
   it('stays in setup until the person enters the app, also after Google sign-in returns to Settings', async () => {
@@ -274,12 +320,16 @@ describe('onboarding wizard', () => {
     await click(button('Describe them'));
     const textarea = container.querySelector<HTMLTextAreaElement>('.getting-started textarea')!;
     expect(document.activeElement).toBe(textarea);
+    expect(button('Not now').getAttribute('aria-controls')).toBe('gs-describe-form');
+    expect(document.getElementById('gs-describe-form')?.contains(textarea)).toBe(true);
 
     await click(button('Save'));
     expect(text()).toContain('Describe your commitments in a sentence or two');
     await typeInto(textarea, '  Job on Saturdays  ');
     await click(button('Save'));
     expect(card()?.textContent ?? '').not.toContain('Describe your commitments');
+    // The form is gone: focus moves to the card title instead of falling to the page.
+    expect(document.activeElement?.id).toBe('gs-title');
     // The store saves 250 ms after the last change.
     await act(async () => {
       await new Promise((r) => setTimeout(r, 300));

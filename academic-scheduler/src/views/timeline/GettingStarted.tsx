@@ -39,6 +39,8 @@ export function GettingStarted({ doc }: { doc: ScheduleDocument }) {
   const [hidden, setHidden] = useState(readHidden);
   const [writing, setWriting] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const focusTitle = useRef(false);
   const empty = isEmptyDocument(doc);
   const steps = setupSteps(doc);
   // The description counts as a step of the checklist (not of the empty-schedule welcome).
@@ -48,6 +50,12 @@ export function GettingStarted({ doc }: { doc: ScheduleDocument }) {
   useEffect(() => {
     if (writing) formRef.current?.querySelector('textarea')?.focus();
   }, [writing]);
+  // After saving, the form and its button are gone: move focus to the card title so it does not fall to the page.
+  useEffect(() => {
+    if (!focusTitle.current) return;
+    focusTitle.current = false;
+    titleRef.current?.focus();
+  });
   if (remaining === 0 || (!empty && hidden)) return null;
 
   const hide = () => {
@@ -64,7 +72,7 @@ export function GettingStarted({ doc }: { doc: ScheduleDocument }) {
       <div className="card-body stack">
         <div className="gs-head">
           <div>
-            <h2 id="gs-title">{empty ? 'Welcome — let’s set up your schedule' : 'Finish setting up'}</h2>
+            <h2 id="gs-title" ref={titleRef} tabIndex={-1}>{empty ? 'Welcome — let’s set up your schedule' : 'Finish setting up'}</h2>
             <p className="muted gs-lead">
               {empty
                 ? 'Build it by hand in four steps, or import a schedule file made by the /academic-schedule skill. Everything stays in this browser.'
@@ -87,7 +95,7 @@ export function GettingStarted({ doc }: { doc: ScheduleDocument }) {
                 <strong>Describe your commitments</strong>
                 <span className="muted small">School hours, practice, a job, in your own words. With AI, they become commitments on your calendar.</span>
               </div>
-              <button type="button" className="btn small" aria-expanded={writing} onClick={() => setWriting((w) => !w)}>
+              <button type="button" className="btn small" aria-expanded={writing} aria-controls={writing ? 'gs-describe-form' : undefined} onClick={() => setWriting((w) => !w)}>
                 {writing ? 'Not now' : 'Describe them'}
               </button>
             </li>
@@ -116,11 +124,13 @@ export function GettingStarted({ doc }: { doc: ScheduleDocument }) {
           })}
         </ol>
         {describe && writing ? (
-          <div ref={formRef}>
+          <div ref={formRef} id="gs-describe-form">
             <CommitmentsDescriptionForm
-              onSaved={() =>
-                notify(ai?.configured ? 'Commitments saved. “Plan my schedule with AI” in Settings adds them to your calendar.' : 'Commitments saved.', { tone: 'success' })
-              }
+              onSaved={() => {
+                focusTitle.current = true;
+                setWriting(false);
+                notify(ai?.configured ? 'Commitments saved. “Plan my schedule with AI” in Settings adds them to your calendar.' : 'Commitments saved.', { tone: 'success' });
+              }}
             />
           </div>
         ) : null}

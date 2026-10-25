@@ -87,7 +87,7 @@ export function OnboardingView() {
     if (step !== 'welcome') markSetupInProgress(true);
   }, [step]);
 
-  // Move focus to the new step's heading so that screen readers announce it.
+  // Move focus to the new step's heading (the slide title when back on the welcome slides) so that screen readers announce it.
   useEffect(() => {
     if (lastStep.current === step) return;
     lastStep.current = step;
@@ -114,8 +114,7 @@ export function OnboardingView() {
       setProblem('Choose when you usually study (or customize it) to continue.');
       return;
     }
-    await build(useAi, 'Your first schedule is ready.');
-    go('ready');
+    if (await build(useAi, 'Your first schedule is ready.')) go('ready');
   };
 
   const enter = (route: Route) => {
@@ -150,7 +149,7 @@ export function OnboardingView() {
         </div>
       </div>
 
-      {step === 'welcome' ? <WelcomeSlides onDone={() => go('work')} /> : null}
+      {step === 'welcome' ? <WelcomeSlides onDone={() => go('work')} titleRef={headingRef} /> : null}
 
       {step !== 'welcome' ? (
         <ol className="imp-steps" aria-label="Setup steps">
@@ -232,7 +231,7 @@ export function OnboardingView() {
             <p className="muted">Pick what is closest. Work is only planned inside these hours, around your commitments. You can change it at any time.</p>
             <div className="ob-choices" role="group" aria-label="Study time">
               {STUDY_PRESETS.map((p) => (
-                <button key={p.id} type="button" className="ob-choice ob-preset" aria-pressed={pickedPreset === p.id} onClick={() => choosePreset(p.id)}>
+                <button key={p.id} type="button" className="ob-choice ob-preset" aria-pressed={pickedPreset === p.id} onClick={() => choosePreset(p.id)} disabled={building}>
                   <span className="ob-choice-text">
                     <strong>{p.label}</strong>
                     <span className="small muted">{p.hint}</span>
@@ -244,7 +243,7 @@ export function OnboardingView() {
                   ) : null}
                 </button>
               ))}
-              <button type="button" className="ob-choice ob-preset" onClick={() => editors.open({ kind: 'availability' })}>
+              <button type="button" className="ob-choice ob-preset" onClick={() => editors.open({ kind: 'availability' })} disabled={building}>
                 <span className="ob-choice-text">
                   <strong>Customize</strong>
                   <span className="small muted">Set your own days and times.</span>
@@ -254,7 +253,7 @@ export function OnboardingView() {
             {doc.availability.length ? (
               <ul className="ls-items" aria-label="Your study time">
                 {doc.availability.map((w) => (
-                  <WindowRow key={w.id} window={w} today={today} year={year} />
+                  <WindowRow key={w.id} window={w} today={today} year={year} disabled={building} />
                 ))}
               </ul>
             ) : null}

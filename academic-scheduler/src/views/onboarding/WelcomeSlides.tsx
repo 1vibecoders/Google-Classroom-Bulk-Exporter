@@ -2,7 +2,7 @@
 // with a small in-brand drawing (inline SVG on the theme tokens), dots, and
 // Back / Skip intro / Next ("Get started" on the last). Arrow keys move between
 // slides. The text fades in on change, except with reduced motion (onboarding.css).
-import { useState, type KeyboardEvent } from 'react';
+import { useRef, useState, type KeyboardEvent, type Ref } from 'react';
 import { CLASS_PALETTE } from '../../model/constants';
 
 const [BLUE, GREEN, RED, PLUM] = CLASS_PALETTE;
@@ -25,11 +25,19 @@ const SLIDES = [
   },
 ];
 
-export function WelcomeSlides({ onDone }: { onDone: () => void }) {
+/** `titleRef` goes on the slide title (focusable with tabIndex -1), so the wizard can move focus there. */
+export function WelcomeSlides({ onDone, titleRef }: { onDone: () => void; titleRef?: Ref<HTMLHeadingElement> }) {
   const [index, setIndex] = useState(0);
+  const backRef = useRef<HTMLButtonElement>(null);
+  const nextRef = useRef<HTMLButtonElement>(null);
   const last = index === SLIDES.length - 1;
   const slide = SLIDES[index];
-  const go = (n: number) => setIndex(Math.max(0, Math.min(SLIDES.length - 1, n)));
+  const go = (n: number) => {
+    const to = Math.max(0, Math.min(SLIDES.length - 1, n));
+    // Back is disabled on the first slide: move focus to Next first, so it does not fall to the page.
+    if (to === 0 && document.activeElement === backRef.current) nextRef.current?.focus();
+    setIndex(to);
+  };
   const onKey = (e: KeyboardEvent) => {
     if (e.key === 'ArrowRight') go(index + 1);
     else if (e.key === 'ArrowLeft') go(index - 1);
@@ -41,9 +49,14 @@ export function WelcomeSlides({ onDone }: { onDone: () => void }) {
         {slide.art}
       </div>
       <div className="card-body stack">
-        <div key={index} className="ob-fade" aria-live="polite" aria-roledescription="slide" aria-label={`${index + 1} of ${SLIDES.length}`} role="group">
-          <h2 className="ob-slide-title">{slide.title}</h2>
-          <p className="muted">{slide.text}</p>
+        {/* One lasting live region so screen readers announce each new slide; only the inner text is replaced (and fades in). */}
+        <div aria-live="polite" aria-roledescription="slide" aria-label={`${index + 1} of ${SLIDES.length}`} role="group">
+          <div key={index} className="ob-fade">
+            <h2 className="ob-slide-title" ref={titleRef} tabIndex={-1}>
+              {slide.title}
+            </h2>
+            <p className="muted">{slide.text}</p>
+          </div>
         </div>
         <div className="ob-dots">
           {SLIDES.map((s, i) => (
@@ -58,7 +71,7 @@ export function WelcomeSlides({ onDone }: { onDone: () => void }) {
           ))}
         </div>
         <div className="row ob-actions">
-          <button type="button" className="btn ghost" onClick={() => go(index - 1)} disabled={index === 0}>
+          <button type="button" className="btn ghost" ref={backRef} onClick={() => go(index - 1)} disabled={index === 0}>
             Back
           </button>
           <span className="spacer" />
@@ -67,7 +80,7 @@ export function WelcomeSlides({ onDone }: { onDone: () => void }) {
               Skip intro
             </button>
           ) : null}
-          <button type="button" className="btn primary" onClick={last ? onDone : () => go(index + 1)}>
+          <button type="button" className="btn primary" ref={nextRef} onClick={last ? onDone : () => go(index + 1)}>
             {last ? 'Get started' : 'Next'}
           </button>
         </div>

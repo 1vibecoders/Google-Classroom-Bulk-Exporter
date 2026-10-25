@@ -82,13 +82,13 @@ function useDeleteItem() {
   };
 }
 
-function ItemActions({ label, onEdit, onDelete }: { label: string; onEdit: () => void; onDelete: () => void }) {
+function ItemActions({ label, onEdit, onDelete, disabled }: { label: string; onEdit: () => void; onDelete: () => void; disabled?: boolean }) {
   return (
     <div className="ls-item-actions">
-      <button type="button" className="btn ghost icon small" onClick={onEdit} aria-label={`Edit ${label}`} title="Edit">
+      <button type="button" className="btn ghost icon small" onClick={onEdit} aria-label={`Edit ${label}`} title="Edit" disabled={disabled}>
         <Icon name="edit" />
       </button>
-      <button type="button" className="btn ghost icon small" onClick={onDelete} aria-label={`Delete ${label}`} title="Delete">
+      <button type="button" className="btn ghost icon small" onClick={onDelete} aria-label={`Delete ${label}`} title="Delete" disabled={disabled}>
         <Icon name="trash" />
       </button>
     </div>
@@ -166,7 +166,7 @@ export function EventRow({ event, today, year }: { event: ScheduleEvent; today: 
   );
 }
 
-export function WindowRow({ window: w, today, year }: { window: AvailabilityWindow; today: string; year: number }) {
+export function WindowRow({ window: w, today, year, disabled }: { window: AvailabilityWindow; today: string; year: number; disabled?: boolean }) {
   const { state } = useStore();
   const editors = useEditors();
   const remove = useDeleteItem();
@@ -204,7 +204,7 @@ export function WindowRow({ window: w, today, year }: { window: AvailabilityWind
         </div>
         {issues.length ? <IssuePanel entries={issues} /> : null}
       </div>
-      <ItemActions label={label} onEdit={() => editors.open({ kind: 'availability', id: w.id })} onDelete={() => void remove('availability', w)} />
+      <ItemActions label={label} onEdit={() => editors.open({ kind: 'availability', id: w.id })} onDelete={() => void remove('availability', w)} disabled={disabled} />
     </li>
   );
 }

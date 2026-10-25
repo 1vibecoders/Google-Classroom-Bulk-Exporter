@@ -2,10 +2,12 @@
    Uses the shared tokens from app.css (light and dark) and the import page's
    layout and step indicator (import.css). */
 
-.ob-step-title:focus {
+.ob-step-title:focus,
+.ob-slide-title:focus {
   outline: none;
 }
-.ob-step-title:focus-visible {
+.ob-step-title:focus-visible,
+.ob-slide-title:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
   border-radius: var(--radius-s);
