@@ -1,12 +1,18 @@
 // Setup guide on the day and week views. On an empty schedule: a welcome card
 // with the steps to build a schedule by hand, or import one made by
 // /academic-schedule. On a partly set-up schedule: a compact "finish setting
-// up" checklist (finished steps ticked) that the person can hide.
-import { useState } from 'react';
+// up" checklist (finished steps ticked) that the person can hide. The checklist
+// also asks for the description of the person's commitments, which setup lets
+// them leave for later (lib/onboarding.ts), with the form right in the card.
+import { useEffect, useRef, useState } from 'react';
 import type { ScheduleDocument } from '../../model/types';
 import { useEditors } from '../../editors/EditorHost';
 import { routeToHash } from '../../router';
+import { useStore } from '../../state/store';
+import { useAiStatus } from '../../state/aiStore';
+import { commitmentsDescriptionMissing } from '../../lib/onboarding';
 import { Icon, type IconName } from '../../ui/Icon';
+import { CommitmentsDescriptionForm } from '../CommitmentsDescriptionForm';
 import { isEmptyDocument, setupSteps, type SetupStepKind } from './logic';
 
 const STEPS: Record<SetupStepKind, { icon: IconName; title: string; text: string; button: string }> = {
@@ -28,10 +34,28 @@ function readHidden(): boolean {
 
 export function GettingStarted({ doc }: { doc: ScheduleDocument }) {
   const editors = useEditors();
+  const { notify } = useStore();
+  const ai = useAiStatus();
   const [hidden, setHidden] = useState(readHidden);
+  const [writing, setWriting] = useState(false);
+  const formRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const focusTitle = useRef(false);
   const empty = isEmptyDocument(doc);
   const steps = setupSteps(doc);
-  const remaining = steps.filter((s) => !s.done).length;
+  // The description counts as a step of the checklist (not of the empty-schedule welcome).
+  const describe = !empty && commitmentsDescriptionMissing(doc);
+  const total = steps.length + (empty ? 0 : 1);
+  const remaining = steps.filter((s) => !s.done).length + (describe ? 1 : 0);
+  useEffect(() => {
+    if (writing) formRef.current?.querySelector('textarea')?.focus();
+  }, [writing]);
+  // After saving, the form and its button are gone: move focus to the card title so it does not fall to the page.
+  useEffect(() => {
+    if (!focusTitle.current) return;
+    focusTitle.current = false;
+    titleRef.current?.focus();
+  });
   if (remaining === 0 || (!empty && hidden)) return null;
 
   const hide = () => {
@@ -48,11 +72,11 @@ export function GettingStarted({ doc }: { doc: ScheduleDocument }) {
       <div className="card-body stack">
         <div className="gs-head">
           <div>
-            <h2 id="gs-title">{empty ? 'Welcome — let’s set up your schedule' : 'Finish setting up'}</h2>
+            <h2 id="gs-title" ref={titleRef} tabIndex={-1}>{empty ? 'Welcome — let’s set up your schedule' : 'Finish setting up'}</h2>
             <p className="muted gs-lead">
               {empty
                 ? 'Build it by hand in four steps, or import a schedule file made by the /academic-schedule skill. Everything stays in this browser.'
-                : `${steps.length - remaining} of ${steps.length} steps done. The rest makes free time, over-capacity warnings and planning work.`}
+                : `${total - remaining} of ${total} steps done. The rest makes free time, over-capacity warnings and planning work.`}
             </p>
           </div>
           {!empty ? (
@@ -62,6 +86,20 @@ export function GettingStarted({ doc }: { doc: ScheduleDocument }) {
           ) : null}
         </div>
         <ol className="gs-steps">
+          {describe ? (
+            <li>
+              <span className="gs-num" aria-hidden="true">
+                <Icon name="edit" size={14} />
+              </span>
+              <div className="gs-text">
+                <strong>Describe your commitments</strong>
+                <span className="muted small">School hours, practice, a job, in your own words. With AI, they become commitments on your calendar.</span>
+              </div>
+              <button type="button" className="btn small" aria-expanded={writing} aria-controls={writing ? 'gs-describe-form' : undefined} onClick={() => setWriting((w) => !w)}>
+                {writing ? 'Not now' : 'Describe them'}
+              </button>
+            </li>
+          ) : null}
           {steps.map((step, i) => {
             const info = STEPS[step.kind];
             return (
@@ -85,6 +123,17 @@ export function GettingStarted({ doc }: { doc: ScheduleDocument }) {
             );
           })}
         </ol>
+        {describe && writing ? (
+          <div ref={formRef} id="gs-describe-form">
+            <CommitmentsDescriptionForm
+              onSaved={() => {
+                focusTitle.current = true;
+                setWriting(false);
+                notify(ai?.configured ? 'Commitments saved. “Plan my schedule with AI” in Settings adds them to your calendar.' : 'Commitments saved.', { tone: 'success' });
+              }}
+            />
+          </div>
+        ) : null}
         {empty ? (
           <div className="row gs-alt">
             <a className="btn primary" href={routeToHash({ name: 'import' })}>

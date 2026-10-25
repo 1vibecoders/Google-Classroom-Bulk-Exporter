@@ -9,16 +9,24 @@ import { setAiStatus } from '../state/aiStore';
 import { useStore } from '../state/store';
 import { newSnapshotId } from './import/logic';
 
-export function useFirstSchedule(): { building: boolean; build: (useAi: boolean, lead: string) => Promise<void> } {
+/** `build` resolves to false when nothing was built (already building, or an unexpected failure, shown as a notice). */
+export function useFirstSchedule(): { building: boolean; build: (useAi: boolean, lead: string) => Promise<boolean> } {
   const { state, dispatch, notify } = useStore();
   const [building, setBuilding] = useState(false);
 
-  const build = async (useAi: boolean, lead: string) => {
-    if (building) return;
+  const build = async (useAi: boolean, lead: string): Promise<boolean> => {
+    if (building) return false;
     setBuilding(true);
     const doc = state.doc;
-    const built = await firstSchedule(doc, useAi, Intl.DateTimeFormat().resolvedOptions().timeZone);
-    setBuilding(false);
+    let built: Awaited<ReturnType<typeof firstSchedule>>;
+    try {
+      built = await firstSchedule(doc, useAi, Intl.DateTimeFormat().resolvedOptions().timeZone);
+    } catch (error) {
+      notify(`Your plan could not be built (${error instanceof Error ? error.message : String(error)}). Nothing was changed; try again.`, { tone: 'warning' });
+      return false;
+    } finally {
+      setBuilding(false);
+    }
     if (built.status) setAiStatus(built.status);
     const parts = [lead];
     if (built.events) parts.push(`Added ${built.events} ${built.events === 1 ? 'commitment' : 'commitments'} from your description to the calendar.`);
@@ -34,7 +42,7 @@ export function useFirstSchedule(): { building: boolean; build: (useAi: boolean,
     const tone = built.problem ? 'warning' : 'success';
     if (built.doc === doc) {
       notify(parts.join(' '), { tone });
-      return;
+      return true;
     }
     const snapshotId = newSnapshotId();
     dispatch({ type: 'replaceDocument', doc: built.doc, label: 'Your first schedule', now: nowLocal(), snapshotId });
@@ -49,6 +57,7 @@ export function useFirstSchedule(): { building: boolean; build: (useAi: boolean,
         },
       },
     });
+    return true;
   };
 
   return { building, build };

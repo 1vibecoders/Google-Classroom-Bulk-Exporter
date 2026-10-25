@@ -12,6 +12,10 @@ import { CATEGORY_LABELS, formatCounts, type ChangeCategory, type ImportChange, 
 
 export const COLLECTIONS: CollectionName[] = ['classes', 'assignments', 'events', 'availability', 'scheduleBlocks'];
 
+/** The file types Import accepts: the file picker's filter and the setup copy are built from this list, so a new type is added here. */
+export const IMPORT_FILE_TYPES: Array<{ extension: string; mime: string }> = [{ extension: '.json', mime: 'application/json' }];
+export const IMPORT_ACCEPT = IMPORT_FILE_TYPES.flatMap((t) => [t.extension, t.mime]).join(',');
+
 // ---------------------------------------------------------------------------
 // Step 1: the chosen file
 // ---------------------------------------------------------------------------
