@@ -13,6 +13,8 @@ import {
   errorsAsText,
   firstImportedDate,
   groupErrors,
+  IMPORT_ACCEPT,
+  isCalendarFile,
   isChosen,
   kindLabel,
   neverSetSettingKeys,
@@ -56,6 +58,15 @@ function row(partial: Partial<ImportChange>): ImportChange {
     ...partial,
   };
 }
+
+describe('calendar files', () => {
+  it('accepts .ics in the file picker and recognizes a calendar by name or content', () => {
+    expect(IMPORT_ACCEPT).toContain('.ics');
+    expect(isCalendarFile('Lattice.ics', '')).toBe(true);
+    expect(isCalendarFile('calendar.txt', String.fromCharCode(0xfeff) + 'BEGIN:VCALENDAR\r\nVERSION:2.0')).toBe(true);
+    expect(isCalendarFile('schedule.json', EXAMPLE_TEXT)).toBe(false);
+  });
+});
 
 describe('checkChosenFile', () => {
   it('rejects files over 10 MB before reading them', () => {

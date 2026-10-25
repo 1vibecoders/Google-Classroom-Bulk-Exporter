@@ -12,8 +12,17 @@ import { CATEGORY_LABELS, formatCounts, type ChangeCategory, type ImportChange, 
 
 export const COLLECTIONS: CollectionName[] = ['classes', 'assignments', 'events', 'availability', 'scheduleBlocks'];
 
-/** The file types Import accepts: the file picker's filter and the setup copy are built from this list, so a new type is added here. */
-export const IMPORT_FILE_TYPES: Array<{ extension: string; mime: string }> = [{ extension: '.json', mime: 'application/json' }];
+/** The file types Import accepts: the file picker's filter is built from this list, so a new type is added here. */
+export const IMPORT_FILE_TYPES: Array<{ extension: string; mime: string }> = [
+  { extension: '.json', mime: 'application/json' },
+  { extension: '.ics', mime: 'text/calendar' },
+];
+
+/** A calendar export (Google Calendar's Export gives .ics) rather than a schedule file. */
+export function isCalendarFile(name: string, text: string): boolean {
+  // \s also matches a leading byte-order mark (U+FEFF).
+  return /\.ics$/i.test(name) || /^\s*BEGIN:VCALENDAR/i.test(text);
+}
 export const IMPORT_ACCEPT = IMPORT_FILE_TYPES.flatMap((t) => [t.extension, t.mime]).join(',');
 
 // ---------------------------------------------------------------------------
