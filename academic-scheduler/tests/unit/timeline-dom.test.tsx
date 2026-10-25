@@ -312,7 +312,9 @@ describe('DayView', () => {
     await mount(<DayView date={DAY} />, partial);
     const card = container.querySelector('.getting-started')!;
     expect(card.textContent).toContain('Finish setting up');
-    expect(card.textContent).toContain('1 of 4 steps done');
+    // The four item steps plus the commitments description that setup lets the person leave for later.
+    expect(card.textContent).toContain('1 of 5 steps done');
+    expect(card.textContent).toContain('Describe your commitments');
     expect(card.textContent).toContain('Add study time');
     expect(card.textContent).not.toContain('Add a class');
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Hide the setup guide"]')!.click());
@@ -321,7 +323,7 @@ describe('DayView', () => {
   });
 
   it('shows no setup guide once everything is set up', async () => {
-    await mount(<DayView date={DAY} />);
+    await mount(<DayView date={DAY} />, testDoc({ schemaVersion: '1.1', settings: { commitmentsDescription: 'None' } }));
     expect(container.querySelector('.getting-started')).toBeNull();
   });
 

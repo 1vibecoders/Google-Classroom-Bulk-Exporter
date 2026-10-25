@@ -51,7 +51,7 @@ const NAV: Array<{ label: string; icon: Parameters<typeof Icon>[0]['name']; rout
   { label: 'Commitments', icon: 'clock', route: () => ({ name: 'commitments' }), match: ['commitments'] },
 ];
 
-// Pages that stay open while onboarding is incomplete: Import and Settings can fill in the required answers.
+// Pages that stay open while onboarding is incomplete: Import and Settings can bring in work and study time.
 const SETUP_ROUTES: Route['name'][] = ['welcome', 'import', 'settings'];
 
 function Shell() {

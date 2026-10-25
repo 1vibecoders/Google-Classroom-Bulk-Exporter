@@ -1,55 +1,66 @@
-// First-run setup (SPEC.md § 5). Two answers are required: when the person can
-// study (availability windows) and a short description of their commitments
-// (settings.commitmentsDescription). Preferences, classes and imports are
-// optional steps with sensible defaults. Every answer is saved in the schedule
-// as soon as it is given, and the current step in this browser, so the wizard
-// resumes after a refresh. The app shows this page until both answers exist.
-// Finishing builds the first schedule (lib/ai/firstSchedule.ts): with AI set
-// up, the free setup run reads and estimates everything brought in; the
-// fixed-rule planner then places the work, undoable in one step.
-import { useEffect, useState } from 'react';
+// First-run setup (SPEC.md § 5), streamlined (lib/onboarding.ts records the
+// owner decisions): short welcome slides, then three steps. 1. Get your work
+// in: Google Classroom, a file import, or start empty. 2. When do you usually
+// study: a one-tap preset, or the detailed editor; this is the only required
+// answer. Continuing builds the first schedule (lib/ai/firstSchedule.ts): with
+// AI set up, the free setup run reads and estimates everything brought in; the
+// fixed-rule planner then places the work, undoable in one step. 3. Your plan:
+// what the planner promises, and "Start with one thing" shortcuts into the app.
+// The commitments description waits in the app's "Finish setting up" card.
+// Every answer is saved in the schedule as soon as it is given, and the current
+// step in this browser, so the wizard resumes after a refresh.
+import { useEffect, useRef, useState } from 'react';
 import '../styles/import.css';
 import '../styles/lists.css';
+import '../styles/onboarding.css';
 import { useStore } from '../state/store';
 import { useEditors } from '../editors/EditorHost';
-import { Icon } from '../ui/Icon';
+import { Icon, type IconName } from '../ui/Icon';
 import { useToday } from '../ui/hooks';
-import { navigate, routeToHash } from '../router';
-import { MOTTO, resolveSettings } from '../model/constants';
+import { navigate, routeToHash, type Route } from '../router';
+import { MOTTO } from '../model/constants';
 import { LatticeMark, Wordmark } from '../ui/LatticeMark';
-import { describePlannerRules } from '../lib/planner';
-import { markSetupInProgress, onboardingNeeds, type OnboardingNeed } from '../lib/onboarding';
+import { STUDY_PRESETS, commitmentsDescriptionMissing, markSetupInProgress, onboardingNeeds, presetChanges, selectedPreset } from '../lib/onboarding';
+import { nowLocal } from '../lib/time';
 import { useAiStatus } from '../state/aiStore';
 import { useFirstSchedule } from './useFirstSchedule';
 import { ClassroomSyncCard } from './ClassroomSyncCard';
-import { CommitmentsDescriptionForm } from './CommitmentsDescriptionForm';
-import { EventRow, WindowRow } from './CommitmentsView';
-import { SettingsForm } from './SettingsView';
+import { WindowRow } from './CommitmentsView';
+import { IMPORT_FILE_TYPES } from './import/logic';
+import { WelcomeSlides } from './onboarding/WelcomeSlides';
 
-const STEPS = ['Study time', 'Commitments', 'Preferences', 'Classes and data', 'Review'] as const;
+const STEPS = [
+  { name: 'work', label: 'Get your work in' },
+  { name: 'study', label: 'Study time' },
+  { name: 'ready', label: 'Your plan' },
+] as const;
+type StepName = 'welcome' | (typeof STEPS)[number]['name'];
 const STEP_KEY = 'academic-scheduler:onboarding-step';
-const NEED_STEP: Record<OnboardingNeed, number> = { studyTime: 0, commitments: 1 };
 
-function readStep(): number {
+function readStep(): StepName {
   try {
-    const n = Number(window.localStorage.getItem(STEP_KEY));
-    return Number.isInteger(n) && n >= 0 && n < STEPS.length ? n : 0;
+    const saved = window.localStorage.getItem(STEP_KEY);
+    return STEPS.find((s) => s.name === saved)?.name ?? 'welcome';
   } catch {
-    return 0;
+    return 'welcome';
   }
 }
 
-function writeStep(n: number | null): void {
+function writeStep(step: StepName | null): void {
   try {
-    if (n === null) window.localStorage.removeItem(STEP_KEY);
-    else window.localStorage.setItem(STEP_KEY, String(n));
+    if (step === null) window.localStorage.removeItem(STEP_KEY);
+    else window.localStorage.setItem(STEP_KEY, step);
   } catch {
     /* storage blocked: the step is kept for this visit only */
   }
 }
 
+function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
 export function OnboardingView() {
-  const { state } = useStore();
+  const { state, dispatch } = useStore();
   const ai = useAiStatus();
   const { building, build } = useFirstSchedule();
   const freeAi = !!ai?.configured && ai.setupAvailable !== false;
@@ -60,35 +71,71 @@ export function OnboardingView() {
   const editors = useEditors();
   const today = useToday();
   const year = Number(today.slice(0, 4));
-  const [step, setStepState] = useState(readStep);
+  const [saved, setSaved] = useState(readStep);
   const [problem, setProblem] = useState<string | null>(null);
+  // Open when Google's sign-in returns here, so its result shows.
+  const [googleOpen, setGoogleOpen] = useState(() => /[?&]google=/.test(window.location.hash));
   const needs = onboardingNeeds(doc);
-  // From "Classes and data" on (Google sign-in, sync, import), leaving the wizard leads back to it until Finish.
+  // The plan screen needs study time: without it (removed meanwhile), that step comes back.
+  const step: StepName = saved === 'ready' && needs.length ? 'study' : saved;
+  const stepIndex = STEPS.findIndex((s) => s.name === step);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const lastStep = useRef(step);
+
+  // From "Get your work in" on (Google sign-in, sync, import), leaving the wizard leads back to it until the person enters the app.
   useEffect(() => {
-    if (step >= 3) markSetupInProgress(true);
+    if (step !== 'welcome') markSetupInProgress(true);
   }, [step]);
 
-  const go = (n: number) => {
+  // Move focus to the new step's heading so that screen readers announce it.
+  useEffect(() => {
+    if (lastStep.current === step) return;
+    lastStep.current = step;
+    headingRef.current?.focus();
+  }, [step]);
+
+  const go = (next: StepName) => {
     setProblem(null);
-    setStepState(n);
-    writeStep(n);
+    setSaved(next);
+    writeStep(next);
   };
 
-  const nextFromStudyTime = () => {
-    if (doc.availability.length === 0) setProblem('Add at least one study-time window to continue.');
-    else go(1);
+  const choosePreset = (id: string) => {
+    const { remove, add } = presetChanges(doc, id, today);
+    const now = nowLocal();
+    for (const removed of remove) dispatch({ type: 'deleteAvailability', id: removed, now });
+    for (const item of add) dispatch({ type: 'upsertAvailability', item });
+    setProblem(null);
   };
 
-  const finish = async (useAi: boolean) => {
-    if (needs.length || building) return;
-    await build(useAi, 'Setup complete.');
+  const plan = async (useAi: boolean) => {
+    if (building) return;
+    if (needs.length) {
+      setProblem('Choose when you usually study (or customize it) to continue.');
+      return;
+    }
+    await build(useAi, 'Your first schedule is ready.');
+    go('ready');
+  };
+
+  const enter = (route: Route) => {
     writeStep(null);
     markSetupInProgress(false);
-    navigate({ name: 'day', date: today });
+    navigate(route);
   };
 
+  const pickedPreset = selectedPreset(doc.availability);
+  const imported = doc.classes.length + doc.assignments.length > 0;
+  const fileTypes = IMPORT_FILE_TYPES.map((t) => t.extension).join(' or ');
+  const upcoming = doc.scheduleBlocks.filter((b) => b.start >= today).length;
+  const shortcuts: Array<{ icon: IconName; title: string; text: string; route: Route }> = [
+    { icon: 'day', title: 'See today’s plan', text: 'What to work on now, and what must be done today.', route: { name: 'day', date: today } },
+    { icon: 'list', title: 'Check what’s due', text: 'Every assignment, soonest deadline first.', route: { name: 'assignments' } },
+    { icon: 'week', title: 'Look at your week', text: 'Your sessions spread over the next days.', route: { name: 'week', date: today } },
+  ];
+
   return (
-    <div className="imp-page">
+    <div className="imp-page ob-page">
       <div className="welcome-brand">
         <LatticeMark size={44} />
         <div>
@@ -99,209 +146,204 @@ export function OnboardingView() {
       <div className="page-header">
         <div>
           <h1 className="imp-h1">Set up your schedule</h1>
-          <div className="page-subtitle">
-            Two answers are required: when you can study and a short description of your commitments. Everything else is optional and can be changed later.
-          </div>
+          <div className="page-subtitle">Three quick steps. Only your study time is needed now; everything else can wait.</div>
         </div>
       </div>
 
-      <ol className="imp-steps" aria-label="Setup steps">
-        {STEPS.map((label, i) => (
-          <li key={label} className={i < step ? 'past' : i === step ? 'current' : ''} aria-current={i === step ? 'step' : undefined}>
-            <span className="imp-step-num" aria-hidden="true">
-              {i + 1}
-            </span>
-            <span>{label}</span>
-            {i < step ? <span className="visually-hidden"> (completed)</span> : null}
-          </li>
-        ))}
-      </ol>
+      {step === 'welcome' ? <WelcomeSlides onDone={() => go('work')} /> : null}
 
-      {step === 0 ? (
+      {step !== 'welcome' ? (
+        <ol className="imp-steps" aria-label="Setup steps">
+          {STEPS.map((s, i) => (
+            <li key={s.name} className={i < stepIndex ? 'past' : i === stepIndex ? 'current' : ''} aria-current={i === stepIndex ? 'step' : undefined}>
+              <span className="imp-step-num" aria-hidden="true">
+                {i + 1}
+              </span>
+              <span>{s.label}</span>
+              {i < stepIndex ? <span className="visually-hidden"> (completed)</span> : null}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+
+      {step === 'work' ? (
+        <section className="card" aria-labelledby="ob-work">
+          <div className="card-body stack">
+            <h2 id="ob-work" ref={headingRef} tabIndex={-1} className="ob-step-title">
+              Get your work in
+            </h2>
+            <p className="muted">Bring in your classes and assignments so there is something to plan. You can add more at any time with Import.</p>
+            <div className="ob-choices">
+              <button type="button" className="ob-choice" aria-expanded={googleOpen} onClick={() => setGoogleOpen((open) => !open)}>
+                <span className="ob-choice-icon" aria-hidden="true">
+                  <Icon name="book" size={20} />
+                </span>
+                <span className="ob-choice-text">
+                  <strong>Google Classroom</strong>
+                  <span className="small muted">Sign in with Google, or send your classes from the browser extension.</span>
+                </span>
+              </button>
+              <a className="ob-choice" href={routeToHash({ name: 'import' })}>
+                <span className="ob-choice-icon" aria-hidden="true">
+                  <Icon name="upload" size={20} />
+                </span>
+                <span className="ob-choice-text">
+                  <strong>Import a file</strong>
+                  <span className="small muted">A {fileTypes} schedule file from the /academic-schedule skill or a backup. You see a preview first.</span>
+                </span>
+              </a>
+              <button type="button" className="ob-choice" onClick={() => go('study')}>
+                <span className="ob-choice-icon" aria-hidden="true">
+                  <Icon name="plus" size={20} />
+                </span>
+                <span className="ob-choice-text">
+                  <strong>Start empty</strong>
+                  <span className="small muted">Add classes and assignments yourself later.</span>
+                </span>
+              </button>
+            </div>
+            {googleOpen ? <ClassroomSyncCard analyze={false} /> : null}
+            {imported ? (
+              <p className="small" role="status">
+                <Icon name="check" size={14} /> In your schedule so far: {plural(doc.classes.length, 'class', 'classes')}, {plural(doc.assignments.length, 'assignment', 'assignments')}.
+              </p>
+            ) : null}
+            <div className="row ob-actions">
+              <button type="button" className="btn ghost" onClick={() => go('welcome')}>
+                Back
+              </button>
+              <span className="spacer" />
+              {imported ? (
+                <button type="button" className="btn primary" onClick={() => go('study')}>
+                  Continue
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {step === 'study' ? (
         <section className="card" aria-labelledby="ob-study">
           <div className="card-body stack">
-            <h2 id="ob-study">When can you study? (required)</h2>
-            <p className="muted">
-              Add the times you are usually free for schoolwork, for example weekdays 3:30–9:30 PM and Saturday 10 AM–1 PM. Work is only planned inside
-              these windows; busy commitments inside them are subtracted.
-            </p>
+            <h2 id="ob-study" ref={headingRef} tabIndex={-1} className="ob-step-title">
+              When do you usually study?
+            </h2>
+            <p className="muted">Pick what is closest. Work is only planned inside these hours, around your commitments. You can change it at any time.</p>
+            <div className="ob-choices" role="group" aria-label="Study time">
+              {STUDY_PRESETS.map((p) => (
+                <button key={p.id} type="button" className="ob-choice ob-preset" aria-pressed={pickedPreset === p.id} onClick={() => choosePreset(p.id)}>
+                  <span className="ob-choice-text">
+                    <strong>{p.label}</strong>
+                    <span className="small muted">{p.hint}</span>
+                  </span>
+                  {pickedPreset === p.id ? (
+                    <span className="ob-choice-check" aria-hidden="true">
+                      <Icon name="check" size={16} />
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+              <button type="button" className="ob-choice ob-preset" onClick={() => editors.open({ kind: 'availability' })}>
+                <span className="ob-choice-text">
+                  <strong>Customize</strong>
+                  <span className="small muted">Set your own days and times.</span>
+                </span>
+              </button>
+            </div>
             {doc.availability.length ? (
-              <ul className="ls-items">
+              <ul className="ls-items" aria-label="Your study time">
                 {doc.availability.map((w) => (
                   <WindowRow key={w.id} window={w} today={today} year={year} />
                 ))}
               </ul>
-            ) : (
-              <p className="muted">No study time yet.</p>
-            )}
-            <div className="row">
-              <button type="button" className="btn" onClick={() => editors.open({ kind: 'availability' })}>
-                <Icon name="plus" size={14} /> Add study time
-              </button>
-            </div>
+            ) : null}
+            <p className="small muted">
+              {freeAi
+                ? 'Continuing reads your classes, announcements and documents with AI (free this once, not counted toward the 3 daily planning runs), estimates how long each assignment takes, and plans the work into your study time.'
+                : paidAi
+                  ? 'Planning with AI reads your classes, announcements and documents, estimates the work and plans it into your study time. It counts as one of the 3 daily planning runs (the free one is used).'
+                  : 'Continuing plans the work that has a time estimate into your study time.'}
+              {!ai ? ' To have the AI read your classes and estimate the work (free once), sign in with Google under “Get your work in” first.' : ''}
+            </p>
             {problem ? (
               <p className="banner warning" role="alert">
                 <Icon name="warning" /> {problem}
               </p>
             ) : null}
-            <div className="row">
-              <button type="button" className="btn primary" onClick={nextFromStudyTime}>
-                Next
-              </button>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {step === 1 ? (
-        <section className="card" aria-labelledby="ob-commitments">
-          <div className="card-body stack">
-            <h2 id="ob-commitments">What are your commitments? (required)</h2>
-            <p className="muted">
-              A brief description is enough. It is kept with your schedule for you and for the /academic-schedule skill. To keep planned work away from a
-              commitment, also add it as a commitment below.
-            </p>
-            <CommitmentsDescriptionForm submitLabel="Save and continue" onSaved={() => go(2)} />
-            <h3>Commitments on the calendar (optional)</h3>
-            {doc.events.length ? (
-              <ul className="ls-items">
-                {doc.events.map((e) => (
-                  <EventRow key={e.id} event={e} today={today} year={year} />
-                ))}
-              </ul>
-            ) : null}
-            <div className="row">
-              <button type="button" className="btn" onClick={() => editors.open({ kind: 'event' })}>
-                <Icon name="plus" size={14} /> Add a commitment
-              </button>
-              <button type="button" className="btn ghost" onClick={() => go(0)}>
+            <div className="row ob-actions">
+              <button type="button" className="btn ghost" onClick={() => go('work')}>
                 Back
               </button>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {step === 2 ? (
-        <div className="stack">
-          <p className="muted">Optional. The defaults suit most students; save only if you change something.</p>
-          <SettingsForm />
-          <div className="row">
-            <button type="button" className="btn ghost" onClick={() => go(1)}>
-              Back
-            </button>
-            <button type="button" className="btn primary" onClick={() => go(3)}>
-              Next
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {step === 3 ? (
-        <section className="card" aria-labelledby="ob-data">
-          <div className="card-body stack">
-            <h2 id="ob-data">Classes and data (optional)</h2>
-            <p className="muted">
-              {doc.classes.length ? `${doc.classes.length} ${doc.classes.length === 1 ? 'class' : 'classes'} so far. ` : ''}
-              Add classes by hand, or import a schedule file: the browser extension exports your Google Classroom classes to a ZIP, the /academic-schedule
-              skill turns it into a schedule file, and Import adds it here with a preview first. You can do this later.
-            </p>
-            <div className="row">
-              <button type="button" className="btn" onClick={() => editors.open({ kind: 'class' })}>
-                <Icon name="plus" size={14} /> Add a class
-              </button>
-              <a className="btn" href={routeToHash({ name: 'import' })}>
-                <Icon name="upload" /> Import a schedule file
-              </a>
-            </div>
-            <ClassroomSyncCard analyze={false} />
-            <div className="row">
-              <button type="button" className="btn ghost" onClick={() => go(2)}>
-                Back
-              </button>
-              <button type="button" className="btn primary" onClick={() => go(4)}>
-                Next
-              </button>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {step === 4 ? (
-        <section className="card" aria-labelledby="ob-review">
-          <div className="card-body stack">
-            <h2 id="ob-review">Review</h2>
-            <dl className="ob-review">
-              <dt>Study time</dt>
-              <dd>{doc.availability.length ? `${doc.availability.length} ${doc.availability.length === 1 ? 'window' : 'windows'}` : 'Missing'}</dd>
-              <dt>Your commitments</dt>
-              <dd style={{ whiteSpace: 'pre-wrap' }}>{doc.settings?.commitmentsDescription?.trim() || 'Missing'}</dd>
-              <dt>Commitments on the calendar</dt>
-              <dd>{doc.events.length ? `${doc.events.length}` : 'None yet (optional)'}</dd>
-              <dt>Classes</dt>
-              <dd>{doc.classes.length ? `${doc.classes.length}` : 'None yet (optional)'}</dd>
-              <dt>Your first schedule</dt>
-              <dd>
-                {freeAi
-                  ? 'Finishing reads your classes (also those sent from the browser extension), announcements, documents and your description of your commitments with AI (free this once, not counted toward the 3 daily planning runs), adds those commitments to the calendar, estimates how long each assignment takes (with steps for bigger work), and plans the work into your free study time.'
-                  : paidAi
-                    ? 'Planning with AI reads your classes, announcements, documents and your description of your commitments, adds those commitments to the calendar, estimates the work and plans it into your free study time. It counts as one of the 3 daily planning runs (the free one is used).'
-                    : 'Finishing plans the work that has a time estimate into your free study time.'}
-                {!ai ? (
-                  <>
-                    {' '}
-                    To have the AI read your classes (also those sent from the browser extension) and build it for you, free once,{' '}
-                    <button type="button" className="btn small" onClick={() => go(3)}>
-                      sign in with Google
-                    </button>{' '}
-                    under Classes and data first.
-                  </>
-                ) : null}
-              </dd>
-              <dt>How work will be planned</dt>
-              <dd>
-                <ul>
-                  {describePlannerRules(resolveSettings(doc.settings)).map((line) => (
-                    <li key={line}>{line}</li>
-                  ))}
-                </ul>
-              </dd>
-            </dl>
-            {needs.length ? (
-              <div className="banner warning" role="alert">
-                <Icon name="warning" />
-                <span>
-                  Still required:{' '}
-                  {needs.map((need, i) => (
-                    <span key={need}>
-                      {i ? ' and ' : ''}
-                      <button type="button" className="btn small" onClick={() => go(NEED_STEP[need])}>
-                        {need === 'studyTime' ? 'study time' : 'a description of your commitments'}
-                      </button>
-                    </span>
-                  ))}
-                  .
-                </span>
-              </div>
-            ) : null}
-            <div className="row">
-              <button type="button" className="btn ghost" onClick={() => go(3)}>
-                Back
-              </button>
+              <span className="spacer" />
               {paidAi ? (
                 <>
-                  <button type="button" className="btn primary" onClick={() => void finish(true)} disabled={needs.length > 0 || building || !runsLeft}>
-                    {building ? 'Creating your schedule…' : 'Finish and plan my schedule with AI'}
+                  <button type="button" className="btn" onClick={() => void plan(false)} disabled={building}>
+                    Plan without AI
                   </button>
-                  <button type="button" className="btn" onClick={() => void finish(false)} disabled={needs.length > 0 || building}>
-                    Finish without AI
+                  <button type="button" className="btn primary" onClick={() => void plan(true)} disabled={building || !runsLeft}>
+                    {building ? 'Building your plan…' : 'Plan with AI'}
                   </button>
                 </>
               ) : (
-                <button type="button" className="btn primary" onClick={() => void finish(freeAi)} disabled={needs.length > 0 || building}>
-                  {building ? 'Creating your schedule…' : 'Finish and create my schedule'}
+                <button type="button" className="btn primary" onClick={() => void plan(freeAi)} disabled={building}>
+                  {building ? 'Building your plan…' : 'Build my plan'}
                 </button>
               )}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {step === 'ready' ? (
+        <section className="card" aria-labelledby="ob-ready">
+          <div className="card-body stack">
+            <h2 id="ob-ready" ref={headingRef} tabIndex={-1} className="ob-step-title">
+              Your plan is ready
+            </h2>
+            <p>
+              {upcoming
+                ? `${plural(upcoming, 'work session is', 'work sessions are')} on your calendar.`
+                : doc.assignments.length
+                  ? 'No work session could be planned yet; the Day view shows what does not fit and why.'
+                  : 'There is nothing to plan yet. When you add or import assignments, they are planned into your study time.'}
+            </p>
+            <ul className="ob-promises">
+              <li>
+                <Icon name="check" size={14} /> Nothing is planned after its due date.
+              </li>
+              <li>
+                <Icon name="check" size={14} /> Sessions you move or add yourself stay where you put them.
+              </li>
+              <li>
+                <Icon name="check" size={14} /> Every change can be undone.
+              </li>
+            </ul>
+            {commitmentsDescriptionMissing(doc) ? (
+              <p className="small muted">Later, describe your commitments (practice, a job, family duties) in the “Finish setting up” card, so planning keeps clear of them.</p>
+            ) : null}
+            <h3 id="ob-one-thing">Start with one thing</h3>
+            <div className="ob-choices" role="group" aria-labelledby="ob-one-thing">
+              {shortcuts.map((s) => (
+                <button key={s.title} type="button" className="ob-choice" onClick={() => enter(s.route)}>
+                  <span className="ob-choice-icon" aria-hidden="true">
+                    <Icon name={s.icon} size={20} />
+                  </span>
+                  <span className="ob-choice-text">
+                    <strong>{s.title}</strong>
+                    <span className="small muted">{s.text}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div className="row ob-actions">
+              <button type="button" className="btn ghost" onClick={() => go('study')}>
+                Back
+              </button>
+              <span className="spacer" />
+              <button type="button" className="btn primary" onClick={() => enter({ name: 'day', date: today })}>
+                Just take me in
+              </button>
             </div>
           </div>
         </section>

@@ -7,7 +7,7 @@ import { MAX_IMPORT_BYTES } from '../../model/constants';
 import { parseScheduleText, type ValidationIssue, type ValidationStage } from '../../lib/validate';
 import { nowLocal, todayLocal } from '../../lib/time';
 import { Icon } from '../../ui/Icon';
-import { checkChosenFile, formatMegabytes, readFileText, tryParseJson, type FileProblem } from './logic';
+import { IMPORT_ACCEPT, checkChosenFile, formatMegabytes, readFileText, tryParseJson, type FileProblem } from './logic';
 import { ValidationErrors } from './ValidationErrors';
 import type { LoadedFile } from './pending';
 
@@ -171,7 +171,7 @@ export function ChooseStep({ onLoaded }: { onLoaded: (loaded: LoadedFile) => voi
           ref={inputRef}
           className="visually-hidden"
           type="file"
-          accept=".json,application/json"
+          accept={IMPORT_ACCEPT}
           tabIndex={-1}
           aria-hidden="true"
           data-testid="import-file-input"

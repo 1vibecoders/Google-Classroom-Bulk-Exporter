@@ -35,7 +35,8 @@ export { expect };
 
 /**
  * Start from a schedule whose onboarding is already complete (the app shows
- * the setup wizard until there is study time and a commitments description).
+ * the setup wizard until there is study time; the commitments description
+ * keeps its row out of the "Finish setting up" card).
  * The only study time is one past day, so it does not affect what the tests plan.
  * Call before the first page.goto; storage is only seeded when it is empty.
  */
