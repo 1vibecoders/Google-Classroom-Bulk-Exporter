@@ -4,10 +4,12 @@
 // their paths and nothing is imported.
 import { useCallback, useEffect, useId, useRef, useState, type DragEvent } from 'react';
 import { MAX_IMPORT_BYTES } from '../../model/constants';
-import { parseScheduleText, type ValidationIssue, type ValidationStage } from '../../lib/validate';
+import { parseScheduleText, validateDocument, type ValidationIssue, type ValidationStage } from '../../lib/validate';
+import { icsToSchedule } from '../../lib/ics';
 import { nowLocal, todayLocal } from '../../lib/time';
+import { useStore } from '../../state/store';
 import { Icon } from '../../ui/Icon';
-import { IMPORT_ACCEPT, checkChosenFile, formatMegabytes, readFileText, tryParseJson, type FileProblem } from './logic';
+import { IMPORT_ACCEPT, checkChosenFile, formatMegabytes, isCalendarFile, readFileText, tryParseJson, type FileProblem } from './logic';
 import { ValidationErrors } from './ValidationErrors';
 import type { LoadedFile } from './pending';
 
@@ -37,6 +39,7 @@ function hasFiles(event: DragEvent | globalThis.DragEvent): boolean {
 }
 
 export function ChooseStep({ onLoaded }: { onLoaded: (loaded: LoadedFile) => void }) {
+  const { state } = useStore();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<ChooseProblem | null>(null);
@@ -57,6 +60,28 @@ export function ChooseStep({ onLoaded }: { onLoaded: (loaded: LoadedFile) => voi
       // Let "Checking…" render before the (synchronous) validation of a large file.
       await new Promise((resolve) => setTimeout(resolve, 0));
       if (ticket !== run.current) return;
+      if (isCalendarFile(source, text)) {
+        // A calendar export becomes the current schedule plus its events, so the preview shows only what the calendar adds or changes.
+        const ics = icsToSchedule(state.doc, text, nowLocal());
+        const checked = ics.events.length ? validateDocument(ics.doc, { today: todayLocal() }) : null;
+        setBusy(null);
+        if (!checked?.ok || !checked.doc) {
+          setProblem({
+            source,
+            stage: 'file',
+            title: ics.events.length ? 'This calendar can’t be imported' : 'No events found in this calendar',
+            message: ics.events.length ? undefined : (ics.warnings[0] ?? 'Export the calendar again from Google Calendar (Settings → Import & export → Export) and choose the .ics file inside the ZIP.'),
+            errors: checked?.errors ?? [],
+          });
+          return;
+        }
+        const notes: ValidationIssue[] = [
+          ...ics.warnings.map((message) => ({ path: '', code: 'ics', message })),
+          ...ics.skipped.map((s) => ({ path: '', code: 'ics-skipped', message: `“${s.title}” was not imported: ${s.reason}` })),
+        ];
+        onLoaded({ incoming: checked.doc, fileName: source, warnings: [...notes, ...checked.warnings], importTime: nowLocal() });
+        return;
+      }
       const result = parseScheduleText(text, { today: todayLocal() });
       setBusy(null);
       if (result.ok && result.doc) {
@@ -74,7 +99,7 @@ export function ChooseStep({ onLoaded }: { onLoaded: (loaded: LoadedFile) => voi
         version: result.schemaVersion,
       });
     },
-    [onLoaded],
+    [onLoaded, state.doc],
   );
 
   const takeFiles = useCallback(
@@ -161,7 +186,8 @@ export function ChooseStep({ onLoaded }: { onLoaded: (loaded: LoadedFile) => voi
         </span>
         <p className="imp-drop-title">{dragging ? 'Drop the file to check it' : 'Drag your schedule file here'}</p>
         <p className="imp-drop-sub muted" id={zoneHintId}>
-          A <span className="mono">.json</span> file made by the /academic-schedule skill or exported from this website (up to {formatMegabytes(MAX_IMPORT_BYTES)}).
+          A <span className="mono">.json</span> file made by the /academic-schedule skill or exported from this website, or a Google Calendar export (
+          <span className="mono">.ics</span>) to add its events as fixed commitments (up to {formatMegabytes(MAX_IMPORT_BYTES)}).
         </p>
         <button type="button" className="btn primary imp-drop-button" onClick={() => inputRef.current?.click()} disabled={!!busy} aria-describedby={zoneHintId}>
           <Icon name="file" />

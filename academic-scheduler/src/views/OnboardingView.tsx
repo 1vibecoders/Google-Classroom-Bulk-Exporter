@@ -26,7 +26,6 @@ import { useAiStatus } from '../state/aiStore';
 import { useFirstSchedule } from './useFirstSchedule';
 import { ClassroomSyncCard } from './ClassroomSyncCard';
 import { WindowRow } from './CommitmentsView';
-import { IMPORT_FILE_TYPES } from './import/logic';
 import { WelcomeSlides } from './onboarding/WelcomeSlides';
 
 const STEPS = [
@@ -125,7 +124,6 @@ export function OnboardingView() {
 
   const pickedPreset = selectedPreset(doc.availability);
   const imported = doc.classes.length + doc.assignments.length > 0;
-  const fileTypes = IMPORT_FILE_TYPES.map((t) => t.extension).join(' or ');
   const upcoming = doc.scheduleBlocks.filter((b) => b.start >= today).length;
   const shortcuts: Array<{ icon: IconName; title: string; text: string; route: Route }> = [
     { icon: 'day', title: 'See today’s plan', text: 'What to work on now, and what must be done today.', route: { name: 'day', date: today } },
@@ -188,7 +186,7 @@ export function OnboardingView() {
                 </span>
                 <span className="ob-choice-text">
                   <strong>Import a file</strong>
-                  <span className="small muted">A {fileTypes} schedule file from the /academic-schedule skill or a backup. You see a preview first.</span>
+                  <span className="small muted">A .json schedule file from the /academic-schedule skill or a backup, or a Google Calendar export (.ics). You see a preview first.</span>
                 </span>
               </a>
               <button type="button" className="ob-choice" onClick={() => go('study')}>
