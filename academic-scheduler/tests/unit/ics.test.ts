@@ -53,7 +53,7 @@ describe('icsToSchedule: Google Calendar export', () => {
     const chem = byUid(result.events, '7kq2m9chem2period@google.com');
     expect(chem.title).toBe('Chemistry, Period 2 with Ms. Alvarez – a long title that Google folds onto a second line');
     expect(chem.location).toBe('Room 204; Science wing');
-    expect(chem.id).toBe('ics-7kq2m9chem2period-google.com');
+    expect(chem.id).toMatch(/^ics-7kq2m9chem2period-google\.com-[0-9a-f]{8}$/);
     expect(chem.origin).toBe('generated');
     expect(chem.source).toEqual({ kind: 'calendar', id: '7kq2m9chem2period@google.com', label: 'Calendar file (.ics)', retrievedAt: NOW });
   });
@@ -148,6 +148,54 @@ describe('icsToSchedule: time zones', () => {
     const london = icsToSchedule(empty('Europe/London'), fixture('time-zones.ics'), NOW);
     expect(byUid(london.events, 'london-call')).toMatchObject({ startTime: '15:00', endTime: '16:00' });
   });
+
+  it('warns when the event’s zone changes its clocks on other dates than the schedule’s', () => {
+    // Mondays 17:00 in London, Mar 2 – Apr 20, 2026. New York starts daylight saving on Mar 8, London on Mar 29.
+    const text = calendar(
+      'BEGIN:VEVENT',
+      'UID:uk-call',
+      'SUMMARY:Call with Gran',
+      'DTSTART;TZID=Europe/London:20260302T170000',
+      'DTEND;TZID=Europe/London:20260302T173000',
+      'RRULE:FREQ=WEEKLY;BYDAY=MO;UNTIL=20260420T235959Z',
+      'END:VEVENT',
+    );
+    const ny = icsToSchedule(empty(), text, NOW);
+    expect(byUid(ny.events, 'uk-call')).toMatchObject({ startTime: '12:00', endTime: '12:30' });
+    expect(ny.warnings).toEqual([expect.stringMatching(/“Call with Gran” is set in Europe\/London.*from 2026-03-09, some of its times are an hour off/)]);
+    // Paris changes on the same dates as London: no warning.
+    expect(icsToSchedule(empty('Europe/Paris'), text, NOW).warnings).toEqual([]);
+  });
+});
+
+describe('icsToSchedule: repeat ends', () => {
+  const weekly = (rule: string) =>
+    icsToSchedule(empty(), calendar('BEGIN:VEVENT', 'UID:r', 'SUMMARY:Practice', 'DTSTART:20261005T180000', 'DTEND:20261005T190000', `RRULE:FREQ=WEEKLY;BYDAY=MO;${rule}`, 'END:VEVENT'), NOW);
+
+  it('leaves out an occurrence on the UNTIL day that starts after UNTIL', () => {
+    expect(weekly('UNTIL=20261026T120000').events[0].recurrence?.endDate).toBe('2026-10-25');
+    expect(weekly('UNTIL=20261026T180000').events[0].recurrence?.endDate).toBe('2026-10-26');
+    expect(weekly('UNTIL=20261026').events[0].recurrence?.endDate).toBe('2026-10-26');
+  });
+
+  it('keeps only the first occurrence when UNTIL or COUNT cannot be read, instead of repeating forever', () => {
+    for (const [rule, why] of [
+      ['UNTIL=2026-12-01', /repeat end \(UNTIL=2026-12-01\) could not be read; only the first occurrence \(2026-10-05\)/],
+      ['COUNT=TEN', /repeat count \(COUNT=TEN\) is not a positive number/],
+      ['COUNT=0', /COUNT=0/],
+    ] as const) {
+      const r = weekly(rule);
+      expect(r.events[0]).toMatchObject({ date: '2026-10-05' });
+      expect(r.events[0].recurrence).toBeUndefined();
+      expect(r.skipped).toEqual([{ title: 'Practice', reason: expect.stringMatching(why) }]);
+    }
+  });
+
+  it('warns when COUNT is cut to 1000', () => {
+    const r = weekly('COUNT=5000');
+    expect(r.events[0].recurrence?.endDate).toBe('2045-11-27');
+    expect(r.warnings).toEqual(['“Practice” repeats 5000 times; only the first 1000 were imported.']);
+  });
 });
 
 describe('icsToSchedule: importing again', () => {
@@ -185,9 +233,24 @@ describe('icsToSchedule: importing again', () => {
     base.events = base.events.filter((e) => e.id !== runId);
     base.deleted = [{ id: runId, collection: 'events', deletedAt: NOW }];
     const moved = fixture('google-export.ics').replace('DTSTART:20261015T200000Z', 'DTSTART:20261015T190000Z');
-    const next = icsToSchedule(base, moved, NOW).doc;
+    const result = icsToSchedule(base, moved, NOW);
+    const next = result.doc;
     expect(next.events.filter((e) => e.id === dentistId)).toEqual([expect.objectContaining({ startTime: '15:00', endTime: '17:30', notes: 'Bring insurance card' })]);
     expect(next.events.some((e) => e.id === runId)).toBe(false);
+    expect(result.skipped).toContainEqual({ title: 'Morning run', reason: 'you deleted this event earlier, so it is not brought back' });
+  });
+
+  it('keeps UIDs that differ only in characters an ID cannot hold apart', () => {
+    expect(icsEventId('abc@google.com')).not.toBe(icsEventId('abc-google.com'));
+    const r = icsToSchedule(
+      empty(),
+      calendar(
+        ...['abc@google.com', 'abc-google.com'].flatMap((uid) => ['BEGIN:VEVENT', `UID:${uid}`, `SUMMARY:${uid}`, 'DTSTART;VALUE=DATE:20261020', 'END:VEVENT']),
+      ),
+      NOW,
+    );
+    expect(r.events.map((e) => e.title)).toEqual(['abc@google.com', 'abc-google.com']);
+    expect(r.skipped).toEqual([]);
   });
 });
 

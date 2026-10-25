@@ -2,19 +2,23 @@
 // schedule file the import preview compares with the current schedule. Like
 // mergeBatch (src/lib/sync/mergeBatch.ts), the result is the current schedule
 // with only the calendar's events added or changed, so the preview lists real
-// changes and every rule of the import (matching by ID, "Previously deleted",
-// fields the person changed, undo) applies unchanged.
+// changes and the rules of the import (matching by ID, fields the person
+// changed, undo) apply unchanged. Events the person deleted are left out, like
+// mergeBatch does, and listed in `skipped` (so not as "Previously deleted").
 //
 // Each VEVENT becomes a fixed event with a stable ID derived from its UID, so
 // importing the same file again matches the same events (SPEC § 32 C). Only
 // what the model can hold is imported: one-time events, all-day events and
-// weekly repeats (BYDAY, INTERVAL, UNTIL or COUNT, EXDATE). Other repeats keep
-// only their first occurrence and are reported in `skipped`, as are changed
-// single occurrences (RECURRENCE-ID) and cancelled events.
+// weekly repeats (BYDAY, INTERVAL, UNTIL or COUNT, EXDATE). Other repeats, and
+// repeats whose UNTIL or COUNT cannot be read, keep only their first occurrence
+// and are reported in `skipped`, as are changed single occurrences
+// (RECURRENCE-ID) and cancelled events.
 //
 // Times become wall-clock times in the schedule's zone (meta.timezone, else
 // the device's): UTC (`…Z`) and TZID times are converted with Intl; a TZID
-// Intl does not know is read as wall-clock time with a warning.
+// Intl does not know is read as wall-clock time with a warning. A repeat keeps
+// one start time, so a warning says when its zone's daylight-saving changes
+// would move later occurrences by an hour.
 import { WEEKDAYS, schemaVersionFor } from '../model/constants';
 import type { DateStr, LocalDateTimeStr, Recurrence, ScheduleDocument, ScheduleEvent, Source, Weekday } from '../model/types';
 import { addDays, dateFromDayNumber, daysBetween, minutesToLdt, splitLocalDateTime, weekdayOf, MINUTES_PER_DAY } from './time';
@@ -134,21 +138,29 @@ function runtimeZone(): string | undefined {
   }
 }
 
+// One formatter per zone: the daylight-saving check below converts many times.
+const formatters = new Map<string, Intl.DateTimeFormat>();
+
 /** Wall-clock minutes of instant `ms` in `zone` (the runtime's zone when undefined). */
 function wallMinutes(ms: number, zone: string | undefined): number {
   if (!zone) {
     const d = new Date(ms);
     return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes()) / 60000;
   }
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: zone,
-    hourCycle: 'h23',
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: 'numeric',
-  }).formatToParts(new Date(ms));
+  let format = formatters.get(zone);
+  if (!format) {
+    format = new Intl.DateTimeFormat('en-US', {
+      timeZone: zone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+    });
+    formatters.set(zone, format);
+  }
+  const parts = format.formatToParts(new Date(ms));
   const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
   return Date.UTC(get('year'), get('month') - 1, get('day'), get('hour') % 24, get('minute')) / 60000;
 }
@@ -190,6 +202,30 @@ class Converter {
   prop(prop: Prop | undefined): Moment | null {
     return prop ? this.moment(prop.value.split(',')[0], prop.params.TZID) : null;
   }
+
+  /**
+   * A repeat keeps one start time, converted once from DTSTART. When DTSTART's
+   * zone (TZID or UTC) changes its clocks on other dates than the schedule's,
+   * later occurrences are an hour off: the first such occurrence, or null.
+   * Checked until the rule ends, else for a year, at most 400 occurrences.
+   */
+  driftDate(dtstart: Prop, rule: Recurrence, start: number): DateStr | null {
+    const m = DT_RE.exec(dtstart.value.split(',')[0].trim());
+    if (!m || m[4] === undefined) return null;
+    const tzid = dtstart.params.TZID;
+    const utc = !!m[7];
+    if (utc ? this.zone === 'UTC' : !tzid || tzid === this.zone || !this.zone || !isKnownTimeZone(tzid)) return null;
+    const local = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) / 60000 + Number(m[4]) * 60 + Number(m[5]);
+    const last = rule.endDate ?? addDays(rule.startDate, 366);
+    let date = nextOccurrence(rule, rule.startDate);
+    for (let n = 0; date && date <= last && n < 400; n++) {
+      const offset = daysBetween(rule.startDate, date) * MINUTES_PER_DAY;
+      const ms = utc ? (local + offset) * 60000 : instantOf(local + offset, tzid!);
+      if (wallMinutes(ms, this.zone) !== start + offset) return date;
+      date = nextOccurrence(rule, addDays(date, 1));
+    }
+    return null;
+  }
 }
 
 function split(minutes: number): { date: DateStr; time: string } {
@@ -211,10 +247,14 @@ function hash(value: string): string {
   return (h >>> 0).toString(16).padStart(8, '0');
 }
 
-/** `ics-<UID>` with characters IDs cannot hold replaced; long UIDs are shortened with a hash. */
+/**
+ * `ics-<readable UID>-<hash of the UID>`: characters IDs cannot hold are
+ * replaced and long UIDs shortened, so the hash keeps different UIDs apart
+ * (`a@b.com` and `a-b.com`).
+ */
 export function icsEventId(uid: string): string {
-  const safe = `ics-${uid.replace(/[^A-Za-z0-9._:-]/g, '-')}`;
-  return safe.length <= 100 ? safe : `${safe.slice(0, 91)}-${hash(uid)}`;
+  const readable = `ics-${uid.replace(/[^A-Za-z0-9._:-]/g, '-')}`.slice(0, 91);
+  return `${readable}-${hash(uid)}`;
 }
 
 function clip(value: string, max: number): string {
@@ -305,7 +345,12 @@ function buildEvent(props: Prop[], conv: Converter, warnings: string[]): Built {
     return { event };
   }
   const parts = ruleParts(rrule.value);
-  const why = unsupportedRule(parts);
+  const until = parts.UNTIL === undefined ? undefined : conv.moment(parts.UNTIL, first('DTSTART')!.params.TZID);
+  // Without a readable end the event would repeat forever: keep only its first occurrence instead.
+  const why =
+    unsupportedRule(parts) ??
+    (until === null ? `its repeat end (UNTIL=${clip(parts.UNTIL!, 40)}) could not be read` : null) ??
+    (until === undefined && parts.COUNT !== undefined && !/^[1-9]\d*$/.test(parts.COUNT) ? `its repeat count (COUNT=${clip(parts.COUNT, 40)}) is not a positive number` : null);
   if (why) {
     event.date = startDate;
     return { event, skipped: { title, reason: `${why}; only the first occurrence (${startDate}) was imported` } };
@@ -338,16 +383,23 @@ function buildEvent(props: Prop[], conv: Converter, warnings: string[]): Built {
   }
   if (except.size) recurrence.exceptDates = [...except].sort();
 
-  if (parts.UNTIL) {
-    const until = conv.moment(parts.UNTIL, first('DTSTART')!.params.TZID);
-    if (until) recurrence.endDate = dateOfMinutes(until.minutes);
-  } else if (parts.COUNT) {
-    const count = Math.min(Number(parts.COUNT), MAX_COUNT);
-    const last = Number.isInteger(count) && count >= 1 ? countEnd({ ...recurrence, exceptDates: [] }, count) : undefined;
+  if (until) {
+    recurrence.endDate = dateOfMinutes(until.minutes);
+    // UNTIL is a moment: an occurrence on its day that starts after it is not part of the repeat (RFC 5545).
+    if (!until.dateOnly && !start.dateOnly && until.minutes % MINUTES_PER_DAY < start.minutes % MINUTES_PER_DAY) recurrence.endDate = addDays(recurrence.endDate, -1);
+  } else if (parts.COUNT !== undefined) {
+    const count = Number(parts.COUNT);
+    if (count > MAX_COUNT) warnings.push(`“${title}” repeats ${count} times; only the first ${MAX_COUNT} were imported.`);
+    const last = countEnd({ ...recurrence, exceptDates: [] }, Math.min(count, MAX_COUNT));
     if (last) recurrence.endDate = last;
   }
   if (recurrence.endDate !== undefined && recurrence.endDate < startDate) recurrence.endDate = startDate;
   event.recurrence = recurrence;
+  const drift = start.dateOnly ? null : conv.driftDate(first('DTSTART')!, recurrence, start.minutes);
+  if (drift) {
+    const zone = first('DTSTART')!.params.TZID ?? 'UTC';
+    warnings.push(`“${title}” is set in ${zone}, which does not change to or from daylight saving time on the same dates as this schedule’s time zone; from ${drift}, some of its times are an hour off. Check them after importing.`);
+  }
   return { event };
 }
 
@@ -393,7 +445,10 @@ export function icsToSchedule(current: ScheduleDocument, text: string, importedA
   const deleted = new Set((doc.deleted ?? []).map((t) => t.id));
 
   for (const event of parsed.events) {
-    if (deleted.has(event.id)) continue;
+    if (deleted.has(event.id)) {
+      parsed.skipped.push({ title: event.title, reason: 'you deleted this event earlier, so it is not brought back' });
+      continue;
+    }
     const i = index.get(event.id);
     const cur = i === undefined ? undefined : doc.events[i];
     if (!cur) {
